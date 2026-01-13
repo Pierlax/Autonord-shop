@@ -5,11 +5,27 @@ import Image from 'next/image';
 import { ArrowRight, BookOpen } from 'lucide-react';
 import { blogPosts } from '@/lib/blog/posts';
 import { BlogPost } from '@/lib/blog/types';
+import { useState } from 'react';
 
 interface RelatedArticlesProps {
   productTitle: string;
   brandName: string;
   productTags?: string[];
+}
+
+// Client component for image with fallback
+function ArticleImage({ src, alt }: { src: string; alt: string }) {
+  const [imgSrc, setImgSrc] = useState(src);
+  
+  return (
+    <Image
+      src={imgSrc}
+      alt={alt}
+      fill
+      className="object-cover group-hover:scale-105 transition-transform duration-300"
+      onError={() => setImgSrc('/placeholder-blog.jpg')}
+    />
+  );
 }
 
 // Find articles that might be related to this product
@@ -71,15 +87,9 @@ export function RelatedArticles({ productTitle, brandName, productTags }: Relate
           >
             {/* Thumbnail */}
             <div className="relative w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden bg-muted">
-              <Image
+              <ArticleImage
                 src={article.coverImage}
                 alt={article.title}
-                fill
-                className="object-cover group-hover:scale-105 transition-transform duration-300"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.src = '/placeholder-blog.jpg';
-                }}
               />
             </div>
             

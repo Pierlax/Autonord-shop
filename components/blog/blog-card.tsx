@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { BlogPost } from '@/lib/blog/types';
 import { Clock, Calendar, ArrowRight, Tag } from 'lucide-react';
+import { useState } from 'react';
 
 interface BlogCardProps {
   post: BlogPost;
@@ -26,6 +27,21 @@ const categoryLabels: Record<string, string> = {
   guide: 'Guide Pratiche',
 };
 
+// Client component for image with fallback
+function BlogImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const [imgSrc, setImgSrc] = useState(src);
+  
+  return (
+    <Image
+      src={imgSrc}
+      alt={alt}
+      fill
+      className={className}
+      onError={() => setImgSrc('/placeholder-blog.jpg')}
+    />
+  );
+}
+
 export function BlogCard({ post, featured = false }: BlogCardProps) {
   const formattedDate = new Date(post.date).toLocaleDateString('it-IT', {
     day: 'numeric',
@@ -41,15 +57,10 @@ export function BlogCard({ post, featured = false }: BlogCardProps) {
             {/* Image */}
             <div className="relative h-64 md:h-full min-h-[300px] overflow-hidden">
               <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent z-10 md:bg-gradient-to-r" />
-              <Image
+              <BlogImage
                 src={post.coverImage}
                 alt={post.title}
-                fill
                 className="object-cover group-hover:scale-105 transition-transform duration-500"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.src = '/placeholder-blog.jpg';
-                }}
               />
               <div className="absolute top-4 left-4 z-20">
                 <span className="px-3 py-1 text-xs font-semibold bg-red-600 text-white rounded-full">
@@ -102,15 +113,10 @@ export function BlogCard({ post, featured = false }: BlogCardProps) {
       <article className="h-full flex flex-col overflow-hidden rounded-xl bg-zinc-800/50 border border-zinc-700/50 hover:border-red-500/50 hover:bg-zinc-800 transition-all duration-300">
         {/* Image */}
         <div className="relative h-48 overflow-hidden">
-          <Image
+          <BlogImage
             src={post.coverImage}
             alt={post.title}
-            fill
             className="object-cover group-hover:scale-105 transition-transform duration-500"
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              target.src = '/placeholder-blog.jpg';
-            }}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent" />
           <div className="absolute bottom-3 left-3">

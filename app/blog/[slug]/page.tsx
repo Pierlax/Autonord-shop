@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { getPostBySlug, getRelatedPosts, getAllPosts } from '@/lib/blog/posts';
 import { BlogCard } from '@/components/blog/blog-card';
+import { BlogCoverImage } from '@/components/blog/blog-cover-image';
 import { ChevronRight, Calendar, Clock, User, Share2, Facebook, Twitter, Linkedin, ArrowLeft } from 'lucide-react';
 
 interface BlogPostPageProps {
@@ -227,16 +228,10 @@ export default function BlogPostPage({ params }: BlogPostPageProps) {
       {/* Cover Image */}
       <section className="container mx-auto px-4 -mt-4 mb-12">
         <div className="relative h-64 md:h-96 lg:h-[500px] rounded-2xl overflow-hidden">
-          <Image
+          <BlogCoverImage
             src={post.coverImage}
             alt={post.title}
-            fill
-            className="object-cover"
             priority
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              target.src = '/placeholder-blog.jpg';
-            }}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent" />
         </div>
