@@ -42,3 +42,19 @@ Based on Sirio website analysis, implement the following improvements:
 ## Brand & Vendor Improvements
 - [x] Download and add brand logos (Milwaukee, Makita, Bosch, DeWalt, Hilti, Metabo)
 - [x] Fix vendor name display to show brand instead of legal company name
+
+
+## Blog & Content Strategy (They Ask You Answer)
+- [x] Review TAYA principles from PDF
+- [x] Create /app/blog/page.tsx (article list)
+- [x] Create /app/blog/[slug]/page.tsx (article detail)
+- [x] Create BlogCard component
+- [x] Setup blog data structure (using TypeScript instead of MDX for simplicity)
+- [x] Create Big 5 Article 1: Costi/Prezzi - "Quanto costa attrezzare un furgone da elettricista"
+- [x] Create Big 5 Article 2: Problemi - "5 motivi per cui il tassellatore si surriscalda"
+- [x] Create Big 5 Article 3: Confronti - "Milwaukee M18 vs Makita 40V"
+- [x] Create Big 5 Article 4: Recensioni - "I 3 migliori avvitatori a impulsi per gommisti"
+- [x] Create Big 5 Article 5: Migliori - "Chi produce i migliori dischi diamantati"
+- [x] Add FAQ section to ProductPage with Schema Markup
+- [x] Add "Related Articles" section to ProductPage
+- [x] Add "Risorse Utili" section to Footer

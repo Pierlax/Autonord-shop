@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Facebook, Instagram, Linkedin, Youtube, MapPin, Phone, Mail, Truck, Shield, Clock, CreditCard } from 'lucide-react';
+import { Facebook, Instagram, Linkedin, Youtube, MapPin, Phone, Mail, Truck, Shield, Clock, CreditCard, BookOpen } from 'lucide-react';
 
 export function Footer() {
   return (
@@ -50,7 +50,7 @@ export function Footer() {
 
       {/* Main Footer */}
       <div className="container px-4 md:px-8 mx-auto pt-12 pb-8">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-12 mb-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-8 lg:gap-8 mb-12">
           {/* Company Info */}
           <div className="space-y-4 lg:col-span-2">
             <h3 className="text-xl font-bold tracking-tight">
@@ -84,6 +84,20 @@ export function Footer() {
               <li><Link href="/about" className="text-muted-foreground hover:text-primary transition-colors">Chi Siamo</Link></li>
               <li><Link href="/services" className="text-muted-foreground hover:text-primary transition-colors">Noleggio & Assistenza</Link></li>
               <li><Link href="/contact" className="text-muted-foreground hover:text-primary transition-colors">Contatti</Link></li>
+            </ul>
+          </div>
+
+          {/* Risorse Utili - NEW SECTION */}
+          <div className="space-y-4">
+            <h4 className="text-sm font-semibold uppercase tracking-wider flex items-center gap-2">
+              <BookOpen className="h-4 w-4 text-primary" />
+              Risorse Utili
+            </h4>
+            <ul className="space-y-3 text-sm">
+              <li><Link href="/blog" className="text-muted-foreground hover:text-primary transition-colors">Blog & Guide</Link></li>
+              <li><Link href="/blog/quanto-costa-attrezzare-furgone-elettricista-2026" className="text-muted-foreground hover:text-primary transition-colors">Guida Prezzi 2026</Link></li>
+              <li><Link href="/blog/milwaukee-m18-vs-makita-40v-confronto-edilizia" className="text-muted-foreground hover:text-primary transition-colors">Milwaukee vs Makita</Link></li>
+              <li><Link href="/blog/migliori-avvitatori-impulsi-gommisti-2026" className="text-muted-foreground hover:text-primary transition-colors">Migliori Avvitatori</Link></li>
             </ul>
           </div>
 

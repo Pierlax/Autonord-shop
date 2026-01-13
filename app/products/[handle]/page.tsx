@@ -5,6 +5,8 @@ import { notFound } from 'next/navigation';
 import { Check, AlertTriangle, FileText, Truck, Shield, ChevronRight, Package } from 'lucide-react';
 import { getProductByHandle } from '@/lib/shopify';
 import { AddToCartButton, StickyMobileCTA } from '@/components/product/add-to-cart';
+import { ProductFAQ } from '@/components/product/product-faq';
+import { RelatedArticles } from '@/components/product/related-articles';
 import { toTitleCase, getBrandName } from '@/lib/utils';
 
 type Props = {
@@ -44,11 +46,39 @@ export default async function ProductPage({ params }: Props) {
   
   // Get the brand name from vendor
   const brandName = getBrandName(product.vendor);
+  const productTitleFormatted = toTitleCase(product.title);
   
   const formattedPrice = new Intl.NumberFormat('it-IT', {
     style: 'currency',
     currency: currency,
   }).format(price);
+
+  // Generate Product Schema Markup
+  const productSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: productTitleFormatted,
+    description: product.description,
+    image: product.featuredImage?.url,
+    brand: {
+      '@type': 'Brand',
+      name: brandName,
+    },
+    sku: product.variants.edges[0]?.node.sku,
+    offers: {
+      '@type': 'Offer',
+      url: `https://autonord-shop.vercel.app/products/${params.handle}`,
+      priceCurrency: currency,
+      price: price,
+      availability: isOutOfStock 
+        ? 'https://schema.org/PreOrder' 
+        : 'https://schema.org/InStock',
+      seller: {
+        '@type': 'Organization',
+        name: 'Autonord Service',
+      },
+    },
+  };
 
   // Stock status component
   const StockStatus = () => {
@@ -86,6 +116,12 @@ export default async function ProductPage({ params }: Props) {
 
   return (
     <>
+      {/* Product Schema Markup */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(productSchema) }}
+      />
+
       <div className="container px-4 md:px-8 py-6 md:py-10 pb-24 md:pb-10">
         {/* Breadcrumbs */}
         <nav className="flex items-center text-sm text-muted-foreground mb-6 md:mb-8 overflow-x-auto">
@@ -101,7 +137,7 @@ export default async function ProductPage({ params }: Props) {
               <ChevronRight className="h-4 w-4 mx-2 flex-shrink-0" />
             </>
           )}
-          <span className="text-foreground font-medium truncate max-w-[200px]">{toTitleCase(product.title)}</span>
+          <span className="text-foreground font-medium truncate max-w-[200px]">{productTitleFormatted}</span>
         </nav>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
@@ -150,7 +186,7 @@ export default async function ProductPage({ params }: Props) {
             
             {/* Title - Now in Title Case, not all caps */}
             <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-foreground mb-4 leading-tight">
-              {toTitleCase(product.title)}
+              {productTitleFormatted}
             </h1>
             
             {/* SKU and Stock Status */}
@@ -184,7 +220,7 @@ export default async function ProductPage({ params }: Props) {
                   <AddToCartButton 
                     variantId={product.variants.edges[0]?.node.id} 
                     available={!isOutOfStock}
-                    productTitle={toTitleCase(product.title)}
+                    productTitle={productTitleFormatted}
                   />
                 </div>
               )}
@@ -222,6 +258,19 @@ export default async function ProductPage({ params }: Props) {
                 />
               </div>
             )}
+
+            {/* Related Articles Section */}
+            <RelatedArticles 
+              productTitle={productTitleFormatted}
+              brandName={brandName}
+              productTags={product.tags}
+            />
+
+            {/* FAQ Section with Schema Markup */}
+            <ProductFAQ 
+              productTitle={productTitleFormatted}
+              brandName={brandName}
+            />
           </div>
         </div>
       </div>
@@ -232,7 +281,7 @@ export default async function ProductPage({ params }: Props) {
           variantId={product.variants.edges[0]?.node.id}
           available={!isOutOfStock}
           price={formattedPrice}
-          productTitle={toTitleCase(product.title)}
+          productTitle={productTitleFormatted}
         />
       )}
     </>
