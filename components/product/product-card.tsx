@@ -14,8 +14,11 @@ export function ProductCard({ product }: { product: Product }) {
   const isNew = product.tags.includes('new') || product.tags.includes('nuovo') || product.tags.includes('novità');
   
   const price = parseFloat(product.priceRange.minVariantPrice.amount);
-  const compareAtPrice = product.compareAtPriceRange?.minVariantPrice?.amount 
-    ? parseFloat(product.compareAtPriceRange.minVariantPrice.amount) 
+  
+  // Get compare at price from first variant if available
+  const firstVariant = product.variants?.edges?.[0]?.node;
+  const compareAtPrice = firstVariant?.compareAtPrice?.amount 
+    ? parseFloat(firstVariant.compareAtPrice.amount) 
     : null;
   const currency = product.priceRange.minVariantPrice.currencyCode;
   
