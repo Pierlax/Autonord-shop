@@ -171,9 +171,6 @@ export function Footer() {
                 width={60} 
                 height={30}
                 className="h-8 w-auto object-contain opacity-80"
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                }}
               />
             </div>
             <p className="text-xs text-muted-foreground text-center md:text-left max-w-xl">
