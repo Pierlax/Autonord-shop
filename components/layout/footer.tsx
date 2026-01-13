@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Facebook, Instagram, Linkedin, MapPin, Phone, Mail, Truck, Shield, Clock } from 'lucide-react';
+import { Facebook, Instagram, Linkedin, Youtube, MapPin, Phone, Mail, Truck, Shield, Clock, CreditCard } from 'lucide-react';
 
 export function Footer() {
   return (
@@ -7,7 +7,7 @@ export function Footer() {
       {/* Trust Bar */}
       <div className="border-b border-border/10">
         <div className="container px-4 md:px-8 mx-auto py-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
                 <Truck className="h-5 w-5 text-primary" />
@@ -35,31 +35,43 @@ export function Footer() {
                 <p className="text-xs text-muted-foreground">Supporto tecnico specializzato</p>
               </div>
             </div>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <CreditCard className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="font-semibold text-sm">Pagamenti Sicuri</p>
+                <p className="text-xs text-muted-foreground">Carta, PayPal, Bonifico</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Main Footer */}
       <div className="container px-4 md:px-8 mx-auto pt-12 pb-8">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-12 mb-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-12 mb-12">
           {/* Company Info */}
-          <div className="space-y-4">
+          <div className="space-y-4 lg:col-span-2">
             <h3 className="text-xl font-bold tracking-tight">
               AUTONORD <span className="text-primary">SERVICE</span>
             </h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Dal 2006, il partner di fiducia per l'edilizia professionale. 
-              Vendita, noleggio e assistenza tecnica specializzata.
+              Vendita, noleggio e assistenza tecnica specializzata per elettroutensili e macchine movimento terra.
             </p>
             <div className="flex space-x-3 pt-2">
-              <Link href="#" className="w-9 h-9 rounded-full bg-muted/50 flex items-center justify-center text-muted-foreground hover:bg-primary hover:text-primary-foreground transition-colors">
+              <Link href="https://facebook.com" target="_blank" className="w-9 h-9 rounded-full bg-muted/50 flex items-center justify-center text-muted-foreground hover:bg-[#1877F2] hover:text-white transition-colors">
                 <Facebook className="h-4 w-4" />
               </Link>
-              <Link href="#" className="w-9 h-9 rounded-full bg-muted/50 flex items-center justify-center text-muted-foreground hover:bg-primary hover:text-primary-foreground transition-colors">
+              <Link href="https://instagram.com" target="_blank" className="w-9 h-9 rounded-full bg-muted/50 flex items-center justify-center text-muted-foreground hover:bg-[#E4405F] hover:text-white transition-colors">
                 <Instagram className="h-4 w-4" />
               </Link>
-              <Link href="#" className="w-9 h-9 rounded-full bg-muted/50 flex items-center justify-center text-muted-foreground hover:bg-primary hover:text-primary-foreground transition-colors">
+              <Link href="https://linkedin.com" target="_blank" className="w-9 h-9 rounded-full bg-muted/50 flex items-center justify-center text-muted-foreground hover:bg-[#0A66C2] hover:text-white transition-colors">
                 <Linkedin className="h-4 w-4" />
+              </Link>
+              <Link href="https://youtube.com" target="_blank" className="w-9 h-9 rounded-full bg-muted/50 flex items-center justify-center text-muted-foreground hover:bg-[#FF0000] hover:text-white transition-colors">
+                <Youtube className="h-4 w-4" />
               </Link>
             </div>
           </div>
@@ -106,9 +118,24 @@ export function Footer() {
           </div>
         </div>
 
+        {/* Payment Methods */}
+        <div className="border-t border-border/10 pt-8 mb-8">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <p className="text-sm text-muted-foreground">Metodi di pagamento accettati:</p>
+            <div className="flex items-center gap-3">
+              {/* Payment icons - using text placeholders styled as badges */}
+              <span className="px-3 py-1.5 bg-muted/50 rounded text-xs font-medium">Visa</span>
+              <span className="px-3 py-1.5 bg-muted/50 rounded text-xs font-medium">Mastercard</span>
+              <span className="px-3 py-1.5 bg-[#003087] text-white rounded text-xs font-medium">PayPal</span>
+              <span className="px-3 py-1.5 bg-muted/50 rounded text-xs font-medium">Bonifico</span>
+              <span className="px-3 py-1.5 bg-muted/50 rounded text-xs font-medium">Contrassegno</span>
+            </div>
+          </div>
+        </div>
+
         {/* Bottom Bar */}
         <div className="border-t border-border/10 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-muted-foreground">
-          <p>&copy; {new Date().getFullYear()} Autonord Service S.r.l. - P.IVA 01234567890</p>
+          <p>&copy; {new Date().getFullYear()} Autonord Service S.r.l. - P.IVA 01234567890 - Tutti i diritti riservati</p>
           <p className="flex items-center gap-1">
             Powered by <span className="font-medium">Next.js</span> & <span className="font-medium">Shopify</span>
           </p>

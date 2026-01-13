@@ -4,6 +4,8 @@ import "./globals.css";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { Toaster } from "sonner";
+import { WhatsAppButton } from "@/components/ui/whatsapp-button";
+import { NewsletterPopup } from "@/components/ui/newsletter-popup";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 const oswald = Oswald({ subsets: ["latin"], variable: "--font-heading" });
@@ -31,6 +33,8 @@ export default function RootLayout({
           {children}
         </main>
         <Footer />
+        <WhatsAppButton />
+        <NewsletterPopup />
         <Toaster position="top-center" />
       </body>
     </html>
