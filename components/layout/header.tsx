@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { Search, ShoppingCart, Menu, Phone, Truck, User, BookOpen, ChevronDown } from 'lucide-react';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -32,14 +33,31 @@ export function Header() {
       </div>
 
       <div className="container flex h-16 max-w-screen-2xl items-center justify-between px-4 md:px-8">
-        {/* Logo */}
+        {/* Logo - Official Image */}
         <div className="mr-4 hidden md:flex">
-          <Link href="/" className="mr-6 flex items-center space-x-2">
-            <span className="hidden font-bold sm:inline-block text-xl tracking-tight">
-              AUTONORD <span className="text-primary">SERVICE</span>
-            </span>
+          <Link href="/" className="mr-6 flex items-center">
+            <Image 
+              src="/autonord-logo.png" 
+              alt="Autonord Service" 
+              width={180} 
+              height={60}
+              className="h-12 w-auto"
+              priority
+            />
           </Link>
         </div>
+
+        {/* Mobile Logo */}
+        <Link href="/" className="md:hidden flex items-center">
+          <Image 
+            src="/autonord-logo.png" 
+            alt="Autonord Service" 
+            width={140} 
+            height={46}
+            className="h-10 w-auto"
+            priority
+          />
+        </Link>
 
         {/* Mobile Menu Button */}
         <button 
@@ -51,7 +69,7 @@ export function Header() {
         </button>
 
         {/* Search Bar - Amazon Style */}
-        <div className="flex-1 flex items-center justify-center max-w-2xl mx-4">
+        <div className="flex-1 flex items-center justify-center max-w-2xl mx-4 hidden md:flex">
           <form onSubmit={handleSearch} className="w-full relative flex items-center">
             <div className="relative w-full">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -161,6 +179,20 @@ export function Header() {
       {/* Mobile Menu */}
       {isMenuOpen && (
         <div className="md:hidden border-t border-border p-4 bg-background">
+          {/* Mobile Search */}
+          <form onSubmit={handleSearch} className="mb-4">
+            <div className="relative w-full">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <input
+                type="search"
+                placeholder="Cerca prodotti..."
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm pl-9"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </form>
+          
           <nav className="flex flex-col gap-4">
             <Link href="/" className="text-sm font-medium" onClick={() => setIsMenuOpen(false)}>Home</Link>
             <Link href="/products" className="text-sm font-medium" onClick={() => setIsMenuOpen(false)}>Prodotti</Link>

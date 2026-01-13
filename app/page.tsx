@@ -19,12 +19,14 @@ export default async function Home() {
         
         <div className="container relative z-10 px-4 md:px-8 py-12">
           <div className="max-w-4xl space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-1000">
-            {/* Autonord Service Logo */}
-            <div className="mb-2">
-              <span className="text-2xl md:text-3xl font-bold text-white tracking-tight">
-                AUTONORD <span className="text-primary">SERVICE</span>
-              </span>
-              <span className="block text-sm text-slate-400 mt-1">Dal 2006 — Trasparenza e Competenza</span>
+            {/* Autonord Service Logo - Official */}
+            <div className="mb-4">
+              <img 
+                src="/autonord-logo.png" 
+                alt="Autonord Service" 
+                className="h-16 md:h-20 w-auto brightness-0 invert"
+              />
+              <span className="block text-sm text-slate-400 mt-2">Dal 2006 — Trasparenza e Competenza</span>
             </div>
             
             {/* Trust-Based Headline */}
