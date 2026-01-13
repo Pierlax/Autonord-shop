@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
-import { Check, AlertTriangle, FileText, ShoppingCart, Truck, Shield } from 'lucide-react';
+import { Check, AlertTriangle, FileText, ShoppingCart, Truck, Shield, Wrench, MessageCircle, MapPin } from 'lucide-react';
 import { getProductByHandle, createCheckout } from '@/lib/shopify';
 import { Product } from '@/lib/shopify/types';
 import { AddToCartButton } from '@/components/product/add-to-cart';
@@ -119,31 +119,54 @@ export default async function ProductPage({ params }: Props) {
                   variantId={product.variants.edges[0]?.node.id} 
                   available={!isOutOfStock}
                 />
+                
+                {/* WhatsApp Support Button */}
+                <a 
+                  href={`https://wa.me/390107456076?text=Salve, vorrei informazioni su: ${product.title} (SKU: ${product.variants.edges[0]?.node.sku})`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full inline-flex items-center justify-center rounded-md border border-emerald-500 bg-emerald-50 px-6 py-3 text-sm font-bold text-emerald-700 hover:bg-emerald-100 transition-colors"
+                >
+                  <MessageCircle className="mr-2 h-4 w-4" />
+                  DUBBI? CHIEDI AL TECNICO SU WHATSAPP
+                </a>
               </div>
             )}
           </div>
 
-          {/* Value Props */}
-          <div className="grid grid-cols-2 gap-4 mb-8">
-            <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/30">
-              <Truck className="h-5 w-5 text-primary mt-0.5" />
-              <div>
-                <h4 className="font-bold text-sm">Spedizione Rapida</h4>
-                <p className="text-xs text-muted-foreground">Consegna in 24/48h in tutta Italia.</p>
+          {/* Value Props - Perché Autonord */}
+          <div className="bg-slate-50 rounded-lg p-5 mb-8 border border-slate-200">
+            <h4 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+              <Shield className="h-5 w-5 text-primary" /> PERCHÉ ACQUISTARE DA AUTONORD?
+            </h4>
+            <div className="grid grid-cols-1 gap-3">
+              <div className="flex items-start gap-3">
+                <Wrench className="h-5 w-5 text-slate-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-semibold text-sm text-slate-900">Centro Assistenza Ufficiale</p>
+                  <p className="text-xs text-slate-600">Non siamo solo venditori. Se si rompe, lo ripariamo noi nella nostra officina di Genova.</p>
+                </div>
               </div>
-            </div>
-            <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/30">
-              <Shield className="h-5 w-5 text-primary mt-0.5" />
-              <div>
-                <h4 className="font-bold text-sm">Garanzia Ufficiale</h4>
-                <p className="text-xs text-muted-foreground">2 anni di garanzia e assistenza diretta.</p>
+              <div className="flex items-start gap-3">
+                <Truck className="h-5 w-5 text-slate-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-semibold text-sm text-slate-900">Spedizione Rapida o Ritiro in Sede</p>
+                  <p className="text-xs text-slate-600">Consegna in 24/48h in tutta Italia. Sei di Genova? Ritira subito in negozio.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <MapPin className="h-5 w-5 text-slate-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-semibold text-sm text-slate-900">Sede Fisica Reale</p>
+                  <p className="text-xs text-slate-600">Siamo in Via Sardorella 45, Genova Bolzaneto. Passa a trovarci dal 1980.</p>
+                </div>
               </div>
             </div>
           </div>
 
           {/* Description */}
           <div className="prose prose-sm max-w-none text-muted-foreground">
-            <h3 className="text-foreground font-bold text-lg mb-2">Descrizione</h3>
+            <h3 className="text-foreground font-bold text-lg mb-2">Descrizione Tecnica</h3>
             <div dangerouslySetInnerHTML={{ __html: product.descriptionHtml }} />
           </div>
         </div>
