@@ -19,10 +19,12 @@ export default async function Home() {
         
         <div className="container relative z-10 px-4 md:px-8 py-12">
           <div className="max-w-4xl space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-1000">
-            {/* TAYA Badge */}
-            <div className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-1.5 text-sm font-medium text-amber-400 backdrop-blur-sm">
-              <BookOpen className="h-4 w-4 mr-2" />
-              THEY ASK, YOU ANSWER — Trasparenza Totale
+            {/* Autonord Service Logo */}
+            <div className="mb-2">
+              <span className="text-2xl md:text-3xl font-bold text-white tracking-tight">
+                AUTONORD <span className="text-primary">SERVICE</span>
+              </span>
+              <span className="block text-sm text-slate-400 mt-1">Dal 2006 — Trasparenza e Competenza</span>
             </div>
             
             {/* Trust-Based Headline */}

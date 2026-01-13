@@ -80,3 +80,7 @@ Based on Sirio website analysis, implement the following improvements:
 - [x] TASK 3: Add Pro/Contro honest reviews to products
 - [x] TASK 3: Improve "Su Ordinazione" label clarity
 - [x] TASK 4: Verify Big 5 articles are complete (already done)
+
+
+## Homepage Logo Update
+- [x] Replace "THEY ASK, YOU ANSWER" badge with Autonord Service logo in hero section
