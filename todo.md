@@ -37,3 +37,8 @@ Based on Sirio website analysis, implement the following improvements:
 - [x] Spedizioni e Resi page
 - [x] Garanzia Prodotti page
 - [x] Noleggio & Assistenza page
+
+
+## Brand & Vendor Improvements
+- [x] Download and add brand logos (Milwaukee, Makita, Bosch, DeWalt, Hilti, Metabo)
+- [x] Fix vendor name display to show brand instead of legal company name

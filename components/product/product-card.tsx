@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { ShoppingCart, FileText, Check, Sparkles } from 'lucide-react';
 import { Product } from '@/lib/shopify/types';
 import { toast } from 'sonner';
-import { toTitleCase } from '@/lib/utils';
+import { toTitleCase, getBrandName } from '@/lib/utils';
 
 export function ProductCard({ product }: { product: Product }) {
   const isB2B = product.tags.includes('B2B') || product.tags.includes('Richiedi Preventivo');
@@ -36,6 +36,9 @@ export function ProductCard({ product }: { product: Product }) {
     style: 'currency',
     currency: currency,
   }).format(compareAtPrice) : null;
+
+  // Get the brand name from vendor
+  const brandName = getBrandName(product.vendor);
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -151,9 +154,9 @@ export function ProductCard({ product }: { product: Product }) {
 
       {/* Content */}
       <div className="flex flex-1 flex-col p-4">
-        {/* Vendor/Brand */}
+        {/* Brand Name - Now shows actual brand instead of legal company name */}
         <div className="mb-1.5 text-xs text-primary font-semibold tracking-wide uppercase">
-          {product.vendor}
+          {brandName}
         </div>
         
         {/* Product Title - Now in Title Case */}

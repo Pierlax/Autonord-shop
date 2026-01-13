@@ -1,12 +1,13 @@
 import Link from 'next/link';
+import Image from 'next/image';
 
 const brands = [
-  { name: 'Milwaukee', logo: '/brands/milwaukee.svg', url: '/products?vendor=milwaukee' },
-  { name: 'Makita', logo: '/brands/makita.svg', url: '/products?vendor=makita' },
-  { name: 'Bosch', logo: '/brands/bosch.svg', url: '/products?vendor=bosch' },
-  { name: 'DeWalt', logo: '/brands/dewalt.svg', url: '/products?vendor=dewalt' },
-  { name: 'Hilti', logo: '/brands/hilti.svg', url: '/products?vendor=hilti' },
-  { name: 'Metabo', logo: '/brands/metabo.svg', url: '/products?vendor=metabo' },
+  { name: 'Milwaukee', logo: '/brands/milwaukee.png', url: '/products?vendor=milwaukee' },
+  { name: 'Makita', logo: '/brands/makita.png', url: '/products?vendor=makita' },
+  { name: 'Bosch', logo: '/brands/bosch.png', url: '/products?vendor=bosch' },
+  { name: 'DeWalt', logo: '/brands/dewalt.png', url: '/products?vendor=dewalt' },
+  { name: 'Hilti', logo: '/brands/hilti.png', url: '/products?vendor=hilti' },
+  { name: 'Metabo', logo: '/brands/metabo.png', url: '/products?vendor=metabo' },
 ];
 
 export function BrandLogos() {
@@ -22,12 +23,18 @@ export function BrandLogos() {
           <Link
             key={brand.name}
             href={brand.url}
-            className="group flex items-center justify-center p-4 md:p-6 rounded-xl bg-muted/30 hover:bg-muted/50 transition-all duration-300 hover:scale-105"
+            className="group flex items-center justify-center p-4 md:p-6 rounded-xl bg-white hover:bg-gray-50 transition-all duration-300 hover:scale-105 hover:shadow-lg"
+            title={brand.name}
           >
-            {/* Placeholder for brand logos - using text for now */}
-            <span className="text-lg md:text-xl font-bold text-muted-foreground group-hover:text-foreground transition-colors">
-              {brand.name}
-            </span>
+            <div className="relative w-full h-12 md:h-16">
+              <Image
+                src={brand.logo}
+                alt={`${brand.name} logo`}
+                fill
+                className="object-contain filter grayscale-0 group-hover:grayscale-0 transition-all duration-300"
+                sizes="(max-width: 768px) 100px, 150px"
+              />
+            </div>
           </Link>
         ))}
       </div>

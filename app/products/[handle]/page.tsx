@@ -5,7 +5,7 @@ import { notFound } from 'next/navigation';
 import { Check, AlertTriangle, FileText, Truck, Shield, ChevronRight, Package } from 'lucide-react';
 import { getProductByHandle } from '@/lib/shopify';
 import { AddToCartButton, StickyMobileCTA } from '@/components/product/add-to-cart';
-import { toTitleCase } from '@/lib/utils';
+import { toTitleCase, getBrandName } from '@/lib/utils';
 
 type Props = {
   params: { handle: string };
@@ -41,6 +41,9 @@ export default async function ProductPage({ params }: Props) {
   const isLowStock = product.totalInventory > 0 && product.totalInventory < 5;
   const price = parseFloat(product.priceRange.minVariantPrice.amount);
   const currency = product.priceRange.minVariantPrice.currencyCode;
+  
+  // Get the brand name from vendor
+  const brandName = getBrandName(product.vendor);
   
   const formattedPrice = new Intl.NumberFormat('it-IT', {
     style: 'currency',
@@ -93,7 +96,7 @@ export default async function ProductPage({ params }: Props) {
           {product.vendor && (
             <>
               <Link href={`/products?vendor=${encodeURIComponent(product.vendor)}`} className="hover:text-primary transition-colors whitespace-nowrap">
-                {product.vendor}
+                {brandName}
               </Link>
               <ChevronRight className="h-4 w-4 mx-2 flex-shrink-0" />
             </>
@@ -140,9 +143,9 @@ export default async function ProductPage({ params }: Props) {
 
           {/* Product Info */}
           <div className="flex flex-col">
-            {/* Brand */}
+            {/* Brand - Now shows actual brand name instead of legal company name */}
             <div className="mb-2">
-              <span className="text-sm font-bold text-primary tracking-wider uppercase">{product.vendor}</span>
+              <span className="text-sm font-bold text-primary tracking-wider uppercase">{brandName}</span>
             </div>
             
             {/* Title - Now in Title Case, not all caps */}

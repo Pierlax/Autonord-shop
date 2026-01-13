@@ -25,3 +25,45 @@ export function toTitleCase(str: string): string {
     })
     .join(' ');
 }
+
+/**
+ * Extract the brand name from a vendor string
+ * Maps legal company names to their brand names
+ * Example: "TECHTRONIC INDUSTRIES ITALIA SRL" -> "Milwaukee"
+ */
+export function getBrandName(vendor: string): string {
+  const vendorLower = vendor.toLowerCase();
+  
+  // Map of vendor patterns to brand names
+  const brandMappings: { pattern: string; brand: string }[] = [
+    { pattern: 'techtronic', brand: 'Milwaukee' },
+    { pattern: 'milwaukee', brand: 'Milwaukee' },
+    { pattern: 'makita', brand: 'Makita' },
+    { pattern: 'bosch', brand: 'Bosch' },
+    { pattern: 'dewalt', brand: 'DeWalt' },
+    { pattern: 'stanley black', brand: 'DeWalt' },
+    { pattern: 'hilti', brand: 'Hilti' },
+    { pattern: 'metabo', brand: 'Metabo' },
+    { pattern: 'festool', brand: 'Festool' },
+    { pattern: 'hikoki', brand: 'HiKOKI' },
+    { pattern: 'hitachi', brand: 'HiKOKI' },
+    { pattern: 'einhell', brand: 'Einhell' },
+    { pattern: 'ryobi', brand: 'Ryobi' },
+    { pattern: 'black+decker', brand: 'Black+Decker' },
+    { pattern: 'black & decker', brand: 'Black+Decker' },
+    { pattern: 'worx', brand: 'Worx' },
+    { pattern: 'flex', brand: 'Flex' },
+    { pattern: 'fein', brand: 'Fein' },
+    { pattern: 'stihl', brand: 'Stihl' },
+    { pattern: 'husqvarna', brand: 'Husqvarna' },
+  ];
+  
+  for (const mapping of brandMappings) {
+    if (vendorLower.includes(mapping.pattern)) {
+      return mapping.brand;
+    }
+  }
+  
+  // If no mapping found, return the original vendor in title case
+  return toTitleCase(vendor);
+}
