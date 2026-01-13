@@ -1,10 +1,11 @@
 import { Metadata } from 'next';
 import Image from 'next/image';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { Check, AlertTriangle, FileText, ShoppingCart, Truck, Shield } from 'lucide-react';
-import { getProductByHandle, createCheckout } from '@/lib/shopify';
-import { Product } from '@/lib/shopify/types';
-import { AddToCartButton } from '@/components/product/add-to-cart';
+import { Check, AlertTriangle, FileText, Truck, Shield, ChevronRight, Package } from 'lucide-react';
+import { getProductByHandle } from '@/lib/shopify';
+import { AddToCartButton, StickyMobileCTA } from '@/components/product/add-to-cart';
+import { toTitleCase } from '@/lib/utils';
 
 type Props = {
   params: { handle: string };
@@ -20,7 +21,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 
   return {
-    title: `${product.title} | Autonord Service`,
+    title: `${toTitleCase(product.title)} | Autonord Service`,
     description: product.description.substring(0, 160).replace(/<[^>]*>?/gm, ''),
     openGraph: {
       images: [product.featuredImage?.url || ''],
@@ -37,6 +38,7 @@ export default async function ProductPage({ params }: Props) {
 
   const isB2B = product.tags.includes('B2B') || product.tags.includes('Richiedi Preventivo');
   const isOutOfStock = product.totalInventory <= 0;
+  const isLowStock = product.totalInventory > 0 && product.totalInventory < 5;
   const price = parseFloat(product.priceRange.minVariantPrice.amount);
   const currency = product.priceRange.minVariantPrice.currencyCode;
   
@@ -45,109 +47,191 @@ export default async function ProductPage({ params }: Props) {
     currency: currency,
   }).format(price);
 
-  return (
-    <div className="container px-4 md:px-8 py-8">
-      {/* Breadcrumbs */}
-      <nav className="flex items-center text-sm text-muted-foreground mb-8">
-        <a href="/" className="hover:text-primary">Home</a>
-        <span className="mx-2">/</span>
-        <a href="/products" className="hover:text-primary">Prodotti</a>
-        <span className="mx-2">/</span>
-        <span className="text-foreground font-medium truncate max-w-[200px]">{product.title}</span>
-      </nav>
+  // Stock status component
+  const StockStatus = () => {
+    if (isOutOfStock) {
+      return (
+        <div className="flex items-center gap-2 text-amber-600">
+          <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 text-sm font-medium ring-1 ring-inset ring-amber-500/20">
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+            Su Ordinazione
+          </span>
+          <span className="text-xs text-muted-foreground">Tempi di consegna: 5-7 giorni</span>
+        </div>
+      );
+    }
+    if (isLowStock) {
+      return (
+        <div className="flex items-center gap-2 text-orange-600">
+          <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-50 text-sm font-medium ring-1 ring-inset ring-orange-500/20">
+            <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+            Ultimi {product.totalInventory} disponibili
+          </span>
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center gap-2 text-emerald-600">
+        <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-sm font-medium ring-1 ring-inset ring-emerald-500/20">
+          <Check className="w-3.5 h-3.5" />
+          Disponibile ({product.totalInventory} pz)
+        </span>
+        <span className="text-xs text-muted-foreground">Spedizione in 24/48h</span>
+      </div>
+    );
+  };
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-        {/* Gallery */}
-        <div className="space-y-4">
-          <div className="aspect-square relative overflow-hidden rounded-lg border border-border bg-white p-8">
-            {product.featuredImage ? (
-              <Image
-                src={product.featuredImage.url}
-                alt={product.featuredImage.altText || product.title}
-                fill
-                className="object-contain"
-                priority
-              />
-            ) : (
-              <div className="h-full w-full flex items-center justify-center bg-muted text-muted-foreground">
-                No Image
+  return (
+    <>
+      <div className="container px-4 md:px-8 py-6 md:py-10 pb-24 md:pb-10">
+        {/* Breadcrumbs */}
+        <nav className="flex items-center text-sm text-muted-foreground mb-6 md:mb-8 overflow-x-auto">
+          <Link href="/" className="hover:text-primary transition-colors whitespace-nowrap">Home</Link>
+          <ChevronRight className="h-4 w-4 mx-2 flex-shrink-0" />
+          <Link href="/products" className="hover:text-primary transition-colors whitespace-nowrap">Prodotti</Link>
+          <ChevronRight className="h-4 w-4 mx-2 flex-shrink-0" />
+          {product.vendor && (
+            <>
+              <Link href={`/products?vendor=${encodeURIComponent(product.vendor)}`} className="hover:text-primary transition-colors whitespace-nowrap">
+                {product.vendor}
+              </Link>
+              <ChevronRight className="h-4 w-4 mx-2 flex-shrink-0" />
+            </>
+          )}
+          <span className="text-foreground font-medium truncate max-w-[200px]">{toTitleCase(product.title)}</span>
+        </nav>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
+          {/* Gallery */}
+          <div className="space-y-4">
+            <div className="aspect-square relative overflow-hidden rounded-xl border border-border bg-white p-6 md:p-8">
+              {product.featuredImage ? (
+                <Image
+                  src={product.featuredImage.url}
+                  alt={product.featuredImage.altText || product.title}
+                  fill
+                  className="object-contain"
+                  priority
+                />
+              ) : (
+                <div className="h-full w-full flex items-center justify-center bg-muted text-muted-foreground">
+                  <Package className="w-16 h-16 opacity-30" />
+                </div>
+              )}
+            </div>
+            
+            {/* Thumbnail gallery placeholder */}
+            {product.images?.edges && product.images.edges.length > 1 && (
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {product.images.edges.slice(0, 5).map((img, i) => (
+                  <div key={i} className="w-20 h-20 flex-shrink-0 rounded-lg border border-border bg-white p-2 cursor-pointer hover:border-primary transition-colors">
+                    <Image
+                      src={img.node.url}
+                      alt={img.node.altText || `${product.title} - Immagine ${i + 1}`}
+                      width={80}
+                      height={80}
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                ))}
               </div>
             )}
           </div>
-          {/* Thumbnails would go here */}
-        </div>
 
-        {/* Product Info */}
-        <div className="flex flex-col">
-          <div className="mb-4">
-            <h2 className="text-sm font-bold text-primary tracking-wider uppercase mb-1">{product.vendor}</h2>
-            <h1 className="text-3xl md:text-4xl font-bold font-heading text-foreground mb-2">{product.title}</h1>
-            <div className="flex items-center gap-4 text-sm text-muted-foreground font-mono">
-              <span>SKU: {product.variants.edges[0]?.node.sku || 'N/A'}</span>
-              {isOutOfStock ? (
-                <span className="flex items-center text-amber-600 font-bold">
-                  <AlertTriangle className="h-4 w-4 mr-1" /> Su Ordinazione
-                </span>
+          {/* Product Info */}
+          <div className="flex flex-col">
+            {/* Brand */}
+            <div className="mb-2">
+              <span className="text-sm font-bold text-primary tracking-wider uppercase">{product.vendor}</span>
+            </div>
+            
+            {/* Title - Now in Title Case, not all caps */}
+            <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-foreground mb-4 leading-tight">
+              {toTitleCase(product.title)}
+            </h1>
+            
+            {/* SKU and Stock Status */}
+            <div className="flex flex-col gap-3 mb-6">
+              <div className="flex items-center gap-4 text-sm text-muted-foreground font-mono">
+                <span>SKU: {product.variants.edges[0]?.node.sku || 'N/A'}</span>
+              </div>
+              <StockStatus />
+            </div>
+
+            {/* Price and CTA Section */}
+            <div className="border-y border-border py-6 my-4 space-y-6">
+              {isB2B ? (
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-5">
+                  <p className="text-blue-800 font-semibold mb-2">Prodotto riservato ai professionisti</p>
+                  <p className="text-sm text-blue-600 mb-4">
+                    Il prezzo di questo articolo è visibile solo agli utenti registrati o su richiesta.
+                  </p>
+                  <button className="w-full inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-3.5 text-sm font-bold text-white shadow hover:bg-blue-700 transition-colors">
+                    <FileText className="mr-2 h-4 w-4" />
+                    RICHIEDI PREVENTIVO
+                  </button>
+                </div>
               ) : (
-                <span className="flex items-center text-green-600 font-bold">
-                  <Check className="h-4 w-4 mr-1" /> Disponibile ({product.totalInventory} pz)
-                </span>
+                <div className="space-y-5">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-4xl font-bold text-foreground">{formattedPrice}</span>
+                    <span className="text-sm text-muted-foreground">+ IVA</span>
+                  </div>
+                  
+                  <AddToCartButton 
+                    variantId={product.variants.edges[0]?.node.id} 
+                    available={!isOutOfStock}
+                    productTitle={toTitleCase(product.title)}
+                  />
+                </div>
               )}
             </div>
-          </div>
 
-          <div className="border-y border-border py-6 my-6 space-y-6">
-            {isB2B ? (
-              <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-                <p className="text-blue-800 font-medium mb-2">Prodotto riservato ai professionisti</p>
-                <p className="text-sm text-blue-600 mb-4">
-                  Il prezzo di questo articolo è visibile solo agli utenti registrati o su richiesta.
-                </p>
-                <button className="w-full inline-flex items-center justify-center rounded-md bg-blue-600 px-6 py-3 text-sm font-bold text-white shadow hover:bg-blue-700 transition-colors">
-                  <FileText className="mr-2 h-4 w-4" />
-                  RICHIEDI PREVENTIVO
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                <div>
-                  <span className="text-4xl font-bold text-foreground">{formattedPrice}</span>
-                  <span className="text-sm text-muted-foreground ml-2">+ IVA</span>
+            {/* Value Props */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+              <div className="flex items-start gap-3 p-4 rounded-xl bg-muted/30 border border-border/50">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Truck className="h-5 w-5 text-primary" />
                 </div>
-                
-                <AddToCartButton 
-                  variantId={product.variants.edges[0]?.node.id} 
-                  available={!isOutOfStock}
+                <div>
+                  <h4 className="font-semibold text-sm">Spedizione Rapida</h4>
+                  <p className="text-xs text-muted-foreground">Consegna in 24/48h in tutta Italia.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 p-4 rounded-xl bg-muted/30 border border-border/50">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Shield className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h4 className="font-semibold text-sm">Garanzia Ufficiale</h4>
+                  <p className="text-xs text-muted-foreground">2 anni di garanzia e assistenza diretta.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Description */}
+            {product.descriptionHtml && (
+              <div className="prose prose-sm max-w-none text-muted-foreground">
+                <h3 className="text-foreground font-bold text-lg mb-3">Descrizione</h3>
+                <div 
+                  dangerouslySetInnerHTML={{ __html: product.descriptionHtml }} 
+                  className="[&>p]:mb-3 [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:mb-3"
                 />
               </div>
             )}
           </div>
-
-          {/* Value Props */}
-          <div className="grid grid-cols-2 gap-4 mb-8">
-            <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/30">
-              <Truck className="h-5 w-5 text-primary mt-0.5" />
-              <div>
-                <h4 className="font-bold text-sm">Spedizione Rapida</h4>
-                <p className="text-xs text-muted-foreground">Consegna in 24/48h in tutta Italia.</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/30">
-              <Shield className="h-5 w-5 text-primary mt-0.5" />
-              <div>
-                <h4 className="font-bold text-sm">Garanzia Ufficiale</h4>
-                <p className="text-xs text-muted-foreground">2 anni di garanzia e assistenza diretta.</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Description */}
-          <div className="prose prose-sm max-w-none text-muted-foreground">
-            <h3 className="text-foreground font-bold text-lg mb-2">Descrizione</h3>
-            <div dangerouslySetInnerHTML={{ __html: product.descriptionHtml }} />
-          </div>
         </div>
       </div>
-    </div>
+
+      {/* Sticky Mobile CTA */}
+      {!isB2B && (
+        <StickyMobileCTA 
+          variantId={product.variants.edges[0]?.node.id}
+          available={!isOutOfStock}
+          price={formattedPrice}
+          productTitle={toTitleCase(product.title)}
+        />
+      )}
+    </>
   );
 }
