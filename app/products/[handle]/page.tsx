@@ -8,6 +8,7 @@ import { AddToCartButton, StickyMobileCTA } from '@/components/product/add-to-ca
 import { ProductFAQ } from '@/components/product/product-faq';
 import { ExpertReview } from '@/components/product/expert-review';
 import { RelatedArticles } from '@/components/product/related-articles';
+import { VideoGallery } from '@/components/product/video-gallery';
 import { toTitleCase, getBrandName } from '@/lib/utils';
 
 type Props = {
@@ -176,6 +177,9 @@ export default async function ProductPage({ params }: Props) {
                 ))}
               </div>
             )}
+            
+            {/* Video Gallery - YouTube/HTML5 support */}
+            <VideoGallery productTitle={product.title} brand={brandName} />
           </div>
 
           {/* Product Info */}

@@ -6,6 +6,7 @@ import { PromoBanners } from '@/components/ui/promo-banners';
 import { FeaturedCategories } from '@/components/ui/featured-categories';
 import { BrandLogos } from '@/components/ui/brand-logos';
 import { NewsletterSection } from '@/components/ui/newsletter-section';
+import { TeamTrust } from '@/components/ui/team-trust';
 
 export default async function Home() {
   const products = await getProducts('BEST_SELLING');
@@ -245,7 +246,7 @@ export default async function Home() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {products.length > 0 ? (
             products.slice(0, 8).map((product) => (
-              <ProductCard key={product.id} product={product} />
+              <ProductCard key={product.id} product={product} showExpertTake={true} />
             ))
           ) : (
             Array.from({ length: 4 }).map((_, i) => (
@@ -288,6 +289,9 @@ export default async function Home() {
           </div>
         </div>
       </section>
+
+      {/* Team Trust Section - Humanized */}
+      <TeamTrust />
 
       {/* Newsletter Section */}
       <NewsletterSection />

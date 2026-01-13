@@ -2,12 +2,81 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { ShoppingCart, FileText, Check, Sparkles } from 'lucide-react';
+import { ShoppingCart, FileText, Check, Sparkles, ThumbsUp } from 'lucide-react';
 import { Product } from '@/lib/shopify/types';
 import { toast } from 'sonner';
 import { toTitleCase, getBrandName } from '@/lib/utils';
 
-export function ProductCard({ product }: { product: Product }) {
+// Expert recommendations based on product type/brand
+const getExpertTake = (product: Product): string | null => {
+  const title = product.title.toLowerCase();
+  const brand = product.vendor?.toLowerCase() || '';
+  const productType = product.productType?.toLowerCase() || '';
+  
+  // Milwaukee products
+  if (brand.includes('techtronic') || brand.includes('milwaukee')) {
+    if (title.includes('m18') && title.includes('fuel')) {
+      return 'Potenza da corded in formato cordless';
+    }
+    if (title.includes('m12')) {
+      return 'Compatto e leggero, ideale per spazi stretti';
+    }
+    if (title.includes('one-key') || title.includes('onekey')) {
+      return 'Tracciabilità e controllo totale via app';
+    }
+    if (title.includes('avvitatore') || title.includes('impulsi')) {
+      return 'Coppia elevata per bulloneria pesante';
+    }
+    return 'Affidabilità Milwaukee per uso intensivo';
+  }
+  
+  // Makita products
+  if (brand.includes('makita')) {
+    if (title.includes('40v') || title.includes('xgt')) {
+      return 'Massima potenza nella gamma Makita';
+    }
+    if (title.includes('18v') || title.includes('lxt')) {
+      return 'Ecosistema batterie più ampio del mercato';
+    }
+    return 'Ottimo rapporto qualità-prezzo';
+  }
+  
+  // DeWalt products
+  if (brand.includes('dewalt') || brand.includes('stanley')) {
+    if (title.includes('flexvolt')) {
+      return 'Versatilità 20V/60V in un unico sistema';
+    }
+    return 'Robusto e affidabile per cantiere';
+  }
+  
+  // Bosch products
+  if (brand.includes('bosch')) {
+    if (title.includes('professional') || title.includes('gsr') || title.includes('gbh')) {
+      return 'Precisione tedesca per professionisti';
+    }
+    return 'Qualità Bosch Professional';
+  }
+  
+  // Hilti products
+  if (brand.includes('hilti')) {
+    return 'Top di gamma per uso intensivo';
+  }
+  
+  // Generic by product type
+  if (productType.includes('trapano') || title.includes('trapano')) {
+    return 'Versatile per foratura e avvitatura';
+  }
+  if (productType.includes('smerigliatrice') || title.includes('smerigliatrice')) {
+    return 'Potenza e controllo per taglio e smerigliatura';
+  }
+  if (productType.includes('tassellatore') || title.includes('tassellatore')) {
+    return 'Forza d\'impatto per calcestruzzo';
+  }
+  
+  return null;
+};
+
+export function ProductCard({ product, showExpertTake = false }: { product: Product; showExpertTake?: boolean }) {
   const isB2B = product.tags.includes('B2B') || product.tags.includes('Richiedi Preventivo');
   const isOutOfStock = product.totalInventory <= 0;
   const isLowStock = product.totalInventory > 0 && product.totalInventory < 5;
@@ -39,6 +108,9 @@ export function ProductCard({ product }: { product: Product }) {
 
   // Get the brand name from vendor
   const brandName = getBrandName(product.vendor);
+  
+  // Get expert recommendation
+  const expertTake = showExpertTake ? getExpertTake(product) : null;
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -160,9 +232,17 @@ export function ProductCard({ product }: { product: Product }) {
         </div>
         
         {/* Product Title - Now in Title Case */}
-        <h3 className="mb-3 text-sm font-medium leading-snug text-foreground line-clamp-2 min-h-[2.5rem] group-hover:text-primary transition-colors">
+        <h3 className="mb-2 text-sm font-medium leading-snug text-foreground line-clamp-2 min-h-[2.5rem] group-hover:text-primary transition-colors">
           {toTitleCase(product.title)}
         </h3>
+        
+        {/* Expert Take - Micro-copy recommendation */}
+        {expertTake && (
+          <div className="mb-3 flex items-start gap-1.5 text-xs text-emerald-600 bg-emerald-50 rounded-md px-2 py-1.5">
+            <ThumbsUp className="h-3 w-3 mt-0.5 flex-shrink-0" />
+            <span className="leading-tight">{expertTake}</span>
+          </div>
+        )}
         
         <div className="mt-auto flex items-center justify-between pt-3 border-t border-border/50">
           <div className="flex flex-col">

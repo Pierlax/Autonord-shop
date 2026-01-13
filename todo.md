@@ -101,3 +101,10 @@ Based on Sirio website analysis, implement the following improvements:
 - [x] Download official Autonord Service logo from current website
 - [x] Replace text logo with official logo in header
 - [x] Replace text logo with official logo in homepage hero
+
+
+## Final TAYA Elements
+- [x] Implement unified search (products + blog articles)
+- [x] Add video support in product gallery (YouTube/HTML5)
+- [x] Create Team Trust section with photo and technician name
+- [x] Add "Expert Take" micro-copy to product cards in carousel

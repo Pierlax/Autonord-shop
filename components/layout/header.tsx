@@ -2,20 +2,76 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { Search, ShoppingCart, Menu, Phone, Truck, User, BookOpen, ChevronDown } from 'lucide-react';
-import { useState } from 'react';
+import { Search, ShoppingCart, Menu, Phone, Truck, User, BookOpen, ChevronDown, Package, FileText } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { blogPosts } from '@/lib/blog/posts';
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestions, setSuggestions] = useState<{ type: 'product' | 'article'; title: string; url: string }[]>([]);
+  const searchRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Update suggestions as user types
+  useEffect(() => {
+    if (searchQuery.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+
+    const query = searchQuery.toLowerCase();
+    const articleSuggestions = blogPosts
+      .filter(post => 
+        post.title.toLowerCase().includes(query) ||
+        post.tags.some(tag => tag.toLowerCase().includes(query))
+      )
+      .slice(0, 3)
+      .map(post => ({
+        type: 'article' as const,
+        title: post.title,
+        url: `/blog/${post.slug}`
+      }));
+
+    // Add some common product search suggestions
+    const productKeywords = ['milwaukee', 'makita', 'dewalt', 'bosch', 'avvitatore', 'trapano', 'smerigliatrice', 'batteria', 'tassellatore'];
+    const productSuggestions = productKeywords
+      .filter(keyword => keyword.includes(query))
+      .slice(0, 2)
+      .map(keyword => ({
+        type: 'product' as const,
+        title: `Cerca "${keyword}" nei prodotti`,
+        url: `/products?q=${keyword}`
+      }));
+
+    setSuggestions([...articleSuggestions, ...productSuggestions]);
+  }, [searchQuery]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      router.push(`/products?q=${encodeURIComponent(searchQuery)}`);
+      setShowSuggestions(false);
+      router.push(`/search?q=${encodeURIComponent(searchQuery)}`);
     }
+  };
+
+  const handleSuggestionClick = (url: string) => {
+    setShowSuggestions(false);
+    setSearchQuery('');
+    router.push(url);
   };
 
   return (
@@ -68,17 +124,18 @@ export function Header() {
           <span className="sr-only">Toggle Menu</span>
         </button>
 
-        {/* Search Bar - Amazon Style */}
-        <div className="flex-1 flex items-center justify-center max-w-2xl mx-4 hidden md:flex">
-          <form onSubmit={handleSearch} className="w-full relative flex items-center">
+        {/* Unified Search Bar */}
+        <div className="flex-1 flex items-center justify-center max-w-2xl mx-4 hidden md:flex" ref={searchRef}>
+          <form onSubmit={handleSearch} className="w-full relative">
             <div className="relative w-full">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <input
                 type="search"
-                placeholder="Cerca per codice, nome o categoria..."
+                placeholder="Cerca prodotti e guide..."
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pl-9 pr-12"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => setShowSuggestions(true)}
               />
               <button 
                 type="submit"
@@ -87,6 +144,37 @@ export function Header() {
                 CERCA
               </button>
             </div>
+
+            {/* Search Suggestions Dropdown */}
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-background border border-border rounded-md shadow-lg z-50 overflow-hidden">
+                {suggestions.map((suggestion, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    className="w-full px-4 py-3 text-left hover:bg-accent flex items-center gap-3 border-b border-border last:border-0"
+                    onClick={() => handleSuggestionClick(suggestion.url)}
+                  >
+                    {suggestion.type === 'article' ? (
+                      <FileText className="h-4 w-4 text-primary flex-shrink-0" />
+                    ) : (
+                      <Package className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    )}
+                    <span className="text-sm truncate">{suggestion.title}</span>
+                    {suggestion.type === 'article' && (
+                      <span className="ml-auto text-xs text-primary bg-primary/10 px-2 py-0.5 rounded">Guida</span>
+                    )}
+                  </button>
+                ))}
+                <button
+                  type="submit"
+                  className="w-full px-4 py-3 text-left hover:bg-accent flex items-center gap-3 bg-muted/50"
+                >
+                  <Search className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">Cerca "{searchQuery}" in tutto il sito</span>
+                </button>
+              </div>
+            )}
           </form>
         </div>
 
@@ -185,7 +273,7 @@ export function Header() {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <input
                 type="search"
-                placeholder="Cerca prodotti..."
+                placeholder="Cerca prodotti e guide..."
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm pl-9"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
