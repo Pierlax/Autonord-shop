@@ -84,3 +84,14 @@ Based on Sirio website analysis, implement the following improvements:
 
 ## Homepage Logo Update
 - [x] Replace "THEY ASK, YOU ANSWER" badge with Autonord Service logo in hero section
+
+
+## Integration from Current Autonord Website
+- [x] Add real company address to footer (Lungobisagno d'Istria 34 - 16141 Genova)
+- [x] Add P.IVA to footer (02579430990)
+- [x] Create dedicated Yanmar section (exclusive dealer for Genova)
+- [x] Add Yanmar miniescavatori to rental page with images
+- [x] Add EU funding badge (PR FESR Liguria 2021-2027)
+- [ ] Expand brand logos to include more partners (50+ brands)
+- [x] Update About page with authentic company description
+- [ ] Add "Abbigliamento Antinfortunistico" category

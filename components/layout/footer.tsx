@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { Facebook, Instagram, Linkedin, Youtube, MapPin, Phone, Mail, Truck, Shield, Clock, CreditCard, BookOpen } from 'lucide-react';
+import Image from 'next/image';
+import { Facebook, Instagram, Linkedin, Youtube, MapPin, Phone, Mail, Truck, Shield, Clock, CreditCard, BookOpen, Award } from 'lucide-react';
 
 export function Footer() {
   return (
@@ -57,9 +58,19 @@ export function Footer() {
               AUTONORD <span className="text-primary">SERVICE</span>
             </h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Dal 2006, il partner di fiducia per l'edilizia professionale. 
+              Dal 2006, il partner di fiducia per l'edilizia professionale a Genova e provincia. 
               Vendita, noleggio e assistenza tecnica specializzata per elettroutensili e macchine movimento terra.
             </p>
+            
+            {/* Exclusive Dealer Badge */}
+            <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+              <Award className="h-5 w-5 text-amber-500 shrink-0" />
+              <p className="text-xs text-amber-200">
+                <strong>Concessionario Esclusivo Yanmar</strong><br />
+                per la Provincia di Genova
+              </p>
+            </div>
+            
             <div className="flex space-x-3 pt-2">
               <Link href="https://facebook.com" target="_blank" className="w-9 h-9 rounded-full bg-muted/50 flex items-center justify-center text-muted-foreground hover:bg-[#1877F2] hover:text-white transition-colors">
                 <Facebook className="h-4 w-4" />
@@ -87,7 +98,7 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Risorse Utili - NEW SECTION */}
+          {/* Risorse Utili */}
           <div className="space-y-4">
             <h4 className="text-sm font-semibold uppercase tracking-wider flex items-center gap-2">
               <BookOpen className="h-4 w-4 text-primary" />
@@ -96,7 +107,7 @@ export function Footer() {
             <ul className="space-y-3 text-sm">
               <li><Link href="/blog" className="text-muted-foreground hover:text-primary transition-colors">Blog & Guide</Link></li>
               <li><Link href="/blog/quanto-costa-attrezzare-furgone-elettricista-2026" className="text-muted-foreground hover:text-primary transition-colors">Guida Prezzi 2026</Link></li>
-              <li><Link href="/blog/milwaukee-m18-vs-makita-40v-confronto-edilizia" className="text-muted-foreground hover:text-primary transition-colors">Milwaukee vs Makita</Link></li>
+              <li><Link href="/blog/milwaukee-vs-makita-vs-dewalt-confronto-definitivo-2026" className="text-muted-foreground hover:text-primary transition-colors">Milwaukee vs Makita</Link></li>
               <li><Link href="/blog/migliori-avvitatori-impulsi-gommisti-2026" className="text-muted-foreground hover:text-primary transition-colors">Migliori Avvitatori</Link></li>
             </ul>
           </div>
@@ -137,7 +148,6 @@ export function Footer() {
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-sm text-muted-foreground">Metodi di pagamento accettati:</p>
             <div className="flex items-center gap-3">
-              {/* Payment icons - using text placeholders styled as badges */}
               <span className="px-3 py-1.5 bg-muted/50 rounded text-xs font-medium">Visa</span>
               <span className="px-3 py-1.5 bg-muted/50 rounded text-xs font-medium">Mastercard</span>
               <span className="px-3 py-1.5 bg-[#003087] text-white rounded text-xs font-medium">PayPal</span>
@@ -147,9 +157,35 @@ export function Footer() {
           </div>
         </div>
 
+        {/* EU Funding Badge */}
+        <div className="border-t border-border/10 pt-6 mb-6">
+          <div className="flex flex-col md:flex-row items-center justify-center gap-4 p-4 bg-blue-950/30 border border-blue-800/30 rounded-lg">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-8 bg-[#003399] rounded flex items-center justify-center">
+                <span className="text-[#FFCC00] text-lg">★</span>
+              </div>
+              <div className="h-8 w-px bg-border/30"></div>
+              <Image 
+                src="/images/regione-liguria.png" 
+                alt="Regione Liguria" 
+                width={60} 
+                height={30}
+                className="h-8 w-auto object-contain opacity-80"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground text-center md:text-left max-w-xl">
+              Progetto cofinanziato con risorse del PR FESR Liguria 2021-2027 — Azione 1.2.3 
+              "Supporto allo sviluppo di progetti di digitalizzazione nelle micro, piccole e medie imprese"
+            </p>
+          </div>
+        </div>
+
         {/* Bottom Bar */}
         <div className="border-t border-border/10 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-muted-foreground">
-          <p>&copy; {new Date().getFullYear()} Autonord Service S.r.l. - P.IVA 01234567890 - Tutti i diritti riservati</p>
+          <p>&copy; {new Date().getFullYear()} Autonord Service S.a.s. — P.IVA 02579430990 — Tutti i diritti riservati</p>
           <p className="flex items-center gap-1">
             Powered by <span className="font-medium">Next.js</span> & <span className="font-medium">Shopify</span>
           </p>

@@ -1,11 +1,71 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
-import { ChevronRight, Wrench, Truck, Clock, Shield, CheckCircle, Phone, Mail, Building2, Cog, Users, Award } from 'lucide-react';
+import Image from 'next/image';
+import { ChevronRight, Wrench, Truck, Clock, Shield, CheckCircle, Phone, Mail, Building2, Cog, Users, Award, ExternalLink } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Noleggio & Assistenza | Autonord Service',
-  description: 'Servizi di noleggio attrezzature edili e assistenza tecnica professionale. Centro assistenza autorizzato Milwaukee, Makita, Bosch a Genova.',
+  title: 'Noleggio Miniescavatori & Assistenza | Autonord Service Genova',
+  description: 'Noleggio miniescavatori Yanmar a Genova. Concessionario esclusivo. Flotta SV17VT, SV26, VIO27-6, VIO38-6, VIO50-6B. Assistenza tecnica autorizzata Milwaukee, Makita, Bosch.',
 };
+
+const yanmarFleet = [
+  {
+    model: 'SV17VT',
+    description: 'Robusto ed affidabile, perfetto per il noleggio. Progettato per lavorare negli ambienti più difficili.',
+    weight: '1.7 ton',
+    depth: '2.5 m',
+    ideal: 'Lavori in spazi ristretti, scavi di fondazione'
+  },
+  {
+    model: 'SV26',
+    description: 'Macchina compatta, perfetta per lavori in ambito urbano e lavori di creazione e sistemazione di aree verdi.',
+    weight: '2.6 ton',
+    depth: '2.8 m',
+    ideal: 'Lavori urbani, giardinaggio professionale'
+  },
+  {
+    model: 'VIO26-6',
+    description: 'Mini-escavatore giro-sagoma (zero tail swing) che consente al telaio superiore di ruotare completamente.',
+    weight: '2.6 ton',
+    depth: '2.9 m',
+    ideal: 'Lavori lungo muri, spazi confinati'
+  },
+  {
+    model: 'VIO27-6',
+    description: 'Prestazioni e stabilità eccezionale. Caratteristiche che contraddistinguono questo modello versatile.',
+    weight: '2.7 ton',
+    depth: '3.0 m',
+    ideal: 'Scavi di precisione, lavori di ristrutturazione'
+  },
+  {
+    model: 'VIO38-6',
+    description: 'Dimensioni ottimizzate per prestazioni negli spazi ristretti. Motore Yanmar efficiente e affidabile.',
+    weight: '3.8 ton',
+    depth: '3.5 m',
+    ideal: 'Cantieri medi, scavi profondi'
+  },
+  {
+    model: 'VIO50-6B',
+    description: 'Progettato per operare in completa sicurezza soprattutto quando si lavora lungo i muri o in prossimità di ostacoli.',
+    weight: '5.0 ton',
+    depth: '3.8 m',
+    ideal: 'Lavori pesanti, demolizioni controllate'
+  },
+  {
+    model: 'VIO57-6B',
+    description: 'Motore common rail che soddisfa tutti i requisiti previsti dall\'Unione europea relativi alle emissioni.',
+    weight: '5.7 ton',
+    depth: '4.0 m',
+    ideal: 'Cantieri grandi, scavi industriali'
+  },
+  {
+    model: 'SV60-6B',
+    description: 'Combinazione vincente di tecnologia ed innovazione, affianca le prestazioni di una macchina di classe superiore.',
+    weight: '6.0 ton',
+    depth: '4.2 m',
+    ideal: 'Progetti complessi, movimento terra'
+  }
+];
 
 export default function ServicesPage() {
   return (
@@ -23,37 +83,141 @@ export default function ServicesPage() {
           </nav>
           
           <div className="max-w-3xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300 text-sm font-medium mb-6">
+              <Award className="h-4 w-4" />
+              Concessionario Esclusivo Yanmar — Provincia di Genova
+            </div>
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
               Noleggio & <span className="text-primary">Assistenza</span>
             </h1>
             <p className="text-xl text-slate-300 leading-relaxed">
-              Servizi professionali per il tuo cantiere: noleggio attrezzature, assistenza tecnica 
-              autorizzata e riparazioni rapide con ricambi originali.
+              Flotta di miniescavatori Yanmar disponibili a noleggio e centro assistenza tecnica 
+              autorizzato per i migliori brand di elettroutensili.
             </p>
           </div>
         </div>
       </section>
 
-      {/* Services Overview */}
+      {/* Yanmar Fleet Section */}
+      <section className="py-16 md:py-24 bg-amber-500/5">
+        <div className="container px-4 md:px-8">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-12">
+            <div>
+              <div className="flex items-center gap-3 mb-4">
+                <Image
+                  src="/images/brands/yanmar.png"
+                  alt="Yanmar"
+                  width={120}
+                  height={40}
+                  className="h-10 w-auto"
+                />
+                <span className="px-2 py-1 bg-amber-500/20 text-amber-300 text-xs font-medium rounded">ESCLUSIVA GENOVA</span>
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold mb-2">Flotta Miniescavatori a Noleggio</h2>
+              <p className="text-muted-foreground">
+                8 modelli disponibili da 1.7 a 6 tonnellate. Consegna in cantiere entro 24h.
+              </p>
+            </div>
+            <Link 
+              href="/contact"
+              className="inline-flex items-center justify-center h-12 px-6 rounded-lg bg-amber-500 text-black font-semibold hover:bg-amber-400 transition-colors"
+            >
+              <Phone className="h-4 w-4 mr-2" />
+              Richiedi Preventivo
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {yanmarFleet.map((machine) => (
+              <div key={machine.model} className="bg-card border border-amber-500/20 rounded-xl overflow-hidden hover:border-amber-500/50 transition-colors group">
+                <div className="aspect-[4/3] bg-slate-800 relative overflow-hidden">
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Building2 className="h-16 w-16 text-amber-500/30" />
+                  </div>
+                  <div className="absolute top-3 left-3">
+                    <span className="px-2 py-1 bg-amber-500 text-black text-xs font-bold rounded">
+                      {machine.model}
+                    </span>
+                  </div>
+                </div>
+                <div className="p-4">
+                  <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+                    {machine.description}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                    <div className="bg-secondary/50 rounded px-2 py-1">
+                      <span className="text-muted-foreground">Peso:</span>
+                      <span className="font-medium ml-1">{machine.weight}</span>
+                    </div>
+                    <div className="bg-secondary/50 rounded px-2 py-1">
+                      <span className="text-muted-foreground">Prof.:</span>
+                      <span className="font-medium ml-1">{machine.depth}</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-amber-400">
+                    <strong>Ideale per:</strong> {machine.ideal}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-8 p-6 bg-card border border-border rounded-xl">
+            <h3 className="font-bold mb-4">Vantaggi del Noleggio Yanmar con Autonord Service</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="flex items-start gap-3">
+                <CheckCircle className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-sm">Disponibilità Immediata</p>
+                  <p className="text-xs text-muted-foreground">Consegna in cantiere entro 24h</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <CheckCircle className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-sm">Manutenzione Inclusa</p>
+                  <p className="text-xs text-muted-foreground">Macchine sempre in perfetto stato</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <CheckCircle className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-sm">Supporto Tecnico</p>
+                  <p className="text-xs text-muted-foreground">Assistenza telefonica h24</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <CheckCircle className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-sm">Tariffe Flessibili</p>
+                  <p className="text-xs text-muted-foreground">Giornaliero, settimanale, mensile</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Services Grid */}
       <section className="py-16 md:py-24">
         <div className="container px-4 md:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-            {/* Rental Service */}
+            {/* Other Rental Equipment */}
             <div className="bg-card border border-border rounded-2xl overflow-hidden">
               <div className="p-8">
                 <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center mb-6">
                   <Truck className="h-7 w-7 text-primary" />
                 </div>
-                <h2 className="text-2xl font-bold mb-4">Noleggio Attrezzature</h2>
+                <h2 className="text-2xl font-bold mb-4">Altre Attrezzature a Noleggio</h2>
                 <p className="text-muted-foreground mb-6">
-                  Flotta completa di macchine movimento terra e attrezzature speciali disponibili 
-                  per noleggio a breve e lungo termine. Ideale per cantieri temporanei o esigenze specifiche.
+                  Oltre ai miniescavatori Yanmar, offriamo una gamma completa di attrezzature 
+                  per l'edilizia disponibili a noleggio.
                 </p>
                 
                 <h3 className="font-semibold mb-3">Attrezzature Disponibili:</h3>
                 <ul className="space-y-2 mb-6">
                   {[
-                    'Mini escavatori e pale compatte',
+                    'Camion e furgoni',
                     'Piattaforme aeree e trabattelli',
                     'Compressori e generatori',
                     'Attrezzature per demolizione',
@@ -66,28 +230,6 @@ export default function ServicesPage() {
                     </li>
                   ))}
                 </ul>
-
-                <div className="bg-secondary/30 rounded-lg p-4 mb-6">
-                  <h4 className="font-semibold mb-2">Vantaggi del Noleggio</h4>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Clock className="h-4 w-4 text-primary" />
-                      Disponibilità immediata
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Shield className="h-4 w-4 text-primary" />
-                      Manutenzione inclusa
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Truck className="h-4 w-4 text-primary" />
-                      Consegna in cantiere
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Users className="h-4 w-4 text-primary" />
-                      Supporto tecnico
-                    </div>
-                  </div>
-                </div>
 
                 <Link 
                   href="/contact"
@@ -130,7 +272,7 @@ export default function ServicesPage() {
                 <div className="bg-secondary/30 rounded-lg p-4 mb-6">
                   <h4 className="font-semibold mb-2">Marchi Autorizzati</h4>
                   <div className="flex flex-wrap gap-2">
-                    {['Milwaukee', 'Makita', 'Bosch', 'Hilti', 'DeWalt', 'Metabo'].map((brand) => (
+                    {['Milwaukee', 'Makita', 'Bosch', 'Hilti', 'DeWalt', 'Metabo', 'Festool', 'Husqvarna'].map((brand) => (
                       <span key={brand} className="px-3 py-1 bg-card rounded-full text-xs font-medium border border-border">
                         {brand}
                       </span>
@@ -167,9 +309,9 @@ export default function ServicesPage() {
               <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
                 <Award className="h-7 w-7 text-primary" />
               </div>
-              <h3 className="font-bold mb-2">Centro Autorizzato</h3>
+              <h3 className="font-bold mb-2">Concessionario Esclusivo</h3>
               <p className="text-sm text-muted-foreground">
-                Certificazioni ufficiali dai principali produttori mondiali
+                Unico dealer Yanmar autorizzato per la provincia di Genova
               </p>
             </div>
 
@@ -206,162 +348,31 @@ export default function ServicesPage() {
         </div>
       </section>
 
-      {/* Process */}
-      <section className="py-16 md:py-24">
-        <div className="container px-4 md:px-8">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                Come Funziona
-              </h2>
-              <p className="text-muted-foreground">
-                Un processo semplice e trasparente per ogni tua esigenza
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div className="text-center">
-                <div className="w-16 h-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center mx-auto mb-4 text-2xl font-bold">
-                  1
-                </div>
-                <h3 className="font-bold mb-2">Contattaci</h3>
-                <p className="text-sm text-muted-foreground">
-                  Chiamaci o inviaci un'email descrivendo le tue esigenze. 
-                  Ti risponderemo entro 24 ore.
-                </p>
-              </div>
-
-              <div className="text-center">
-                <div className="w-16 h-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center mx-auto mb-4 text-2xl font-bold">
-                  2
-                </div>
-                <h3 className="font-bold mb-2">Preventivo</h3>
-                <p className="text-sm text-muted-foreground">
-                  Ricevi un preventivo dettagliato e trasparente, 
-                  senza costi nascosti o sorprese.
-                </p>
-              </div>
-
-              <div className="text-center">
-                <div className="w-16 h-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center mx-auto mb-4 text-2xl font-bold">
-                  3
-                </div>
-                <h3 className="font-bold mb-2">Servizio</h3>
-                <p className="text-sm text-muted-foreground">
-                  Eseguiamo il servizio nei tempi concordati 
-                  con la massima professionalità.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Location */}
-      <section className="py-16 md:py-24 bg-secondary/30">
-        <div className="container px-4 md:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <div className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-sm font-medium text-primary mb-6">
-                <Building2 className="h-4 w-4 mr-2" />
-                Il Nostro Centro
-              </div>
-              <h2 className="text-3xl md:text-4xl font-bold mb-6">
-                Vieni a Trovarci
-              </h2>
-              <p className="text-muted-foreground mb-8">
-                Il nostro centro assistenza e showroom si trova a Genova, facilmente raggiungibile 
-                e con ampio parcheggio. Vieni a scoprire la nostra gamma di prodotti e servizi.
-              </p>
-
-              <div className="space-y-4 mb-8">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <Building2 className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold">Indirizzo</h4>
-                    <p className="text-muted-foreground">Lungobisagno d'Istria 34, 16141 Genova (GE)</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <Clock className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold">Orari</h4>
-                    <p className="text-muted-foreground">Lun-Ven: 08:00-12:30 / 14:00-18:00</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <Phone className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold">Telefono</h4>
-                    <a href="tel:0107456076" className="text-muted-foreground hover:text-primary transition-colors">010 7456076</a>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Link 
-                  href="/contact"
-                  className="inline-flex items-center justify-center h-11 px-6 rounded-lg bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-colors"
-                >
-                  Contattaci
-                </Link>
-                <a 
-                  href="https://maps.google.com/?q=Lungobisagno+d'Istria+34+Genova"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center h-11 px-6 rounded-lg border border-border hover:bg-accent transition-colors font-semibold"
-                >
-                  Indicazioni Stradali
-                </a>
-              </div>
-            </div>
-
-            <div className="h-[400px] rounded-2xl overflow-hidden">
-              <iframe 
-                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2880.867376766346!2d8.9545!3d44.4395!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zNDTCsDI2JzIyLjIiTiA4wrA1NywxNi4yIkU!5e0!3m2!1sit!2sit!4v1620000000000!5m2!1sit!2sit" 
-                width="100%" 
-                height="100%" 
-                style={{ border: 0 }} 
-                allowFullScreen 
-                loading="lazy"
-                className="grayscale"
-              ></iframe>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA */}
+      {/* CTA Section */}
       <section className="py-16 md:py-20 bg-primary text-primary-foreground">
         <div className="container px-4 md:px-8 text-center">
           <h2 className="text-3xl md:text-4xl font-bold mb-4">
-            Hai un Progetto in Mente?
+            Hai Bisogno di un Preventivo?
           </h2>
           <p className="text-lg opacity-90 mb-8 max-w-2xl mx-auto">
-            Contattaci per una consulenza gratuita. Il nostro team è pronto ad aiutarti 
-            a trovare la soluzione migliore per le tue esigenze.
+            Contattaci per un preventivo personalizzato per noleggio o assistenza. 
+            Rispondiamo entro 24 ore.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a 
               href="tel:0107456076"
-              className="inline-flex items-center justify-center h-12 px-8 rounded-lg bg-background text-foreground font-semibold hover:bg-background/90 transition-colors"
+              className="inline-flex h-12 items-center justify-center rounded-lg bg-background text-foreground px-8 font-semibold hover:bg-background/90 transition-colors"
             >
               <Phone className="h-4 w-4 mr-2" />
-              Chiama Ora
+              010 7456076
             </a>
-            <a 
-              href="mailto:info@autonordservice.com"
-              className="inline-flex items-center justify-center h-12 px-8 rounded-lg border-2 border-current font-semibold hover:bg-white/10 transition-colors"
+            <Link 
+              href="/contact" 
+              className="inline-flex h-12 items-center justify-center rounded-lg border-2 border-current px-8 font-semibold hover:bg-white/10 transition-colors"
             >
               <Mail className="h-4 w-4 mr-2" />
-              Invia Email
-            </a>
+              Invia Richiesta
+            </Link>
           </div>
         </div>
       </section>
