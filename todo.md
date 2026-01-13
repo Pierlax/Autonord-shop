@@ -70,3 +70,13 @@ Based on Sirio website analysis, implement the following improvements:
 - [x] Create comparison charts and infographics (tables in articles)
 - [x] Add hero images for each blog article
 - [x] Include product photography in articles
+
+
+## TAYA Refactoring (They Ask You Answer)
+- [x] TASK 1: Move Blog to primary navigation as "GUIDE E CONFRONTI"
+- [x] TASK 2: Redesign Hero with trust-based copy
+- [x] TASK 2: Add "Big 5" section on homepage with 3 cards
+- [x] TASK 3: Create ExpertReview component for product pages
+- [x] TASK 3: Add Pro/Contro honest reviews to products
+- [x] TASK 3: Improve "Su Ordinazione" label clarity
+- [x] TASK 4: Verify Big 5 articles are complete (already done)

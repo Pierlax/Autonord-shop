@@ -6,6 +6,7 @@ import { Check, AlertTriangle, FileText, Truck, Shield, ChevronRight, Package } 
 import { getProductByHandle } from '@/lib/shopify';
 import { AddToCartButton, StickyMobileCTA } from '@/components/product/add-to-cart';
 import { ProductFAQ } from '@/components/product/product-faq';
+import { ExpertReview } from '@/components/product/expert-review';
 import { RelatedArticles } from '@/components/product/related-articles';
 import { toTitleCase, getBrandName } from '@/lib/utils';
 
@@ -87,9 +88,9 @@ export default async function ProductPage({ params }: Props) {
         <div className="flex items-center gap-2 text-amber-600">
           <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 text-sm font-medium ring-1 ring-inset ring-amber-500/20">
             <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-            Su Ordinazione
+            Non disponibile subito
           </span>
-          <span className="text-xs text-muted-foreground">Tempi di consegna: 5-7 giorni</span>
+          <span className="text-xs text-muted-foreground">Tempo stimato: 5-7 giorni lavorativi</span>
         </div>
       );
     }
@@ -258,6 +259,9 @@ export default async function ProductPage({ params }: Props) {
                 />
               </div>
             )}
+
+            {/* Expert Review - TAYA Style Honest Pro/Contro */}
+            <ExpertReview product={product} />
 
             {/* Related Articles Section */}
             <RelatedArticles 
