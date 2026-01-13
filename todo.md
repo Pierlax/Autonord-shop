@@ -58,3 +58,15 @@ Based on Sirio website analysis, implement the following improvements:
 - [x] Add FAQ section to ProductPage with Schema Markup
 - [x] Add "Related Articles" section to ProductPage
 - [x] Add "Risorse Utili" section to Footer
+
+
+## Improved Blog Articles (Research-Based)
+- [x] Research Milwaukee OneKey Resources for technical insights
+- [x] Research Reddit r/Construction discussions for real professional opinions
+- [x] Rewrite Milwaukee M18 vs Makita 40V article with authentic insights
+- [x] Create new Milwaukee vs DeWalt comparison article (merged into main comparison)
+- [x] Update articles with real quotes and experiences from professionals
+- [x] Download professional tool images (Milwaukee, Makita, DeWalt)
+- [x] Create comparison charts and infographics (tables in articles)
+- [x] Add hero images for each blog article
+- [x] Include product photography in articles
