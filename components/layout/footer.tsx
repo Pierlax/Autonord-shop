@@ -165,6 +165,7 @@ export function Footer() {
                 <span className="text-[#FFCC00] text-lg">★</span>
               </div>
               <div className="h-8 w-px bg-border/30"></div>
+              {/* EU Funding Logo */}
               <Image 
                 src="/images/regione-liguria.png" 
                 alt="Regione Liguria" 
