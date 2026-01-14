@@ -118,3 +118,12 @@ Based on Sirio website analysis, implement the following improvements:
 - [x] Add "AI-Enhanced" tag to processed products
 - [x] Create types and utility functions
 - [x] Document environment variables needed
+
+
+## Image Search & Upload Feature
+- [x] Research image search APIs (Google Images, Bing, SerpAPI, etc.)
+- [x] Implement image search function to find product images by SKU/title/brand
+- [x] Add Shopify Admin API image upload functionality
+- [x] Integrate image search into enrichment webhook
+- [x] Add fallback logic if no images found
+- [x] Update documentation with image search feature

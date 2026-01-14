@@ -1,6 +1,6 @@
 /**
  * Shopify Admin API Integration
- * For updating product metafields and tags
+ * For updating product metafields, tags, and images
  */
 
 import { EnrichedProductData } from './webhook-types';
@@ -62,8 +62,6 @@ export async function updateProductWithEnrichedContent(
   formattedHtml: string,
   currentTags: string
 ): Promise<void> {
-  const { shopDomain, accessToken } = getConfig();
-  
   // Step 1: Update the product body_html and add AI-Enhanced tag
   const newTags = currentTags
     ? `${currentTags}, AI-Enhanced`
@@ -141,9 +139,97 @@ export async function getProductById(productId: number): Promise<{
   title: string;
   tags: string;
   body_html: string | null;
+  images: Array<{ id: number; src: string; position: number }>;
 }> {
   const response = await shopifyAdminRequest<{ product: any }>(
-    `/products/${productId}.json?fields=id,title,tags,body_html`
+    `/products/${productId}.json?fields=id,title,tags,body_html,images`
   );
   return response.product;
+}
+
+/**
+ * Check if product has any images
+ */
+export async function productHasImages(productId: number): Promise<boolean> {
+  const product = await getProductById(productId);
+  return product.images && product.images.length > 0;
+}
+
+/**
+ * Add image to product from external URL
+ * Shopify will download and host the image automatically
+ */
+export async function addProductImage(
+  productId: number,
+  imageUrl: string,
+  altText?: string,
+  position: number = 1
+): Promise<{ id: number; src: string }> {
+  console.log(`[ImageUpload] Adding image to product ${productId}: ${imageUrl}`);
+
+  const response = await shopifyAdminRequest<{ image: { id: number; src: string } }>(
+    `/products/${productId}/images.json`,
+    'POST',
+    {
+      image: {
+        src: imageUrl,
+        alt: altText || '',
+        position,
+      },
+    }
+  );
+
+  console.log(`[ImageUpload] Successfully added image ${response.image.id} to product ${productId}`);
+  return response.image;
+}
+
+/**
+ * Add multiple images to a product
+ */
+export async function addProductImages(
+  productId: number,
+  imageUrls: string[],
+  productTitle?: string
+): Promise<number> {
+  let successCount = 0;
+
+  for (let i = 0; i < imageUrls.length; i++) {
+    try {
+      await addProductImage(
+        productId,
+        imageUrls[i],
+        productTitle ? `${productTitle} - Immagine ${i + 1}` : undefined,
+        i + 1
+      );
+      successCount++;
+      
+      // Small delay to avoid rate limiting
+      if (i < imageUrls.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    } catch (error) {
+      console.error(`[ImageUpload] Failed to add image ${i + 1}:`, error);
+    }
+  }
+
+  return successCount;
+}
+
+/**
+ * Delete all images from a product (use with caution)
+ */
+export async function deleteAllProductImages(productId: number): Promise<void> {
+  const product = await getProductById(productId);
+  
+  for (const image of product.images) {
+    try {
+      await shopifyAdminRequest(
+        `/products/${productId}/images/${image.id}.json`,
+        'DELETE'
+      );
+      console.log(`[ImageUpload] Deleted image ${image.id} from product ${productId}`);
+    } catch (error) {
+      console.error(`[ImageUpload] Failed to delete image ${image.id}:`, error);
+    }
+  }
 }

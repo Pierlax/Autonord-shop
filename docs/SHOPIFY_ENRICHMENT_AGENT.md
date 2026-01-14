@@ -1,6 +1,6 @@
 # Shopify Product Enrichment Agent
 
-Agente automatico che arricchisce i prodotti Shopify con contenuti TAYA-style generati da AI.
+Agente automatico che arricchisce i prodotti Shopify con contenuti TAYA-style generati da AI e immagini cercate automaticamente.
 
 ## Panoramica
 
@@ -14,7 +14,8 @@ Quando il gestionale crea un nuovo prodotto su Shopify (con solo dati grezzi: SK
    - 3 PRO tecnici specifici
    - 2 CONTRO onesti
    - 3 FAQ tecniche
-5. **Aggiorna** Shopify senza toccare i dati del gestionale
+5. **Cerca** immagini del prodotto (se mancanti) via SerpAPI Google Images
+6. **Aggiorna** Shopify senza toccare i dati del gestionale
 
 ## Campi Modificati
 
@@ -22,6 +23,7 @@ Quando il gestionale crea un nuovo prodotto su Shopify (con solo dati grezzi: SK
 |-------|--------|
 | `body_html` | Sostituito con descrizione AI + Pro/Contro + FAQ |
 | `tags` | Aggiunto `AI-Enhanced` |
+| `images` | Aggiunte fino a 3 immagini (se mancanti) |
 | `metafield: custom.pros` | JSON array dei vantaggi |
 | `metafield: custom.cons` | JSON array degli svantaggi |
 | `metafield: custom.faqs` | JSON array delle FAQ |
@@ -45,7 +47,40 @@ SHOPIFY_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxx
 
 # OpenAI
 OPENAI_API_KEY=sk-xxxxxxxxxxxxx
+
+# Image Search (opzionale ma consigliato)
+SERPAPI_API_KEY=xxxxxxxxxxxxx
 ```
+
+## Ricerca Immagini
+
+L'agent cerca automaticamente immagini per i prodotti che ne sono privi:
+
+### Strategia di Ricerca
+
+1. **Query primaria:** `{brand} {sku}` (es. "Milwaukee 4933479862")
+2. **Query secondaria:** `{brand} {model}` (es. "Milwaukee M18 FPD3")
+3. **Query terziaria:** `{title} {brand}` (es. "Trapano a percussione Milwaukee")
+
+### Mappatura Brand
+
+Il sistema converte automaticamente i nomi legali in brand:
+
+| Vendor (dal gestionale) | Brand (per ricerca) |
+|------------------------|---------------------|
+| TECHTRONIC INDUSTRIES ITALIA SRL | Milwaukee |
+| MAKITA SPA | Makita |
+| ROBERT BOSCH SPA | Bosch |
+| STANLEY BLACK & DECKER ITALIA SRL | DeWalt |
+| HILTI ITALIA SPA | Hilti |
+| METABO SRL | Metabo |
+
+### Limiti
+
+- Massimo 3 immagini per prodotto
+- Solo immagini JPG, PNG, WebP
+- Validazione URL prima dell'upload
+- Se SERPAPI_API_KEY non è configurato, la ricerca immagini viene saltata
 
 ## Setup Webhook su Shopify
 
@@ -63,7 +98,7 @@ OPENAI_API_KEY=sk-xxxxxxxxxxxxx
 L'app Shopify deve avere questi scope:
 
 - `read_products` - Per leggere i dati del prodotto
-- `write_products` - Per aggiornare body_html e tags
+- `write_products` - Per aggiornare body_html, tags e immagini
 - `read_product_listings` - Per accedere ai metafields
 - `write_product_listings` - Per creare/aggiornare metafields
 
@@ -132,12 +167,12 @@ pnpm dev
 curl -X POST http://localhost:3000/api/webhooks/enrich-product \
   -H "Content-Type: application/json" \
   -H "X-Shopify-Topic: products/create" \
-  -d '{"id": 123, "title": "Test Product", "vendor": "Milwaukee", "tags": "", "variants": [{"sku": "TEST-001"}]}'
+  -d '{"id": 123, "title": "Test Product", "vendor": "Milwaukee", "tags": "", "images": [], "variants": [{"sku": "TEST-001"}]}'
 ```
 
 ## Logging
 
-Tutti i log usano il prefisso `[Enrichment]` per facile filtraggio:
+Tutti i log usano prefissi per facile filtraggio:
 
 ```
 [Enrichment] Received webhook from store.myshopify.com, topic: products/create
@@ -145,12 +180,19 @@ Tutti i log usano il prefisso `[Enrichment]` per facile filtraggio:
 [Enrichment] Generating AI content for product 123456789
 [Enrichment] Updated product 123456789 body_html and tags
 [Enrichment] Created metafields for product 123456789
-[Enrichment] Successfully enriched product 123456789 in 2340ms
+[Enrichment] Product 123456789 has no images, searching...
+[ImageSearch] Found 5 images for query: "Milwaukee 4933479862"
+[ImageSearch] Selected image: https://example.com/image.jpg
+[ImageUpload] Adding image to product 123456789
+[ImageUpload] Successfully added image 987654321 to product 123456789
+[Enrichment] Successfully added 3 images to product 123456789
+[Enrichment] Successfully enriched product 123456789 in 4520ms
 ```
 
 ## Gestione Errori
 
 - Se l'AI fallisce, viene usato un contenuto di fallback generico
+- Se la ricerca immagini fallisce, il prodotto viene comunque arricchito (solo senza immagini)
 - Il webhook restituisce sempre 200 per evitare retry di Shopify
 - Gli errori vengono loggati per debug
 
@@ -158,9 +200,28 @@ Tutti i log usano il prefisso `[Enrichment]` per facile filtraggio:
 
 - OpenAI: ~3000 tokens per richiesta (GPT-4o)
 - Shopify Admin API: 40 requests/second (bucket)
-- Tempo medio di elaborazione: 2-4 secondi per prodotto
+- SerpAPI: Dipende dal piano (5000/mese con piano base)
+- Tempo medio di elaborazione: 3-6 secondi per prodotto (con immagini)
 
 ## Costi Stimati
 
-- OpenAI GPT-4o: ~$0.01-0.02 per prodotto
-- Per 1000 prodotti: ~$10-20
+| Servizio | Costo per prodotto | Per 1000 prodotti |
+|----------|-------------------|-------------------|
+| OpenAI GPT-4o | ~$0.01-0.02 | ~$10-20 |
+| SerpAPI | ~$0.01 | ~$10 |
+| **Totale** | ~$0.02-0.03 | ~$20-30 |
+
+## File del Progetto
+
+```
+lib/shopify/
+├── webhook-types.ts      # Tipi TypeScript
+├── webhook-verify.ts     # Verifica HMAC Shopify
+├── ai-enrichment.ts      # Generazione contenuti AI
+├── admin-api.ts          # Shopify Admin API (metafields + immagini)
+└── image-search.ts       # Ricerca immagini SerpAPI
+
+app/api/webhooks/
+└── enrich-product/
+    └── route.ts          # Endpoint webhook principale
+```
