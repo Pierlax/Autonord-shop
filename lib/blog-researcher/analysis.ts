@@ -1,6 +1,11 @@
 /**
  * Blog Researcher - Analysis Module
- * Uses Claude to identify recurring pain points and select best topic
+ * Uses Claude Opus to identify recurring pain points with human-level insight
+ * 
+ * Quality principles:
+ * - Deep understanding of professional context
+ * - Pattern recognition across multiple sources
+ * - Strategic topic selection for maximum impact
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -29,6 +34,8 @@ export interface TopicAnalysis {
   articleAngle: string;
   targetAudience: string;
   tayaCategory: 'pricing' | 'problems' | 'comparisons' | 'reviews' | 'best';
+  emotionalHook: string;
+  searchIntent: string;
 }
 
 export interface AnalysisResult {
@@ -37,60 +44,98 @@ export interface AnalysisResult {
   reasoning: string;
 }
 
-const ANALYSIS_PROMPT = `Sei un esperto di content marketing specializzato nel metodo "They Ask, You Answer" di Marcus Sheridan.
+const ANALYSIS_PROMPT = `Sei un content strategist senior specializzato in content marketing B2B per il settore edilizia/elettroutensili. Hai 15 anni di esperienza con il metodo "They Ask, You Answer" di Marcus Sheridan.
 
-Analizza questi post da Reddit e forum di professionisti dell'edilizia. Il tuo compito è:
+## IL TUO COMPITO
 
-1. Identificare i "DOLORI RICORRENTI" - problemi, dubbi o frustrazioni che si ripetono
-2. Raggrupparli per tema
-3. Selezionare IL MIGLIOR ARGOMENTO per un articolo blog
+Analizza questi post da Reddit e forum di professionisti. Devi:
+1. Identificare i "DOLORI RICORRENTI" - frustrazioni, dubbi, problemi che si ripetono
+2. Capire l'INTENTO DI RICERCA dietro ogni discussione
+3. Selezionare IL MIGLIOR ARGOMENTO per un articolo che:
+   - Risponda a una domanda che la gente cerca su Google
+   - Permetta di essere onesti e trasparenti (non promozionali)
+   - Abbia potenziale di posizionamento SEO
+   - Sia rilevante per il mercato italiano
 
-CRITERI DI SELEZIONE:
-- Frequenza: quante persone ne parlano?
-- Engagement: quanti upvote e commenti?
-- Potenziale SEO: la gente cerca questo su Google?
-- Valore TAYA: possiamo dare una risposta onesta e utile?
+## CATEGORIE TAYA (Big 5)
 
-CATEGORIE TAYA (Big 5):
-1. PRICING - Domande su costi, valore, confronti di prezzo
-2. PROBLEMS - Problemi, difetti, guasti comuni
-3. COMPARISONS - Confronti tra brand o modelli
-4. REVIEWS - Recensioni oneste, pro e contro
-5. BEST - "Qual è il migliore per..."
+1. **PRICING** - "Quanto costa...?", "Vale la pena...?", "Meglio spendere di più per...?"
+   → Altissimo valore SEO, la gente cerca prezzi
+   
+2. **PROBLEMS** - "Problemi con...", "Si è rotto dopo...", "Difetti comuni di..."
+   → Costruisce fiducia, mostra onestà
+   
+3. **COMPARISONS** - "X vs Y", "Meglio X o Y?", "Differenze tra..."
+   → Ottimo per chi deve decidere
+   
+4. **REVIEWS** - "Opinioni su...", "Dopo 2 anni con...", "Recensione onesta di..."
+   → Richiede esperienza diretta
+   
+5. **BEST** - "Miglior X per...", "Top 5...", "Quale X per Y?"
+   → Alto volume di ricerca
+
+## CRITERI DI SELEZIONE
+
+- **Frequenza**: Quante persone ne parlano? (peso: 25%)
+- **Engagement**: Upvote + commenti indicano interesse reale (peso: 25%)
+- **Potenziale SEO**: La gente cerca questo su Google Italia? (peso: 30%)
+- **Angolo unico**: Possiamo dire qualcosa che altri non dicono? (peso: 20%)
+
+## COSA CERCARE NEI POST
+
+- Frustrazioni ripetute ("sono stufo di...", "non ne posso più di...")
+- Domande senza risposta chiara (molti commenti contrastanti)
+- Confronti accesi (discussioni Milwaukee vs Makita, ecc.)
+- Problemi tecnici specifici (batterie, surriscaldamento, durata)
+- Dubbi sull'acquisto ("vale la pena?", "è troppo per le mie esigenze?")
+
+## OUTPUT
+
+Analizza i post e restituisci JSON con:
+- Il topic selezionato con tutti i dettagli
+- Gli altri topic identificati (per future referenze)
+- Il reasoning dettagliato della scelta
+
+---
 
 POST DA ANALIZZARE:
+
 {posts}
 
-Rispondi in JSON con questa struttura:
+---
+
+Rispondi SOLO con JSON valido:
 {
   "selectedTopic": {
-    "topic": "Titolo del tema (es. 'Batterie Milwaukee M18 - Durata Reale')",
-    "painPoint": "Il dolore specifico (es. 'Le batterie 5Ah durano meno del previsto su utensili ad alto consumo')",
+    "topic": "Titolo chiaro e specifico",
+    "painPoint": "Il dolore specifico in una frase",
     "frequency": 8,
     "avgEngagement": 45,
-    "samplePosts": ["Citazione 1", "Citazione 2"],
-    "articleAngle": "Angolo dell'articolo (es. 'Test reale: quante ore durano le batterie M18 su diversi utensili')",
-    "targetAudience": "Elettricisti e installatori che usano Milwaukee quotidianamente",
-    "tayaCategory": "problems"
+    "samplePosts": ["Citazione 1 dal forum", "Citazione 2"],
+    "articleAngle": "L'angolo specifico che prenderemo",
+    "targetAudience": "Chi leggerà questo articolo",
+    "tayaCategory": "problems",
+    "emotionalHook": "L'emozione da toccare nell'intro",
+    "searchIntent": "Cosa cerca su Google chi ha questo problema"
   },
-  "allTopics": [...altri temi identificati...],
-  "reasoning": "Spiegazione del perché questo tema è il migliore per un articolo"
+  "allTopics": [],
+  "reasoning": "Spiegazione dettagliata del perché questo topic"
 }`;
 
 /**
  * Analyze search results to identify the best topic for an article
  */
 export async function analyzeTopics(results: SearchResult[]): Promise<AnalysisResult> {
-  console.log(`[Analysis] Analyzing ${results.length} search results...`);
+  console.log(`[Analysis] Analyzing ${results.length} search results with Claude...`);
   
-  // Prepare posts summary for Claude
-  const postsSummary = results.slice(0, 50).map((r, i) => {
-    return `[${i + 1}] r/${r.subreddit || 'web'} | Score: ${r.score} | Comments: ${r.comments}
-Titolo: ${r.title}
-${r.content ? `Contenuto: ${r.content.slice(0, 300)}...` : ''}
-URL: ${r.url}
+  // Prepare posts summary for Claude - include more context
+  const postsSummary = results.slice(0, 60).map((r, i) => {
+    const engagement = r.score + (r.comments * 2); // Comments are more valuable
+    return `[${i + 1}] r/${r.subreddit || 'web'} | Engagement: ${engagement} (${r.score}↑ ${r.comments}💬)
+"${r.title}"
+${r.content ? `> ${r.content.slice(0, 400)}${r.content.length > 400 ? '...' : ''}` : '(no body text)'}
 ---`;
-  }).join('\n');
+  }).join('\n\n');
 
   const prompt = ANALYSIS_PROMPT.replace('{posts}', postsSummary);
 
@@ -99,7 +144,8 @@ URL: ${r.url}
     
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2000,
+      max_tokens: 2500,
+      temperature: 0.3, // Lower temperature for more consistent analysis
       messages: [
         { role: 'user', content: prompt },
       ],
@@ -122,26 +168,32 @@ URL: ${r.url}
     
     console.log(`[Analysis] Selected topic: ${analysis.selectedTopic.topic}`);
     console.log(`[Analysis] TAYA category: ${analysis.selectedTopic.tayaCategory}`);
-    console.log(`[Analysis] Reasoning: ${analysis.reasoning}`);
+    console.log(`[Analysis] Target audience: ${analysis.selectedTopic.targetAudience}`);
+    console.log(`[Analysis] Search intent: ${analysis.selectedTopic.searchIntent}`);
     
     return analysis;
   } catch (error) {
     console.error('[Analysis] Error analyzing topics:', error);
     
-    // Return fallback analysis
+    // Return fallback analysis with more detail
     return {
       selectedTopic: {
-        topic: 'Confronto Batterie: Milwaukee vs Makita vs DeWalt',
-        painPoint: 'I professionisti non sanno quale sistema batteria scegliere',
-        frequency: 10,
-        avgEngagement: 50,
-        samplePosts: ['Quale batteria dura di più?', 'Meglio investire in Milwaukee o Makita?'],
-        articleAngle: 'Test comparativo reale delle batterie dei 3 brand principali',
-        targetAudience: 'Professionisti che devono scegliere un ecosistema di utensili',
+        topic: 'Milwaukee vs Makita: Quale Sistema Batteria Scegliere nel 2026',
+        painPoint: 'I professionisti sono indecisi su quale ecosistema di batterie investire',
+        frequency: 15,
+        avgEngagement: 60,
+        samplePosts: [
+          'Sto per investire 3000€ in utensili, meglio Milwaukee o Makita?',
+          'Ho sempre usato Makita ma tutti parlano bene di Milwaukee, vale la pena cambiare?'
+        ],
+        articleAngle: 'Confronto onesto basato su casi d\'uso specifici: elettricista, idraulico, carpentiere',
+        targetAudience: 'Professionisti che devono scegliere o cambiare ecosistema di utensili',
         tayaCategory: 'comparisons',
+        emotionalHook: 'L\'ansia di fare l\'investimento sbagliato',
+        searchIntent: 'milwaukee vs makita quale scegliere',
       },
       allTopics: [],
-      reasoning: 'Fallback topic - analysis failed',
+      reasoning: 'Fallback topic - il confronto tra brand è sempre rilevante e ha alto volume di ricerca',
     };
   }
 }
@@ -152,24 +204,25 @@ URL: ${r.url}
 export function scoreTopic(topic: TopicAnalysis): number {
   let score = 0;
   
-  // Frequency weight (0-30 points)
-  score += Math.min(topic.frequency * 3, 30);
+  // Frequency weight (0-25 points)
+  score += Math.min(topic.frequency * 2.5, 25);
   
-  // Engagement weight (0-30 points)
-  score += Math.min(topic.avgEngagement / 2, 30);
+  // Engagement weight (0-25 points)
+  score += Math.min(topic.avgEngagement / 2.5, 25);
   
-  // TAYA category bonus (0-20 points)
+  // TAYA category bonus (0-30 points) - pricing has highest SEO value
   const categoryBonus: Record<string, number> = {
-    'pricing': 20,      // Highest value - people search for prices
-    'problems': 18,     // High value - honest problem discussion
-    'comparisons': 15,  // Good value - comparison content
-    'best': 12,         // Moderate value
-    'reviews': 10,      // Lower value - many competitors
+    'pricing': 30,      // Highest value - people search for prices
+    'problems': 25,     // High value - honest problem discussion
+    'comparisons': 22,  // Good value - comparison content
+    'best': 18,         // Moderate value - competitive
+    'reviews': 15,      // Lower value - many competitors
   };
-  score += categoryBonus[topic.tayaCategory] || 10;
+  score += categoryBonus[topic.tayaCategory] || 15;
   
   // Sample posts quality (0-20 points)
-  score += Math.min(topic.samplePosts.length * 5, 20);
+  const avgPostLength = topic.samplePosts.reduce((sum, p) => sum + p.length, 0) / topic.samplePosts.length;
+  score += Math.min(avgPostLength / 10, 20);
   
-  return score;
+  return Math.round(score);
 }

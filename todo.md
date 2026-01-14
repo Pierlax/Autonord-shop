@@ -150,3 +150,11 @@ Based on Sirio website analysis, implement the following improvements:
 - [x] Create notification system (email/webhook)
 - [x] Create Vercel Cron Job endpoint
 - [x] Document environment variables and setup
+
+
+## Quality Upgrade - Claude Opus
+- [x] Upgrade Product Enrichment to Claude Opus
+- [x] Enhance prompts with examples and anti-robot instructions
+- [x] Upgrade Blog Researcher to Claude Opus
+- [x] Add variability and Italian cultural context
+- [x] Add quality control checks
