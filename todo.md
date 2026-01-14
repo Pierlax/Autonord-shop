@@ -134,3 +134,8 @@ Based on Sirio website analysis, implement the following improvements:
 - [x] Update ai-enrichment.ts to use Claude API
 - [x] Update package.json dependencies
 - [x] Update documentation with ANTHROPIC_API_KEY
+
+
+## Footer Updates
+- [x] Remove EU funding badge (PR FESR Liguria)
+- [x] Improve payment methods layout
