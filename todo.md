@@ -108,3 +108,13 @@ Based on Sirio website analysis, implement the following improvements:
 - [x] Add video support in product gallery (YouTube/HTML5)
 - [x] Create Team Trust section with photo and technician name
 - [x] Add "Expert Take" micro-copy to product cards in carousel
+
+
+## Shopify Product Enrichment Agent
+- [x] Create /api/webhooks/enrich-product endpoint
+- [x] Implement Shopify webhook HMAC verification
+- [x] Create AI content generation with OpenAI (description, pro/contro, FAQ)
+- [x] Implement Shopify Admin API integration for metafields
+- [x] Add "AI-Enhanced" tag to processed products
+- [x] Create types and utility functions
+- [x] Document environment variables needed
