@@ -6,9 +6,19 @@
 import OpenAI from 'openai';
 import { EnrichedProductData, ShopifyProductWebhookPayload } from './webhook-types';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Lazy initialization - only create client when needed
+let openaiClient: OpenAI | null = null;
+
+function getOpenAIClient(): OpenAI {
+  if (!openaiClient) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error('OPENAI_API_KEY environment variable is not set');
+    }
+    openaiClient = new OpenAI({ apiKey });
+  }
+  return openaiClient;
+}
 
 const SYSTEM_PROMPT = `Sei un esperto di elettroutensili e attrezzature edili con 20 anni di esperienza in cantiere.
 Segui il Metodo "They Ask, You Answer" di Marcus Sheridan: sii onesto, trasparente, e affronta anche i difetti dei prodotti.
@@ -58,6 +68,8 @@ export async function generateProductContent(
     .replace('{productType}', product.product_type || 'Elettroutensile');
 
   try {
+    const openai = getOpenAIClient();
+    
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
