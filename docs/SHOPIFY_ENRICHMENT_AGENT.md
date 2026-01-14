@@ -9,7 +9,7 @@ Quando il gestionale crea un nuovo prodotto su Shopify (con solo dati grezzi: SK
 1. **Riceve** il payload del prodotto via webhook `products/create`
 2. **Verifica** l'autenticità con HMAC
 3. **Controlla** se il prodotto è già arricchito (tag `AI-Enhanced`)
-4. **Genera** contenuti con OpenAI (GPT-4o):
+4. **Genera** contenuti con Anthropic Claude (claude-sonnet-4-20250514):
    - Descrizione TAYA-style (focus sui problemi risolti)
    - 3 PRO tecnici specifici
    - 2 CONTRO onesti
@@ -45,8 +45,8 @@ SHOPIFY_SHOP_DOMAIN=your-store.myshopify.com
 SHOPIFY_ADMIN_ACCESS_TOKEN=shpat_xxxxxxxxxxxxx
 SHOPIFY_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxx
 
-# OpenAI
-OPENAI_API_KEY=sk-xxxxxxxxxxxxx
+# Anthropic Claude
+ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxx
 
 # Image Search (opzionale ma consigliato)
 SERPAPI_API_KEY=xxxxxxxxxxxxx
@@ -198,7 +198,7 @@ Tutti i log usano prefissi per facile filtraggio:
 
 ## Rate Limits
 
-- OpenAI: ~3000 tokens per richiesta (GPT-4o)
+- Anthropic Claude: ~3000 tokens per richiesta
 - Shopify Admin API: 40 requests/second (bucket)
 - SerpAPI: Dipende dal piano (5000/mese con piano base)
 - Tempo medio di elaborazione: 3-6 secondi per prodotto (con immagini)
@@ -207,9 +207,9 @@ Tutti i log usano prefissi per facile filtraggio:
 
 | Servizio | Costo per prodotto | Per 1000 prodotti |
 |----------|-------------------|-------------------|
-| OpenAI GPT-4o | ~$0.01-0.02 | ~$10-20 |
+| Anthropic Claude | ~$0.01 | ~$10 |
 | SerpAPI | ~$0.01 | ~$10 |
-| **Totale** | ~$0.02-0.03 | ~$20-30 |
+| **Totale** | ~$0.02 | ~$20 |
 
 ## File del Progetto
 

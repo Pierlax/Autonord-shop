@@ -1,23 +1,23 @@
 /**
  * AI Content Generation for Product Enrichment
- * Uses OpenAI to generate TAYA-style product descriptions
+ * Uses Anthropic Claude to generate TAYA-style product descriptions
  */
 
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { EnrichedProductData, ShopifyProductWebhookPayload } from './webhook-types';
 
 // Lazy initialization - only create client when needed
-let openaiClient: OpenAI | null = null;
+let anthropicClient: Anthropic | null = null;
 
-function getOpenAIClient(): OpenAI {
-  if (!openaiClient) {
-    const apiKey = process.env.OPENAI_API_KEY;
+function getAnthropicClient(): Anthropic {
+  if (!anthropicClient) {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
-      throw new Error('OPENAI_API_KEY environment variable is not set');
+      throw new Error('ANTHROPIC_API_KEY environment variable is not set');
     }
-    openaiClient = new OpenAI({ apiKey });
+    anthropicClient = new Anthropic({ apiKey });
   }
-  return openaiClient;
+  return anthropicClient;
 }
 
 const SYSTEM_PROMPT = `Sei un esperto di elettroutensili e attrezzature edili con 20 anni di esperienza in cantiere.
@@ -68,30 +68,38 @@ export async function generateProductContent(
     .replace('{productType}', product.product_type || 'Elettroutensile');
 
   try {
-    const openai = getOpenAIClient();
+    const anthropic = getAnthropicClient();
     
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.7,
+    const message = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 1500,
-      response_format: { type: 'json_object' },
+      messages: [
+        { 
+          role: 'user', 
+          content: `${SYSTEM_PROMPT}\n\n${userPrompt}` 
+        },
+      ],
     });
 
-    const content = completion.choices[0]?.message?.content;
+    // Extract text content from Claude's response
+    const textBlock = message.content.find(block => block.type === 'text');
+    const content = textBlock?.type === 'text' ? textBlock.text : null;
     
     if (!content) {
-      throw new Error('Empty response from OpenAI');
+      throw new Error('Empty response from Claude');
     }
 
-    const parsed = JSON.parse(content) as EnrichedProductData;
+    // Clean the response (remove potential markdown code blocks)
+    const cleanedContent = content
+      .replace(/```json\n?/g, '')
+      .replace(/```\n?/g, '')
+      .trim();
+
+    const parsed = JSON.parse(cleanedContent) as EnrichedProductData;
 
     // Validate the response structure
     if (!parsed.description || !Array.isArray(parsed.pros) || !Array.isArray(parsed.cons) || !Array.isArray(parsed.faqs)) {
-      throw new Error('Invalid response structure from OpenAI');
+      throw new Error('Invalid response structure from Claude');
     }
 
     return parsed;

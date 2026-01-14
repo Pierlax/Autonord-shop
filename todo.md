@@ -127,3 +127,10 @@ Based on Sirio website analysis, implement the following improvements:
 - [x] Integrate image search into enrichment webhook
 - [x] Add fallback logic if no images found
 - [x] Update documentation with image search feature
+
+
+## Switch from OpenAI to Claude
+- [x] Replace OpenAI SDK with Anthropic SDK
+- [x] Update ai-enrichment.ts to use Claude API
+- [x] Update package.json dependencies
+- [x] Update documentation with ANTHROPIC_API_KEY
