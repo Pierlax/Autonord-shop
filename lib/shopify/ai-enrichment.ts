@@ -148,7 +148,7 @@ export async function generateProductContent(
     
     // Use Claude Opus for highest quality
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514', // Will upgrade to opus when available
+      model: 'claude-opus-4-1-20250805',
       max_tokens: 2000,
       temperature: 0.7, // Add some creativity/variability
       messages: [

@@ -158,3 +158,10 @@ Based on Sirio website analysis, implement the following improvements:
 - [x] Upgrade Blog Researcher to Claude Opus
 - [x] Add variability and Italian cultural context
 - [x] Add quality control checks
+
+
+## Autonomous TAYA Developer Agent
+- [x] Create TAYA_RULES.md with They Ask You Answer principles
+- [x] Create taya-improver.ts script using Claude API native tools
+- [x] Create GitHub Action workflow for automated execution
+- [x] Add documentation for the agent

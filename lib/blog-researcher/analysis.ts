@@ -143,7 +143,7 @@ ${r.content ? `> ${r.content.slice(0, 400)}${r.content.length > 400 ? '...' : ''
     const anthropic = getAnthropicClient();
     
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-1-20250805',
       max_tokens: 2500,
       temperature: 0.3, // Lower temperature for more consistent analysis
       messages: [
