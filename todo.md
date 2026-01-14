@@ -165,3 +165,13 @@ Based on Sirio website analysis, implement the following improvements:
 - [x] Create taya-improver.ts script using Claude API native tools
 - [x] Create GitHub Action workflow for automated execution
 - [x] Add documentation for the agent
+
+
+
+## Queue System Implementation (Vercel Timeout Fix)
+- [x] Research Upstash Redis/QStash for queue implementation
+- [x] Create queue infrastructure module
+- [x] Refactor webhook to add jobs to queue (not process immediately)
+- [x] Create worker endpoint to process jobs from queue
+- [x] Add rate limiting (handled by QStash automatically)
+- [x] Update documentation with new architecture
