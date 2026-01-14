@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/blog-researcher",
+      "schedule": "0 8 * * 1"
+    }
+  ]
+}

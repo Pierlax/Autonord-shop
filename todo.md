@@ -139,3 +139,14 @@ Based on Sirio website analysis, implement the following improvements:
 ## Footer Updates
 - [x] Remove EU funding badge (PR FESR Liguria)
 - [x] Improve payment methods layout
+
+
+## Blog Researcher Agent
+- [x] Research search APIs (Exa.ai, Tavily) for forum scraping
+- [x] Create search module for Reddit/forum scanning
+- [x] Create analysis module to identify pain points
+- [x] Create article drafting module with Claude
+- [x] Create Shopify Blog API integration for draft creation
+- [x] Create notification system (email/webhook)
+- [x] Create Vercel Cron Job endpoint
+- [x] Document environment variables and setup
