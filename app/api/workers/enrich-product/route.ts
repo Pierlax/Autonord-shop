@@ -34,7 +34,7 @@ async function handler(request: NextRequest) {
     console.log(`[Worker] Job received at: ${job.receivedAt}, processing started at: ${new Date().toISOString()}`);
 
     // Step 1: Get fresh product data from Shopify (in case it was updated)
-    const product = await getProductById(job.productId);
+    const product = await getProductById(parseInt(job.productId, 10));
     
     if (!product) {
       console.error(`[Worker] Product ${job.productId} not found in Shopify`);
