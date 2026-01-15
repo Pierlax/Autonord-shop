@@ -10,36 +10,36 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // Define the 5 launch articles
-const LAUNCH_ARTICLES = [
+const LAUNCH_ARTICLES: { topic: string; type: 'comparison' | 'problem' | 'review' | 'buying-guide'; targetAudience: string; tayaCategory: 'pricing' | 'problems' | 'comparisons' | 'reviews' | 'best' }[] = [
   {
     topic: 'Milwaukee M18 FUEL vs Makita 40V XGT - Avvitatori a impulsi',
-    type: 'comparison' as const,
+    type: 'comparison',
     targetAudience: 'Elettricisti e installatori professionisti che devono scegliere tra i due ecosistemi',
-    tayaCategory: 'Confronti',
+    tayaCategory: 'comparisons',
   },
   {
     topic: 'DeWalt vs Milwaukee - Trapani a percussione',
-    type: 'comparison' as const,
+    type: 'comparison',
     targetAudience: 'Muratori e carpentieri che lavorano su cantieri edili',
-    tayaCategory: 'Confronti',
+    tayaCategory: 'comparisons',
   },
   {
     topic: 'Batterie Milwaukee che si scaricano velocemente - Cause e soluzioni',
-    type: 'problem' as const,
+    type: 'problem',
     targetAudience: 'Professionisti Milwaukee che hanno problemi di autonomia',
-    tayaCategory: 'Problemi',
+    tayaCategory: 'problems',
   },
   {
     topic: 'Hilti TE 30-A36 - Vale il prezzo premium?',
-    type: 'review' as const,
+    type: 'review',
     targetAudience: 'Professionisti che considerano di investire in attrezzatura Hilti',
-    tayaCategory: 'Recensioni',
+    tayaCategory: 'reviews',
   },
   {
     topic: 'Come scegliere il miglior avvitatore per elettricisti',
-    type: 'buying-guide' as const,
+    type: 'buying-guide',
     targetAudience: 'Elettricisti che devono acquistare il primo avvitatore professionale',
-    tayaCategory: 'Guide',
+    tayaCategory: 'best',
   },
 ];
 
