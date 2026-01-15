@@ -570,7 +570,7 @@ export class PowerToolKnowledgeGraph {
     if (!batterySystemName) return undefined;
 
     // Find matching battery system
-    for (const [id, node] of this.graph.nodes) {
+    for (const [id, node] of Array.from(this.graph.nodes.entries())) {
       if (node.type === 'battery_system' && 
           node.name.toLowerCase().includes(batterySystemName.toLowerCase())) {
         return node;
@@ -610,7 +610,7 @@ export class PowerToolKnowledgeGraph {
     // Find suitable trades
     const suitableForTrades: KGNode[] = [];
     if (categoryId) {
-      for (const [id, node] of this.graph.nodes) {
+      for (const [id, node] of Array.from(this.graph.nodes.entries())) {
         if (node.type === 'trade') {
           const primaryTools = node.properties.primaryTools as string[] || [];
           if (primaryTools.includes(categoryId)) {
@@ -623,7 +623,7 @@ export class PowerToolKnowledgeGraph {
     // Find related use cases
     const relatedUseCases: KGNode[] = [];
     if (categoryId) {
-      for (const [id, node] of this.graph.nodes) {
+      for (const [id, node] of Array.from(this.graph.nodes.entries())) {
         if (node.type === 'use_case') {
           const requiredTools = node.properties.requiredTools as string[] || [];
           if (requiredTools.includes(categoryId)) {
@@ -690,7 +690,7 @@ export class PowerToolKnowledgeGraph {
   } {
     const nodesByType: Record<string, number> = {};
     
-    for (const node of this.graph.nodes.values()) {
+    for (const node of Array.from(this.graph.nodes.values())) {
       nodesByType[node.type] = (nodesByType[node.type] || 0) + 1;
     }
 
