@@ -317,11 +317,11 @@ export function scoreChunks(
     }
     
     // Keyword matches (weighted higher)
-    for (const keyword of keywordSet) {
+    Array.from(keywordSet).forEach(keyword => {
       if (chunkLower.includes(keyword)) {
         score += 2;
       }
-    }
+    });
     
     // Normalize by chunk length (prefer concise chunks)
     const lengthPenalty = Math.log(chunk.length + 1) / 10;
