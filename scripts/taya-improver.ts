@@ -23,17 +23,17 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// Tool definitions
-const tools: Anthropic.Tool[] = [
+// Tool definitions - using 'as any' to bypass strict type checking for beta tools
+const tools = [
   {
-    type: 'bash_20250124' as any,
+    type: 'bash_20250124',
     name: 'bash',
   },
   {
-    type: 'text_editor_20250728' as any,
+    type: 'text_editor_20250728',
     name: 'str_replace_based_edit_tool',
   },
-];
+] as any;
 
 // Stato della sessione bash (simulato)
 let currentWorkingDir = PROJECT_ROOT;
