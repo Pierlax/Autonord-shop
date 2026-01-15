@@ -304,3 +304,25 @@ Based on Sirio website analysis, implement the following improvements:
 - [x] Articolo 5: Come scegliere avvitatore per elettricisti
 
 *Nota: Script pronto in scripts/generate-launch-articles.ts - eseguire dopo configurazione ANTHROPIC_API_KEY*
+
+
+## Agente 1 Upgrade - Fonti Scheda Prodotto
+
+### Gerarchia Fonti Dati Tecnici
+- [x] Configurare priorità: Sito Ufficiale > Manuale PDF > Retailer
+- [x] Implementare risoluzione conflitti (vince Sito Ufficiale)
+- [x] Mapping URL siti ufficiali per brand (8 brand configurati)
+
+### Parere Autonord & Pro/Contro
+- [x] Implementare ricerca recensioni 3-4 stelle Amazon
+- [x] Implementare ricerca Reddit r/Tools "problem" / "issue"
+- [x] Sintesi automatica problemi ricorrenti
+
+### Accessori Consigliati
+- [x] Analisi competitor (Fixami, Rotopino, Toolnation, Amazon)
+- [x] Estrazione accessori correlati con motivazione
+
+### Safety Check
+- [x] Logging dati incerti/conflittuali (generateSafetyLog)
+- [x] Flag "verifica manuale richiesta" (dataQuality.manualCheckRequired)
+- [x] Omissione automatica dati non verificabili
