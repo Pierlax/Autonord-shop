@@ -262,7 +262,7 @@ export function fuseSources(
   const verificationNeeded: string[] = [];
 
   // Process each group
-  for (const [key, facts] of groups) {
+  for (const [key, facts] of Array.from(groups.entries())) {
     // Detect conflicts
     const conflicts = detectConflicts(facts);
     const hasConflicts = conflicts.length > 0;
