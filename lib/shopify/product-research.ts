@@ -500,7 +500,7 @@ export async function researchProduct(
   }
   
   // Resolve conflicts
-  for (const [field, values] of specsByField) {
+  for (const [field, values] of Array.from(specsByField.entries())) {
     if (values.length > 1) {
       const uniqueValues = new Set(values.map(v => v.value));
       
