@@ -21,3 +21,10 @@ export type { ArticleDraft } from './drafting';
 export { createDraftArticle, getDraftArticles, publishArticle, deleteArticle } from './shopify-blog';
 
 export { sendNotification, sendTestNotification } from './notifications';
+
+// V2 Enhanced modules
+export * from './sources';
+export * from './sentiment';
+export * from './article-template';
+export { generateEnhancedArticle, generateLaunchArticles } from './drafting-v2';
+export type { EnhancedArticleDraft } from './drafting-v2';

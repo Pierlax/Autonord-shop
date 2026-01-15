@@ -276,3 +276,31 @@ Based on Sirio website analysis, implement the following improvements:
 
 ### Documentazione
 - [x] Creare docs/TAYA_DIRECTOR.md con architettura e guida
+
+
+## Agente 2 Upgrade - Fonti e Ricerca
+
+### Whitelist Fonti
+- [x] Configurare priorità protoolreviews.com
+- [x] Configurare priorità toolguyd.com
+- [x] Configurare priorità tooltalk.com
+
+### Sentiment Analysis Forum
+- [x] Implementare ricerca reddit.com/r/Tools
+- [x] Implementare ricerca plcforum.it
+- [x] Implementare ricerca forum-macchine.it
+- [x] Query pattern: "[Prodotto] problemi", "[Prodotto] guasto", "opinioni [Prodotto]"
+
+### Struttura Articolo Obbligatoria
+- [x] Tabella comparativa con dati numerici
+- [x] Sezione "Cosa dicono nei cantieri"
+- [x] Sezione "Il Verdetto di Autonord"
+
+### Pacchetto Lancio (5 Articoli) - Script pronto
+- [x] Articolo 1: Milwaukee M18 FUEL vs Makita 40V XGT
+- [x] Articolo 2: DeWalt vs Milwaukee - Trapani a percussione
+- [x] Articolo 3: Batterie Milwaukee - Cause e soluzioni
+- [x] Articolo 4: Hilti TE 30-A36 - Vale il prezzo premium?
+- [x] Articolo 5: Come scegliere avvitatore per elettricisti
+
+*Nota: Script pronto in scripts/generate-launch-articles.ts - eseguire dopo configurazione ANTHROPIC_API_KEY*
