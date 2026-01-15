@@ -568,8 +568,8 @@ export async function generateLaunchArticles(
       emotionalHook: 'Incertezza nella scelta',
       searchIntent: topicConfig.topic,
       samplePosts: [],
-      priority: 1,
-      estimatedSearchVolume: 1000,
+      frequency: 1,
+      avgEngagement: 100,
     };
     
     try {
