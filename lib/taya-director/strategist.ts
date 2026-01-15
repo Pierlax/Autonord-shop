@@ -202,8 +202,8 @@ async function getAISuggestions(
   });
 
   // Build catalog summary
-  const categories = [...new Set(products.map(p => p.productType).filter(Boolean))];
-  const brands = [...new Set(products.map(p => p.vendor).filter(Boolean))];
+  const categories = Array.from(new Set(products.map(p => p.productType).filter(Boolean)));
+  const brands = Array.from(new Set(products.map(p => p.vendor).filter(Boolean)));
   const articleTitles = articles.map(a => a.title);
 
   const systemPrompt = `Sei un content strategist esperto nella filosofia TAYA (They Ask You Answer).
