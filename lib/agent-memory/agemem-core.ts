@@ -620,3 +620,389 @@ export function searchVerifiedFacts(options: {
   
   return results.map(r => r.entry);
 }
+
+
+// ============================================================================
+// MEMORY DECAY & QUALITY SCORING
+// ============================================================================
+
+export interface MemoryQualityScore {
+  overall: number;          // 0-1 overall quality score
+  components: {
+    recency: number;        // How recent (0-1)
+    usage: number;          // How often used (0-1)
+    feedback: number;       // Positive/negative feedback (0-1)
+    completeness: number;   // How complete the entry is (0-1)
+  };
+  recommendation: 'keep' | 'review' | 'archive' | 'delete';
+}
+
+export interface FeedbackInput {
+  memoryId: string;
+  type: 'useful' | 'not_useful' | 'outdated' | 'incorrect';
+  reason?: string;
+  agentSource?: AgentSource;
+}
+
+export interface MemoryFeedback {
+  id: string;
+  memoryId: string;
+  type: 'useful' | 'not_useful' | 'outdated' | 'incorrect';
+  reason?: string;
+  agentSource?: AgentSource;
+  createdAt: number;
+}
+
+// Extended store interface for feedback
+interface ExtendedMemoryStore {
+  version: string;
+  lastUpdated: number;
+  entries: MemoryEntry[];
+  feedback: MemoryFeedback[];
+}
+
+function loadExtendedStore(): ExtendedMemoryStore {
+  const store = loadMemoryStore() as ExtendedMemoryStore;
+  if (!store.feedback) {
+    store.feedback = [];
+  }
+  return store;
+}
+
+function saveExtendedStore(store: ExtendedMemoryStore): void {
+  saveMemoryStore(store as MemoryStore);
+}
+
+/**
+ * Calculate quality score for a memory entry
+ * 
+ * Based on AgeMem paper's Memory Quality (MQ) metric.
+ * Considers recency, usage frequency, feedback, and completeness.
+ */
+export function calculateMemoryQuality(entry: MemoryEntry): MemoryQualityScore {
+  const store = loadExtendedStore();
+  const now = Date.now();
+  
+  // 1. Recency score (0-1)
+  // Full score if < 7 days, decreasing over 90 days
+  const ageInDays = (now - entry.updatedAt) / (1000 * 60 * 60 * 24);
+  const recency = Math.max(0, 1 - (ageInDays / 90));
+  
+  // 2. Usage score (0-1)
+  // Based on usage count, normalized
+  const usageScore = Math.min(1, entry.usageCount / 20);
+  
+  // 3. Feedback score (0-1)
+  // Based on positive vs negative feedback
+  const entryFeedback = store.feedback.filter(f => f.memoryId === entry.id);
+  const positiveCount = entryFeedback.filter(f => f.type === 'useful').length;
+  const negativeCount = entryFeedback.filter(f => 
+    f.type === 'not_useful' || f.type === 'outdated' || f.type === 'incorrect'
+  ).length;
+  
+  let feedbackScore = 0.5; // Neutral default
+  if (positiveCount + negativeCount > 0) {
+    feedbackScore = positiveCount / (positiveCount + negativeCount);
+  }
+  
+  // 4. Completeness score (0-1)
+  // Based on filled fields
+  let completeness = 0;
+  if (entry.title && entry.title.length > 5) completeness += 0.25;
+  if (entry.content && entry.content.length > 20) completeness += 0.25;
+  if (entry.keywords && entry.keywords.length > 0) completeness += 0.25;
+  if (entry.targetBrands || entry.targetCategories || entry.targetProducts) completeness += 0.25;
+  
+  // Calculate overall score (weighted average)
+  const overall = (
+    recency * 0.25 +
+    usageScore * 0.25 +
+    feedbackScore * 0.35 +
+    completeness * 0.15
+  );
+  
+  // Determine recommendation
+  let recommendation: 'keep' | 'review' | 'archive' | 'delete';
+  if (overall >= 0.7) {
+    recommendation = 'keep';
+  } else if (overall >= 0.4) {
+    recommendation = 'review';
+  } else if (overall >= 0.2) {
+    recommendation = 'archive';
+  } else {
+    recommendation = 'delete';
+  }
+  
+  // Override for critical entries
+  if (entry.priority === 'critical') {
+    recommendation = 'keep';
+  }
+  
+  // Override for entries with recent negative feedback
+  const recentNegative = entryFeedback.filter(f => 
+    (f.type === 'incorrect' || f.type === 'outdated') &&
+    (now - f.createdAt) < 7 * 24 * 60 * 60 * 1000
+  );
+  if (recentNegative.length > 0) {
+    recommendation = 'review';
+  }
+  
+  return {
+    overall,
+    components: {
+      recency,
+      usage: usageScore,
+      feedback: feedbackScore,
+      completeness
+    },
+    recommendation
+  };
+}
+
+// ============================================================================
+// FEEDBACK LOOP
+// ============================================================================
+
+/**
+ * Mark a memory as useful (positive feedback)
+ * 
+ * Call this when a memory was successfully used in content generation.
+ */
+export function markMemoryAsUseful(memoryId: string, agentSource?: AgentSource): void {
+  const store = loadExtendedStore();
+  
+  // Add feedback
+  store.feedback.push({
+    id: `fb_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    memoryId,
+    type: 'useful',
+    agentSource,
+    createdAt: Date.now()
+  });
+  
+  // Boost priority if consistently useful
+  const entry = store.entries.find(e => e.id === memoryId);
+  if (entry) {
+    const usefulCount = store.feedback.filter(
+      f => f.memoryId === memoryId && f.type === 'useful'
+    ).length;
+    
+    // Upgrade priority after 5 useful uses
+    if (usefulCount >= 5 && entry.priority === 'low') {
+      entry.priority = 'medium';
+      console.log(`[AgeMem] Upgraded memory ${memoryId} to medium priority (5+ useful uses)`);
+    } else if (usefulCount >= 10 && entry.priority === 'medium') {
+      entry.priority = 'high';
+      console.log(`[AgeMem] Upgraded memory ${memoryId} to high priority (10+ useful uses)`);
+    }
+  }
+  
+  saveExtendedStore(store);
+  console.log(`[AgeMem] Marked memory ${memoryId} as useful`);
+}
+
+/**
+ * Mark a memory as problematic (negative feedback)
+ * 
+ * Call this when a memory caused issues or was incorrect.
+ */
+export function markMemoryAsProblematic(
+  memoryId: string, 
+  type: 'not_useful' | 'outdated' | 'incorrect',
+  reason?: string,
+  agentSource?: AgentSource
+): void {
+  const store = loadExtendedStore();
+  
+  // Add feedback
+  store.feedback.push({
+    id: `fb_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    memoryId,
+    type,
+    reason,
+    agentSource,
+    createdAt: Date.now()
+  });
+  
+  // Downgrade priority if consistently problematic
+  const entry = store.entries.find(e => e.id === memoryId);
+  if (entry) {
+    const negativeCount = store.feedback.filter(
+      f => f.memoryId === memoryId && 
+      (f.type === 'not_useful' || f.type === 'outdated' || f.type === 'incorrect')
+    ).length;
+    
+    // Downgrade priority after 3 negative uses
+    if (negativeCount >= 3 && entry.priority === 'high') {
+      entry.priority = 'medium';
+      console.log(`[AgeMem] Downgraded memory ${memoryId} to medium priority (3+ negative feedback)`);
+    } else if (negativeCount >= 3 && entry.priority === 'medium') {
+      entry.priority = 'low';
+      console.log(`[AgeMem] Downgraded memory ${memoryId} to low priority (3+ negative feedback)`);
+    }
+    
+    // Flag for review if marked as incorrect
+    if (type === 'incorrect' && negativeCount >= 2) {
+      console.warn(`[AgeMem] Memory ${memoryId} flagged for review - multiple 'incorrect' reports`);
+    }
+  }
+  
+  saveExtendedStore(store);
+  console.log(`[AgeMem] Marked memory ${memoryId} as ${type}${reason ? `: ${reason}` : ''}`);
+}
+
+/**
+ * Get feedback history for a memory
+ */
+export function getMemoryFeedback(memoryId: string): MemoryFeedback[] {
+  const store = loadExtendedStore();
+  return store.feedback.filter(f => f.memoryId === memoryId);
+}
+
+/**
+ * Get effectiveness report for all memories
+ */
+export function getMemoryEffectivenessReport(): {
+  totalMemories: number;
+  withFeedback: number;
+  averageQuality: number;
+  byRecommendation: Record<string, number>;
+  topPerformers: Array<{ id: string; title: string; quality: number }>;
+  needsReview: Array<{ id: string; title: string; quality: number; reason: string }>;
+} {
+  const store = loadExtendedStore();
+  
+  const report = {
+    totalMemories: store.entries.length,
+    withFeedback: 0,
+    averageQuality: 0,
+    byRecommendation: {} as Record<string, number>,
+    topPerformers: [] as Array<{ id: string; title: string; quality: number }>,
+    needsReview: [] as Array<{ id: string; title: string; quality: number; reason: string }>
+  };
+  
+  const qualities: Array<{ entry: MemoryEntry; quality: MemoryQualityScore }> = [];
+  
+  for (const entry of store.entries) {
+    const quality = calculateMemoryQuality(entry);
+    qualities.push({ entry, quality });
+    
+    report.byRecommendation[quality.recommendation] = 
+      (report.byRecommendation[quality.recommendation] || 0) + 1;
+    
+    const hasFeedback = store.feedback.some(f => f.memoryId === entry.id);
+    if (hasFeedback) report.withFeedback++;
+  }
+  
+  // Calculate average quality
+  if (qualities.length > 0) {
+    report.averageQuality = qualities.reduce((sum, q) => sum + q.quality.overall, 0) / qualities.length;
+  }
+  
+  // Top performers (quality >= 0.7)
+  report.topPerformers = qualities
+    .filter(q => q.quality.overall >= 0.7)
+    .sort((a, b) => b.quality.overall - a.quality.overall)
+    .slice(0, 10)
+    .map(q => ({
+      id: q.entry.id,
+      title: q.entry.title,
+      quality: q.quality.overall
+    }));
+  
+  // Needs review
+  report.needsReview = qualities
+    .filter(q => q.quality.recommendation === 'review' || q.quality.recommendation === 'delete')
+    .map(q => {
+      let reason = '';
+      if (q.quality.components.feedback < 0.3) reason = 'Low feedback score';
+      else if (q.quality.components.recency < 0.2) reason = 'Outdated';
+      else if (q.quality.components.usage < 0.1) reason = 'Rarely used';
+      else reason = 'Low overall quality';
+      
+      return {
+        id: q.entry.id,
+        title: q.entry.title,
+        quality: q.quality.overall,
+        reason
+      };
+    });
+  
+  return report;
+}
+
+// ============================================================================
+// MEMORY DECAY
+// ============================================================================
+
+/**
+ * Apply decay to old, unused memories
+ * 
+ * This should be called periodically (e.g., daily) to:
+ * - Reduce priority of old unused memories
+ * - Mark very old memories for review
+ */
+export function applyMemoryDecay(options: {
+  daysUntilDecay?: number;      // Days before decay starts (default: 30)
+  daysUntilArchive?: number;    // Days before suggesting archive (default: 90)
+  protectCritical?: boolean;    // Don't decay critical memories (default: true)
+} = {}): {
+  decayed: number;
+  flaggedForArchive: number;
+  unchanged: number;
+} {
+  const {
+    daysUntilDecay = 30,
+    daysUntilArchive = 90,
+    protectCritical = true
+  } = options;
+  
+  const store = loadMemoryStore();
+  const now = Date.now();
+  
+  let decayed = 0;
+  let flaggedForArchive = 0;
+  let unchanged = 0;
+  
+  for (const entry of store.entries) {
+    // Skip critical if protected
+    if (protectCritical && entry.priority === 'critical') {
+      unchanged++;
+      continue;
+    }
+    
+    // Calculate age since last use or update
+    const lastActivity = entry.lastUsedAt || entry.updatedAt;
+    const ageInDays = (now - lastActivity) / (1000 * 60 * 60 * 24);
+    
+    if (ageInDays > daysUntilArchive) {
+      // Flag for archive (set expiration if not set)
+      if (!entry.expiresAt) {
+        entry.expiresAt = now + (30 * 24 * 60 * 60 * 1000); // Expire in 30 days
+        flaggedForArchive++;
+        console.log(`[AgeMem] Flagged memory ${entry.id} for archive (${Math.round(ageInDays)} days inactive)`);
+      }
+    } else if (ageInDays > daysUntilDecay) {
+      // Decay priority
+      if (entry.priority === 'high') {
+        entry.priority = 'medium';
+        decayed++;
+        console.log(`[AgeMem] Decayed memory ${entry.id} from high to medium (${Math.round(ageInDays)} days inactive)`);
+      } else if (entry.priority === 'medium' && ageInDays > daysUntilDecay * 2) {
+        entry.priority = 'low';
+        decayed++;
+        console.log(`[AgeMem] Decayed memory ${entry.id} from medium to low (${Math.round(ageInDays)} days inactive)`);
+      } else {
+        unchanged++;
+      }
+    } else {
+      unchanged++;
+    }
+  }
+  
+  saveMemoryStore(store);
+  
+  console.log(`[AgeMem] Decay complete: ${decayed} decayed, ${flaggedForArchive} flagged for archive, ${unchanged} unchanged`);
+  
+  return { decayed, flaggedForArchive, unchanged };
+}
