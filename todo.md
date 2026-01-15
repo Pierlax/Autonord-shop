@@ -208,3 +208,71 @@ Based on Sirio website analysis, implement the following improvements:
 ### E) Documentation
 - [x] Update GO_LIVE_CHECKLIST.md
 - [x] Push all changes to GitHub (commit 9e5a131)
+
+
+## ATTIVAZIONE AGENTI AI - Checklist Operativa
+
+### FASE 1: Anthropic API Key
+- [ ] Ottenere API key da console.anthropic.com
+- [ ] Aggiungere ANTHROPIC_API_KEY su Vercel
+
+### FASE 2: QStash (Upstash)
+- [ ] Creare account su upstash.com
+- [ ] Creare QStash instance
+- [ ] Aggiungere QSTASH_TOKEN su Vercel
+- [ ] Aggiungere QSTASH_CURRENT_SIGNING_KEY su Vercel
+- [ ] Aggiungere QSTASH_NEXT_SIGNING_KEY su Vercel
+
+### FASE 3: Webhook Shopify
+- [ ] Andare su Shopify Admin → Settings → Notifications → Webhooks
+- [ ] Creare webhook products/create
+- [ ] Creare webhook products/update
+- [ ] Copiare SHOPIFY_WEBHOOK_SECRET su Vercel
+
+### FASE 4: Cron Job Blog Researcher
+- [ ] Verificare vercel.json ha cron configurato
+- [ ] Deploy su Vercel per attivare cron
+
+### FASE 5: Test Product Enrichment
+- [ ] Creare prodotto test su Shopify
+- [ ] Verificare webhook ricevuto
+- [ ] Verificare job in QStash
+- [ ] Verificare metafields popolati
+- [ ] Verificare frontend mostra dati AI
+
+### FASE 6: Test Blog Researcher
+- [ ] Trigger manuale cron endpoint
+- [ ] Verificare draft creato su Shopify Blog
+- [ ] Verificare notifica ricevuta
+
+### FASE 7: TAYA Improver
+- [ ] Eseguire localmente con ANTHROPIC_API_KEY
+- [ ] Verificare PR creata su GitHub
+
+## TAYA Director - Central Orchestrator
+
+### Architettura
+- [x] Creare lib/taya-director/ con struttura moduli
+- [x] Definire tipi e interfacce (QualityScore, DirectorDecision, etc.)
+
+### Supervisor Module (The Editor)
+- [x] Implementare valutazione qualità contenuti TAYA
+- [x] Creare scoring system (tayaCompliance, readability, uniqueness, actionability)
+- [x] Implementare logica "bocciato → riprova" via QStash
+
+### Strategist Module (The Planner)
+- [x] Implementare analisi gap catalogo/contenuti
+- [x] Creare prioritizzazione (alto traffico, categorie vuote, etc.)
+- [x] Implementare commissioning articoli a Agente 2
+
+### Orchestrator Module (The Coordinator)
+- [x] Implementare coordinamento agenti via QStash
+- [x] Aggiungere rate limiting intelligente
+- [x] Creare logging decisioni
+
+### Cron Endpoint
+- [x] Creare /api/cron/taya-director/route.ts
+- [x] Configurare esecuzione notturna in vercel.json (2:00 AM)
+
+### Documentazione
+- [x] Creare docs/TAYA_DIRECTOR.md con architettura e guida

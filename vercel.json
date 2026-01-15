@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/blog-researcher",
       "schedule": "0 8 * * 1"
+    },
+    {
+      "path": "/api/cron/taya-director",
+      "schedule": "0 2 * * *"
     }
   ]
 }
