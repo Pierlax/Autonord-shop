@@ -195,7 +195,7 @@ export async function queueBulkEnrichment(
           directorSessionId: session.sessionId,
         },
         retries: 2,
-        delay: `${i * 30}s`, // Stagger requests
+        delay: i * 30, // Stagger requests (seconds)
       });
 
       decision.status = 'queued';
