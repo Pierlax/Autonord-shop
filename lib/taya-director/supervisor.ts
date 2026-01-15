@@ -252,9 +252,9 @@ export function needsEvaluation(product: DirectorProduct): boolean {
 
   // Must have some content to evaluate
   const hasContent = 
-    product.bodyHtml?.length > 100 ||
-    product.metafields.pros?.length ||
-    product.metafields.aiDescription;
+    (product.bodyHtml?.length ?? 0) > 100 ||
+    (product.metafields.pros?.length ?? 0) > 0 ||
+    !!product.metafields.aiDescription;
 
   return hasContent;
 }
