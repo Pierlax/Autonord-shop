@@ -301,3 +301,75 @@ export {
   type UserFeedbackMetrics,
   type BusinessImpactReport,
 } from './business-metrics';
+
+// ============================================================================
+// UniversalRAG Paper Implementations
+// ============================================================================
+
+// Source Type Router (Modality-Aware Routing)
+export {
+  ruleBasedRoute,
+  llmBasedRoute,
+  ensembleRoute,
+  routeProductQuery,
+  getOptimizedQueries,
+  ROUTER_DEFAULT_CONFIG,
+  type SourceType,
+  type QueryIntent,
+  type RoutingDecision,
+  type RouterConfig,
+} from './source-router';
+
+// Granularity-Aware Retrieval
+export {
+  detectGranularityRules,
+  detectGranularityLLM,
+  adaptGranularity,
+  chunkByGranularity,
+  scoreChunks,
+  selectChunksWithinBudget,
+  determineGranularity,
+  GRANULARITY_DEFAULT_CONFIG,
+  type GranularityLevel,
+  type QueryComplexity,
+  type GranularityDecision,
+  type GranularityConfig,
+} from './granularity-retrieval';
+
+// No-Retrieval Detection
+export {
+  detectRetrievalNeedRules,
+  detectRetrievalNeedLLM,
+  generateParametricResponse,
+  decideRetrievalStrategy,
+  canUseCachedKnowledge,
+  estimateCostSavings,
+  type RetrievalNeed,
+  type KnowledgeType,
+  type RetrievalDecision,
+} from './no-retrieval-detector';
+
+// Proactive Cross-Source Fusion
+export {
+  createFusionPlan,
+  executeFusionPlan,
+  optimizeFusionPlan,
+  generateFusionReport,
+  type EvidenceType,
+  type FusionStrategy,
+  type FusionPlan,
+  type SourceGroup,
+  type FusionResult,
+  type CombinedEvidence,
+  type Conflict,
+} from './proactive-fusion';
+
+// UniversalRAG Integrated Pipeline
+export {
+  UniversalRAGPipeline,
+  enrichWithUniversalRAG,
+  getPipelineStats,
+  UNIVERSAL_RAG_DEFAULT_CONFIG,
+  type UniversalRAGConfig,
+  type UniversalRAGResult,
+} from './universal-rag';
