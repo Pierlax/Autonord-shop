@@ -25,6 +25,36 @@ export type ProductVariant = {
   image?: Image;
 };
 
+/**
+ * Metafield type for Shopify Storefront API
+ */
+export type Metafield = {
+  key: string;
+  namespace: string;
+  value: string;
+  type: string;
+} | null;
+
+/**
+ * FAQ item structure (stored as JSON in metafield)
+ */
+export type FAQ = {
+  question: string;
+  answer: string;
+};
+
+/**
+ * Enriched product data from AI agent
+ * Stored in Shopify metafields under 'custom' namespace
+ */
+export type EnrichedData = {
+  pros: string[] | null;
+  cons: string[] | null;
+  faqs: FAQ[] | null;
+  aiDescription: string | null;
+  isEnriched: boolean;
+};
+
 export type Product = {
   id: string;
   handle: string;
@@ -61,6 +91,13 @@ export type Product = {
   };
   tags: string[];
   updatedAt: string;
+  // AI-Enriched metafields (optional, may not exist for all products)
+  metafields?: {
+    pros: Metafield;
+    cons: Metafield;
+    faqs: Metafield;
+    aiDescription: Metafield;
+  };
 };
 
 export type Collection = {

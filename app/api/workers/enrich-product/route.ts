@@ -18,6 +18,7 @@ import {
 } from '@/lib/shopify/admin-api';
 import { searchProductImages } from '@/lib/shopify/image-search';
 import { EnrichmentJob } from '@/lib/queue';
+import { logger } from '@/lib/logging';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,14 +31,19 @@ async function handler(request: NextRequest) {
   try {
     const job: EnrichmentJob = await request.json();
     
-    console.log(`[Worker] Processing product: ${job.productId} - ${job.title}`);
-    console.log(`[Worker] Job received at: ${job.receivedAt}, processing started at: ${new Date().toISOString()}`);
+    // Initialize structured logging
+    logger.logEnrichmentStart(job.productId, job.title);
+    logger.logStep('job_received', {
+      receivedAt: job.receivedAt,
+      processingStarted: new Date().toISOString(),
+      queueLatency: `${Date.now() - new Date(job.receivedAt).getTime()}ms`,
+    });
 
     // Step 1: Get fresh product data from Shopify (in case it was updated)
     const product = await getProductById(parseInt(job.productId, 10));
     
     if (!product) {
-      console.error(`[Worker] Product ${job.productId} not found in Shopify`);
+      logger.error(`Product ${job.productId} not found in Shopify`);
       return NextResponse.json(
         { error: 'Product not found', productId: job.productId },
         { status: 404 }
@@ -46,7 +52,7 @@ async function handler(request: NextRequest) {
 
     // Step 2: Double-check if already enriched (race condition protection)
     if (product.tags && product.tags.includes('AI-Enhanced')) {
-      console.log(`[Worker] Product ${job.productId} already enriched, skipping`);
+      logger.logEnrichmentSkipped('Product already has AI-Enhanced tag');
       return NextResponse.json(
         { 
           message: 'Product already enriched',
@@ -58,7 +64,7 @@ async function handler(request: NextRequest) {
     }
 
     // Step 3: Generate AI content
-    console.log(`[Worker] Generating AI content for product ${job.productId}`);
+    logger.logStep('ai_generation', { vendor: job.vendor, productType: job.productType });
     
     const enrichedData = await generateProductContent({
       id: parseInt(job.productId),
@@ -82,7 +88,7 @@ async function handler(request: NextRequest) {
     const formattedHtml = formatDescriptionAsHtml(enrichedData);
 
     // Step 5: Update Shopify product with content
-    console.log(`[Worker] Updating Shopify product ${job.productId}`);
+    logger.logStep('shopify_update');
     await updateProductWithEnrichedContent(
       parseInt(job.productId),
       enrichedData,
@@ -94,7 +100,7 @@ async function handler(request: NextRequest) {
     let imagesAdded = 0;
     
     if (!job.hasImages) {
-      console.log(`[Worker] Product ${job.productId} has no images, searching...`);
+      logger.logStep('image_search', { reason: 'Product has no images' });
       
       try {
         const imageResults = await searchProductImages({
@@ -107,7 +113,7 @@ async function handler(request: NextRequest) {
         if (imageResults.length > 0) {
           const imageUrls = imageResults.slice(0, 3).map(r => r.url);
           
-          console.log(`[Worker] Found ${imageResults.length} images, adding top ${imageUrls.length}`);
+          logger.logStep('image_upload', { found: imageResults.length, uploading: imageUrls.length });
           
           imagesAdded = await addProductImages(
             parseInt(job.productId),
@@ -115,18 +121,18 @@ async function handler(request: NextRequest) {
             job.title
           );
           
-          console.log(`[Worker] Successfully added ${imagesAdded} images`);
+          logger.info(`Successfully added ${imagesAdded} images`);
         } else {
-          console.log(`[Worker] No images found for product ${job.productId}`);
+          logger.warn('No images found for product');
         }
       } catch (imageError) {
-        console.error(`[Worker] Image search/upload failed:`, imageError);
+        logger.error('Image search/upload failed', imageError instanceof Error ? imageError : new Error(String(imageError)));
         // Don't fail the whole job for image errors
       }
     }
 
     const duration = Date.now() - startTime;
-    console.log(`[Worker] Successfully enriched product ${job.productId} in ${duration}ms`);
+    logger.logEnrichmentComplete(duration, imagesAdded);
 
     return NextResponse.json(
       {
@@ -143,7 +149,7 @@ async function handler(request: NextRequest) {
 
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error(`[Worker] Error after ${duration}ms:`, error);
+    logger.logEnrichmentFailed(error instanceof Error ? error : new Error(String(error)), duration);
     
     // Return 500 to trigger QStash retry
     return NextResponse.json(

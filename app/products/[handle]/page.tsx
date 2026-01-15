@@ -3,9 +3,10 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Check, AlertTriangle, FileText, Truck, Shield, ChevronRight, Package } from 'lucide-react';
-import { getProductByHandle } from '@/lib/shopify';
+import { getProductByHandle, parseEnrichedData } from '@/lib/shopify';
 import { AddToCartButton, StickyMobileCTA } from '@/components/product/add-to-cart';
 import { ProductFAQ } from '@/components/product/product-faq';
+import { FAQAccordion } from '@/components/product/faq-accordion';
 import { ExpertReview } from '@/components/product/expert-review';
 import { RelatedArticles } from '@/components/product/related-articles';
 import { VideoGallery } from '@/components/product/video-gallery';
@@ -49,6 +50,9 @@ export default async function ProductPage({ params }: Props) {
   // Get the brand name from vendor
   const brandName = getBrandName(product.vendor);
   const productTitleFormatted = toTitleCase(product.title);
+  
+  // Parse AI-enriched data from metafields
+  const enrichedData = parseEnrichedData(product);
   
   const formattedPrice = new Intl.NumberFormat('it-IT', {
     style: 'currency',
@@ -265,7 +269,7 @@ export default async function ProductPage({ params }: Props) {
             )}
 
             {/* Expert Review - TAYA Style Honest Pro/Contro */}
-            <ExpertReview product={product} />
+            <ExpertReview product={product} enrichedData={enrichedData} />
 
             {/* Related Articles Section */}
             <RelatedArticles 
@@ -274,11 +278,19 @@ export default async function ProductPage({ params }: Props) {
               productTags={product.tags}
             />
 
-            {/* FAQ Section with Schema Markup */}
-            <ProductFAQ 
-              productTitle={productTitleFormatted}
-              brandName={brandName}
-            />
+            {/* FAQ Section - AI-enriched if available, otherwise fallback */}
+            {enrichedData.faqs && enrichedData.faqs.length > 0 ? (
+              <FAQAccordion 
+                faqs={enrichedData.faqs}
+                productTitle={productTitleFormatted}
+                isAiEnriched={enrichedData.isEnriched}
+              />
+            ) : (
+              <ProductFAQ 
+                productTitle={productTitleFormatted}
+                brandName={brandName}
+              />
+            )}
           </div>
         </div>
       </div>

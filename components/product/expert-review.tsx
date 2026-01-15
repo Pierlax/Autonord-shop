@@ -1,15 +1,16 @@
 'use client';
 
-import { CheckCircle, AlertTriangle, Info, User, ThumbsUp, ThumbsDown } from 'lucide-react';
-import { Product } from '@/lib/shopify/types';
+import { CheckCircle, AlertTriangle, Info, User, ThumbsUp, ThumbsDown, Sparkles } from 'lucide-react';
+import { Product, EnrichedData } from '@/lib/shopify/types';
 import { getBrandName } from '@/lib/utils';
 
 interface ExpertReviewProps {
   product: Product;
+  enrichedData?: EnrichedData;
 }
 
-// Generate honest pros and cons based on product characteristics
-function generateExpertReview(product: Product) {
+// Generate honest pros and cons based on product characteristics (fallback)
+function generateFallbackReview(product: Product) {
   const brandName = getBrandName(product.vendor);
   const title = product.title.toLowerCase();
   const price = parseFloat(product.priceRange.minVariantPrice.amount);
@@ -113,21 +114,55 @@ function generateExpertReview(product: Product) {
   return { pros, cons, idealFor, notIdealFor, expertNote };
 }
 
-export function ExpertReview({ product }: ExpertReviewProps) {
-  const { pros, cons, idealFor, notIdealFor, expertNote } = generateExpertReview(product);
+export function ExpertReview({ product, enrichedData }: ExpertReviewProps) {
+  // Use AI-enriched data if available, otherwise fall back to rule-based generation
+  const isAiEnriched = enrichedData?.isEnriched ?? false;
+  
+  let pros: string[];
+  let cons: string[];
+  let idealFor: string[];
+  let notIdealFor: string[];
+  let expertNote: string;
+  
+  if (isAiEnriched && enrichedData?.pros && enrichedData?.cons) {
+    // Use AI-generated content
+    pros = enrichedData.pros;
+    cons = enrichedData.cons;
+    // For AI content, we generate ideal/notIdeal from the fallback logic
+    const fallback = generateFallbackReview(product);
+    idealFor = fallback.idealFor;
+    notIdealFor = fallback.notIdealFor;
+    expertNote = enrichedData.aiDescription || fallback.expertNote;
+  } else {
+    // Use fallback rule-based generation
+    const fallback = generateFallbackReview(product);
+    pros = fallback.pros;
+    cons = fallback.cons;
+    idealFor = fallback.idealFor;
+    notIdealFor = fallback.notIdealFor;
+    expertNote = fallback.expertNote;
+  }
   
   return (
     <div className="mt-8 border border-border rounded-xl overflow-hidden bg-card">
       {/* Header */}
       <div className="bg-muted/50 px-6 py-4 border-b border-border">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
-            <User className="h-5 w-5 text-primary" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
+              <User className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-lg">Recensione del Tecnico</h3>
+              <p className="text-sm text-muted-foreground">Opinione onesta del nostro team — non solo marketing</p>
+            </div>
           </div>
-          <div>
-            <h3 className="font-semibold text-lg">Recensione del Tecnico</h3>
-            <p className="text-sm text-muted-foreground">Opinione onesta del nostro team — non solo marketing</p>
-          </div>
+          {isAiEnriched && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-violet-500/10 border border-violet-500/20">
+              <Sparkles className="h-3.5 w-3.5 text-violet-400" />
+              <span className="text-xs font-medium text-violet-400">AI-Enhanced</span>
+            </div>
+          )}
         </div>
       </div>
       
@@ -203,7 +238,7 @@ export function ExpertReview({ product }: ExpertReviewProps) {
         {/* Disclaimer */}
         <p className="text-xs text-muted-foreground mt-6 pt-4 border-t border-border">
           💡 <strong>La nostra filosofia:</strong> Preferiamo perderti come cliente oggi piuttosto che venderti qualcosa di sbagliato. 
-          Se hai dubbi, <a href="/contact" className="text-primary hover:underline">contattaci</a> per una consulenza gratuita.
+          Se hai dubbi, <a href="/contatti" className="text-primary hover:underline">contattaci</a> per una consulenza gratuita.
         </p>
       </div>
     </div>

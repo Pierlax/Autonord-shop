@@ -297,6 +297,43 @@ Colonne minime richieste:
 
 ---
 
+## FASE 10: Frontend Integration Verification
+
+### 10.1 Verifica Metafield Query
+Il frontend ora include i metafield nella query Storefront API:
+
+```graphql
+pros: metafield(namespace: "custom", key: "pros") { value }
+cons: metafield(namespace: "custom", key: "cons") { value }
+faqs: metafield(namespace: "custom", key: "faqs") { value }
+aiDescription: metafield(namespace: "custom", key: "ai_description") { value }
+```
+
+### 10.2 Componenti UI Aggiornati
+
+| Componente | File | Descrizione |
+|------------|------|-------------|
+| `ExpertReview` | `components/product/expert-review.tsx` | Pro/Contro con fallback a regole |
+| `FAQAccordion` | `components/product/faq-accordion.tsx` | FAQ con Schema markup |
+| `ProsConsSection` | `components/product/pros-cons-section.tsx` | Sezione Pro/Contro standalone |
+
+### 10.3 Comportamento Fallback
+
+- [ ] Se i metafield sono vuoti, i componenti usano contenuto generato da regole
+- [ ] Badge "AI-Enhanced" appare solo quando i dati provengono dall'AI
+- [ ] Schema markup FAQ viene generato solo con dati AI
+
+### 10.4 Test Frontend
+
+- [ ] Apri un prodotto arricchito (con tag AI-Enhanced)
+- [ ] Verifica badge "AI-Enhanced" nella sezione Expert Review
+- [ ] Verifica Pro e Contro personalizzati (non generici)
+- [ ] Verifica FAQ accordion funzionante
+- [ ] Apri un prodotto NON arricchito
+- [ ] Verifica fallback a contenuto rule-based (senza badge AI)
+
+---
+
 ## Supporto e Troubleshooting
 
 ### Log e Monitoraggio

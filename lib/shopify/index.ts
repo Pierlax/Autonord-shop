@@ -1,4 +1,4 @@
-import { Product, Collection } from './types';
+import { Product, Collection, EnrichedData, FAQ } from './types';
 
 const domain = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN;
 const storefrontAccessToken = process.env.NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN;
@@ -41,7 +41,7 @@ async function ShopifyData(query: string, variables?: object) {
   }
 }
 
-// Fragments
+// Fragments - Updated to include metafields for AI-enriched content
 const productFragment = `
   fragment ProductFragment on Product {
     id
@@ -119,8 +119,85 @@ const productFragment = `
     }
     tags
     updatedAt
+    # AI-Enriched Metafields (custom namespace)
+    pros: metafield(namespace: "custom", key: "pros") {
+      key
+      namespace
+      value
+      type
+    }
+    cons: metafield(namespace: "custom", key: "cons") {
+      key
+      namespace
+      value
+      type
+    }
+    faqs: metafield(namespace: "custom", key: "faqs") {
+      key
+      namespace
+      value
+      type
+    }
+    aiDescription: metafield(namespace: "custom", key: "ai_description") {
+      key
+      namespace
+      value
+      type
+    }
   }
 `;
+
+/**
+ * Parse metafields from Shopify response into structured EnrichedData
+ */
+export function parseEnrichedData(product: any): EnrichedData {
+  const result: EnrichedData = {
+    pros: null,
+    cons: null,
+    faqs: null,
+    aiDescription: null,
+    isEnriched: false,
+  };
+
+  try {
+    // Parse pros (JSON array of strings)
+    if (product.pros?.value) {
+      const parsed = JSON.parse(product.pros.value);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        result.pros = parsed;
+        result.isEnriched = true;
+      }
+    }
+
+    // Parse cons (JSON array of strings)
+    if (product.cons?.value) {
+      const parsed = JSON.parse(product.cons.value);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        result.cons = parsed;
+        result.isEnriched = true;
+      }
+    }
+
+    // Parse FAQs (JSON array of {question, answer} objects)
+    if (product.faqs?.value) {
+      const parsed = JSON.parse(product.faqs.value);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        result.faqs = parsed as FAQ[];
+        result.isEnriched = true;
+      }
+    }
+
+    // Parse AI description (plain text)
+    if (product.aiDescription?.value) {
+      result.aiDescription = product.aiDescription.value;
+      result.isEnriched = true;
+    }
+  } catch (error) {
+    console.error('Error parsing enriched data:', error);
+  }
+
+  return result;
+}
 
 export async function getProducts(sortKey = 'RELEVANCE', reverse = false, query?: string): Promise<Product[]> {
   const res = await ShopifyData(`
@@ -185,3 +262,6 @@ export async function createCheckout(variantId: string, quantity: number): Promi
 
   return res.checkoutCreate.checkout.webUrl;
 }
+
+// Re-export parseEnrichedData for use in components
+export { parseEnrichedData as getEnrichedData };

@@ -175,3 +175,36 @@ Based on Sirio website analysis, implement the following improvements:
 - [x] Create worker endpoint to process jobs from queue
 - [x] Add rate limiting (handled by QStash automatically)
 - [x] Update documentation with new architecture
+
+
+## GO-LIVE Product Enrichment End-to-End
+### A) Product Enrichment Agent
+- [x] Fix webhook route with Claude SDK (@anthropic-ai/sdk)
+- [x] HMAC signature verification
+- [x] Idempotency check (AI-Enhanced tag or metafield)
+- [x] TAYA prompt with Marco persona
+- [x] Rate limit and retry with backoff (QStash handles this)
+
+### B) Shopify Metafields
+- [x] Save custom.pros (list)
+- [x] Save custom.cons (list)
+- [x] Save custom.faqs (JSON)
+- [x] Save custom.ai_description (text)
+- [x] Update body_html with formatted description
+- [x] Add AI-Enhanced tag
+
+### C) Frontend PDP
+- [x] Update Storefront API query for metafields
+- [x] Create ProsConsSection component
+- [x] Create FAQAccordion component
+- [x] Update ExpertReview component with AI data support
+- [x] Add fallback for missing metafields
+
+### D) Logging & Observability
+- [x] Log productId, handle, duration, outcome
+- [x] Error handling with meaningful messages
+- [x] Structured logging utility (lib/logging.ts)
+
+### E) Documentation
+- [x] Update GO_LIVE_CHECKLIST.md
+- [ ] Push all changes to GitHub
