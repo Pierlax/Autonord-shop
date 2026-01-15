@@ -265,3 +265,39 @@ export async function createCheckout(variantId: string, quantity: number): Promi
 
 // Re-export parseEnrichedData for use in components
 export { parseEnrichedData as getEnrichedData };
+
+// ============================================================================
+// RAG Enterprise Paper Implementations
+// ============================================================================
+
+// Provenance Tracking (Hallucination Control)
+export {
+  ProvenanceGraphBuilder,
+  FactProvenanceTracker,
+  generateContentProvenance,
+  formatProvenanceDisplay,
+  generateProvenanceReport,
+  type FactProvenance,
+  type ContentProvenance,
+  type SourceAttribution,
+} from './provenance-tracking';
+
+// Knowledge Graph (Hybrid RAG)
+export {
+  PowerToolKnowledgeGraph,
+  getKnowledgeGraph,
+  type KGNode,
+  type KGEdge,
+  type QueryResult,
+} from './knowledge-graph';
+
+// Business Impact Metrics
+export {
+  getMetricsStore,
+  createGenerationMetrics,
+  formatBusinessImpactReport,
+  type ContentGenerationMetrics,
+  type ErrorMetrics,
+  type UserFeedbackMetrics,
+  type BusinessImpactReport,
+} from './business-metrics';
