@@ -66,6 +66,8 @@ async function handler(request: NextRequest) {
     // Step 3: Generate AI content
     logger.logStep('ai_generation', { vendor: job.vendor, productType: job.productType });
     
+    // Create minimal product payload for AI generation
+    // We only need title, vendor, product_type, and first variant's sku/price
     const enrichedData = await generateProductContent({
       id: parseInt(job.productId),
       title: job.title,
@@ -73,15 +75,56 @@ async function handler(request: NextRequest) {
       product_type: job.productType,
       tags: job.tags.join(', '),
       variants: [{
+        id: 0,
+        product_id: parseInt(job.productId),
+        title: 'Default',
         sku: job.sku,
         price: job.price,
-        barcode: '',
+        position: 1,
+        inventory_policy: 'deny',
+        compare_at_price: null,
+        fulfillment_service: 'manual',
+        inventory_management: null,
+        option1: null,
+        option2: null,
+        option3: null,
+        created_at: job.receivedAt,
+        updated_at: job.receivedAt,
+        taxable: true,
+        barcode: null,
+        grams: 0,
+        weight: 0,
+        weight_unit: 'kg',
+        inventory_item_id: 0,
+        inventory_quantity: 0,
+        old_inventory_quantity: 0,
+        requires_shipping: true,
+        admin_graphql_api_id: '',
       }],
-      images: job.hasImages ? [{ src: 'placeholder' }] : [],
+      options: [],
+      images: job.hasImages ? [{
+        id: 0,
+        product_id: parseInt(job.productId),
+        position: 1,
+        created_at: job.receivedAt,
+        updated_at: job.receivedAt,
+        alt: null,
+        width: 0,
+        height: 0,
+        src: 'placeholder',
+        variant_ids: [],
+        admin_graphql_api_id: '',
+      }] : [],
+      image: null,
       body_html: '',
       handle: '',
       created_at: job.receivedAt,
       updated_at: job.receivedAt,
+      published_at: null,
+      template_suffix: null,
+      published_scope: 'web',
+      status: 'active',
+      admin_graphql_api_id: '',
     });
     
     // Step 4: Format as HTML
