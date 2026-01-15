@@ -28,3 +28,12 @@ export * from './sentiment';
 export * from './article-template';
 export { generateEnhancedArticle, generateLaunchArticles } from './drafting-v2';
 export type { EnhancedArticleDraft } from './drafting-v2';
+
+// CLaRa-inspired Query Expander module
+export {
+  smartExpandQuery,
+  expandQueryWithAI,
+  expandQueryWithTemplates,
+  prioritizeQueries,
+} from './query-expander';
+export type { ExpandedQuery, QueryVariant, QueryType } from './query-expander';

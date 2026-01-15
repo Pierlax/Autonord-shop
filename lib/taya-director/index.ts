@@ -41,6 +41,15 @@ export {
   getSessionSummary,
 } from './orchestrator';
 
+// CLaRa-inspired Verifier module
+export {
+  verifyContent,
+  checkFactCoverage,
+  checkFactualConsistency,
+  regenerateWithFeedback,
+  verifyAndRegenerateLoop,
+} from './verifier';
+
 // Import for main runner
 import { evaluateProducts, getEvaluationStats } from './supervisor';
 import { generateEditorialPlan, getEditorialPlanSummary } from './strategist';

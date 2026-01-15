@@ -326,3 +326,36 @@ Based on Sirio website analysis, implement the following improvements:
 - [x] Logging dati incerti/conflittuali (generateSafetyLog)
 - [x] Flag "verifica manuale richiesta" (dataQuality.manualCheckRequired)
 - [x] Omissione automatica dati non verificabili
+
+
+## CLaRa-Inspired Improvements
+
+### Idea 1: Simple QA + Complex QA
+- [x] Creare modulo two-phase-qa.ts per Agente 1
+- [x] Implementare estrazione fatti atomici (Simple QA)
+- [x] Implementare ragionamento relazionale (Complex QA)
+- [x] Esportato da lib/shopify/
+
+### Idea 2: Verification & Regeneration
+- [x] Creare lib/taya-director/verifier.ts
+- [x] Implementare checkFactCoverage()
+- [x] Implementare checkFactualConsistency()
+- [x] Implementare regenerateWithFeedback()
+- [x] Implementare verifyAndRegenerateLoop()
+- [x] Esportato da lib/taya-director/
+
+### Idea 3: Query Expansion
+- [x] Creare lib/blog-researcher/query-expander.ts
+- [x] Implementare espansione query con Claude (AI)
+- [x] Implementare espansione query con template (fallback)
+- [x] Generare varianti: technical, problem, comparison, forum, review, howto
+- [x] Implementare prioritizzazione per tipo articolo
+- [x] Esportato da lib/blog-researcher/
+
+### Idea 4: Weighted Source Fusion
+- [x] Creare lib/shopify/source-fusion.ts
+- [x] Implementare raggruppamento fatti simili (groupFactsByKey)
+- [x] Implementare calcolo confidence score (calculateConfidence)
+- [x] Implementare rilevamento conflitti (detectConflicts)
+- [x] Implementare flag "needsVerification"
+- [x] Implementare generateFusionReport() per logging
