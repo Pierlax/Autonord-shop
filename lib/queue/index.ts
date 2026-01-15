@@ -112,5 +112,9 @@ export async function queueBlogResearch(
 /**
  * Verify that a request comes from QStash
  * Use this in worker endpoints for security
+ * 
+ * Note: Use dynamic import in route handlers to avoid build-time errors:
+ * const { verifySignatureAppRouter } = await import('@upstash/qstash/nextjs');
  */
-export { verifySignatureAppRouter } from '@upstash/qstash/nextjs';
+// Re-export removed to avoid build-time initialization errors
+// Import directly in route handlers using dynamic import instead

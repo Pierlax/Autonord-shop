@@ -9,7 +9,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { verifySignatureAppRouter } from '@upstash/qstash/nextjs';
 import { generateProductContent, formatDescriptionAsHtml } from '@/lib/shopify/ai-enrichment';
 import { 
   updateProductWithEnrichedContent, 
@@ -207,7 +206,27 @@ async function handler(request: NextRequest) {
 }
 
 // Wrap handler with QStash signature verification for security
-export const POST = verifySignatureAppRouter(handler);
+// Use dynamic verification to avoid build-time errors when env vars are not set
+let wrappedHandler: typeof handler | null = null;
+
+export async function POST(request: NextRequest) {
+  // Check if QStash is configured
+  const hasQStashConfig = process.env.QSTASH_CURRENT_SIGNING_KEY;
+  
+  if (!hasQStashConfig) {
+    // In development or when QStash is not configured, skip verification
+    console.warn('[Worker] QStash signature verification skipped - QSTASH_CURRENT_SIGNING_KEY not set');
+    return handler(request);
+  }
+  
+  // Lazy load the verification wrapper
+  if (!wrappedHandler) {
+    const { verifySignatureAppRouter } = await import('@upstash/qstash/nextjs');
+    wrappedHandler = verifySignatureAppRouter(handler) as typeof handler;
+  }
+  
+  return wrappedHandler(request);
+}
 
 // Health check endpoint
 export async function GET(request: NextRequest) {
