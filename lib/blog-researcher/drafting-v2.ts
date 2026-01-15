@@ -552,7 +552,7 @@ function extractBrands(products: string[]): string[] {
  * Generate a batch of launch articles
  */
 export async function generateLaunchArticles(
-  topics: { topic: string; type: ArticleType; targetAudience: string; tayaCategory: string }[]
+  topics: { topic: string; type: ArticleType; targetAudience: string; tayaCategory: 'pricing' | 'problems' | 'comparisons' | 'reviews' | 'best' }[]
 ): Promise<EnhancedArticleDraft[]> {
   const articles: EnhancedArticleDraft[] = [];
   
