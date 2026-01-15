@@ -166,7 +166,6 @@ export const DEFAULT_CONFIG: DirectorConfig = {
     uniqueness: 0.25,
     actionability: 0.20,
   },
-  minQualityScore: 70,
   rateLimits: DEFAULT_RATE_LIMITS,
   modules: {
     supervisor: true,
