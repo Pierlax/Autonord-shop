@@ -3,6 +3,10 @@
  * Searches for product images using SerpAPI Google Images
  */
 
+import { loggers } from '@/lib/logger';
+
+const log = loggers.shopify;
+
 interface ProductSearchParams {
   title: string;
   vendor: string;

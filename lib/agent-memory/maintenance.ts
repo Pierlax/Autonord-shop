@@ -18,6 +18,10 @@ import {
   applyMemoryDecay
 } from './agemem-core';
 
+import { loggers } from '@/lib/logger';
+
+const log = loggers.memory;
+
 // ============================================================================
 // TYPES
 // ============================================================================

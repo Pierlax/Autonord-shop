@@ -11,6 +11,10 @@
  * of Diverse Modalities and Granularities" (KAIST, 2026)
  */
 
+import { loggers } from '@/lib/logger';
+
+const log = loggers.shopify;
+
 import { 
   SourceType, 
   RoutingDecision, 

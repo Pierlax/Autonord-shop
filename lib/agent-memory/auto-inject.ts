@@ -17,6 +17,10 @@ import {
   type AgentSource
 } from './agemem-core';
 
+import { loggers } from '@/lib/logger';
+
+const log = loggers.memory;
+
 import {
   optimizeContext
 } from './context-management';

@@ -3,6 +3,10 @@
  * Scans Reddit and forums for hot topics about power tools
  */
 
+import { loggers } from '@/lib/logger';
+
+const log = loggers.blog;
+
 // Types for search results
 export interface RedditPost {
   id: string;
