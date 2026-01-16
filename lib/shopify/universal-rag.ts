@@ -45,12 +45,24 @@ import {
   generateFusionReport 
 } from './proactive-fusion';
 
+import {
+  loadBenchmarks,
+  getBenchmarkContext,
+  generateComparisonContext,
+  getMainCompetitor,
+  isBenchmarkDataAvailable,
+  BenchmarkData,
+  ReferenceProduct,
+  BrandProfile,
+} from './benchmark-loader';
+
 // Pipeline configuration
 export interface UniversalRAGConfig {
   enableSourceRouting: boolean;
   enableGranularityAware: boolean;
   enableNoRetrievalDetection: boolean;
   enableProactiveFusion: boolean;
+  enableBenchmarkContext: boolean;  // NEW: Load competitor benchmarks
   maxSources: number;
   maxTokenBudget: number;
   timeoutMs: number;
@@ -62,6 +74,7 @@ const DEFAULT_CONFIG: UniversalRAGConfig = {
   enableGranularityAware: true,
   enableNoRetrievalDetection: true,
   enableProactiveFusion: true,
+  enableBenchmarkContext: true,  // NEW: Always load benchmarks
   maxSources: 5,
   maxTokenBudget: 6000,
   timeoutMs: 30000,
@@ -78,6 +91,11 @@ export interface UniversalRAGResult {
     retrievalDecision?: RetrievalDecision;
     fusionPlan?: FusionPlan;
     fusionResult?: FusionResult;
+    benchmarkContext?: {
+      brandProfile: BrandProfile | null;
+      competitors: ReferenceProduct[];
+      comparisonContextLength: number;
+    };
     executionTimeMs: number;
     sourcesQueried: SourceType[];
     tokensUsed: number;
@@ -127,6 +145,29 @@ export class UniversalRAGPipeline {
     
     this.log(state, `Starting UniversalRAG pipeline for: ${vendor} ${productTitle}`);
     this.log(state, `Enrichment type: ${enrichmentType}`);
+    
+    // NEW: Load benchmark context FIRST (Ancora di Verità)
+    let benchmarkContext: {
+      brandProfile: BrandProfile | null;
+      competitors: ReferenceProduct[];
+      comparisonContext: string;
+    } | undefined;
+    
+    if (this.config.enableBenchmarkContext) {
+      const { brandProfile, competitors } = getBenchmarkContext(vendor, productType);
+      const comparisonContext = generateComparisonContext(vendor, productType);
+      
+      if (brandProfile || competitors.length > 0) {
+        benchmarkContext = {
+          brandProfile,
+          competitors,
+          comparisonContext,
+        };
+        this.log(state, `Benchmark context loaded: ${brandProfile ? 'Brand profile found' : 'No brand profile'}, ${competitors.length} competitors`);
+      } else {
+        this.log(state, 'WARNING: No benchmark data available - proceeding without Ancora di Verità');
+      }
+    }
     
     try {
       // Step 1: Check if retrieval is needed
@@ -207,12 +248,24 @@ export class UniversalRAGPipeline {
         granularityDecision
       );
       
+      // Inject benchmark context into enriched data
+      if (benchmarkContext) {
+        enrichedData.benchmarkContext = benchmarkContext.comparisonContext;
+        enrichedData.brandProfile = benchmarkContext.brandProfile;
+        enrichedData.competitors = benchmarkContext.competitors;
+      }
+      
       return this.createResult(true, enrichedData, state, {
         routingDecision,
         granularityDecision,
         retrievalDecision,
         fusionPlan,
         fusionResult,
+        benchmarkContext: benchmarkContext ? {
+          brandProfile: benchmarkContext.brandProfile,
+          competitors: benchmarkContext.competitors,
+          comparisonContextLength: benchmarkContext.comparisonContext.length,
+        } : undefined,
       });
       
     } catch (error) {

@@ -385,3 +385,12 @@ Based on Sirio website analysis, implement the following improvements:
 - [x] GAP 13: Sync pragmatic-truth.ts with frontend components
 - [x] GAP 14: Improve AI compliance with TAYA principles
 - [x] GAP 15: Add Voice of Customer system (feedback form)
+
+## Dispensa Piena - Knowledge Base Fixes (2026-01-16)
+
+- [x] Create data/competitor-benchmarks.json with Big Three data
+- [x] Create data/agent-memory.json with Brand Notes and verified facts
+- [x] Create lib/shopify/benchmark-loader.ts module
+- [x] Modify universal-rag.ts to load benchmarks as mandatory context
+- [x] Fix sentiment.ts with multi-strategy fallback (SerpAPI → Exa → Google → DuckDuckGo)
+- [x] Update query-expander.ts with TAYA shadow queries for problems

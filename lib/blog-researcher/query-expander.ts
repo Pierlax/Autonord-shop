@@ -43,6 +43,37 @@ export type QueryType =
 // Query Expansion Templates
 // ============================================================================
 
+// =============================================================================
+// TAYA SHADOW QUERIES - Always search for problems (Onestà Radicale)
+// =============================================================================
+
+/**
+ * Shadow queries are ALWAYS added to any search, regardless of article type.
+ * This ensures TAYA compliance: we always know the problems before writing.
+ */
+const SHADOW_QUERIES_PROBLEMS: string[] = [
+  '{product} problems issues',
+  '{product} broke after',
+  '{product} warranty claim',
+  '{product} problemi difetti',
+  '{product} si è rotto',
+  '{product} non funziona più',
+  '{brand} common problems',
+  '{brand} known issues',
+  '{product} reddit problems',
+  '{product} forum complaints',
+];
+
+/**
+ * Additional shadow queries for competitive intelligence
+ */
+const SHADOW_QUERIES_COMPETITION: string[] = [
+  '{product} vs {competitor} which better',
+  '{product} or {competitor} reddit',
+  'why {competitor} instead of {product}',
+  '{product} disadvantages compared to',
+];
+
 const EXPANSION_TEMPLATES: Record<QueryType, string[]> = {
   technical: [
     '{product} specifiche tecniche',
@@ -51,12 +82,17 @@ const EXPANSION_TEMPLATES: Record<QueryType, string[]> = {
     '{brand} {category} caratteristiche',
   ],
   problem: [
+    // Enhanced problem queries (TAYA-compliant)
     '{product} problemi',
     '{product} difetti',
     '{product} si surriscalda',
     '{product} batteria non dura',
     '{product} rottura',
     '{product} issues reddit',
+    '{product} problems after 6 months',
+    '{product} warranty issues',
+    '{brand} quality problems 2024 2025',
+    '{product} broke stopped working',
   ],
   comparison: [
     '{product} vs {competitor}',
@@ -321,12 +357,18 @@ export async function smartExpandQuery(
     category?: string;
     articleType?: 'comparison' | 'problem' | 'review' | 'guide';
   },
-  anthropic?: Anthropic
+  anthropic?: Anthropic,
+  options: {
+    includeShadowQueries?: boolean;  // Default: true (TAYA compliance)
+    shadowQueryRatio?: number;       // Default: 0.3 (30% of queries are shadow)
+  } = {}
 ): Promise<{
   queries: QueryVariant[];
   original: string;
   expansionMethod: 'ai' | 'template';
+  shadowQueriesIncluded: number;
 }> {
+  const { includeShadowQueries = true, shadowQueryRatio = 0.3 } = options;
   
   let expanded: ExpandedQuery;
   let method: 'ai' | 'template' = 'template';
@@ -344,9 +386,25 @@ export async function smartExpandQuery(
   }
 
   // Prioritize based on article type
-  const prioritized = context.articleType 
+  let prioritized = context.articleType 
     ? prioritizeQueries(expanded, context.articleType)
     : expanded.variants;
+
+  // TAYA COMPLIANCE: Always inject shadow queries for problems
+  let shadowQueriesIncluded = 0;
+  if (includeShadowQueries) {
+    const shadowQueries = generateShadowQueries(context);
+    const numShadowToAdd = Math.max(3, Math.floor(prioritized.length * shadowQueryRatio));
+    
+    // Add shadow queries, ensuring they're distributed throughout results
+    const shadowToAdd = shadowQueries.slice(0, numShadowToAdd);
+    shadowQueriesIncluded = shadowToAdd.length;
+    
+    // Interleave shadow queries with regular queries
+    prioritized = interleaveShadowQueries(prioritized, shadowToAdd);
+    
+    console.log(`[QueryExpander] TAYA: Added ${shadowQueriesIncluded} shadow queries for problems/competition`);
+  }
 
   console.log(`[QueryExpander] Expanded "${baseQuery}" into ${prioritized.length} variants (method: ${method})`);
 
@@ -354,5 +412,86 @@ export async function smartExpandQuery(
     queries: prioritized,
     original: baseQuery,
     expansionMethod: method,
+    shadowQueriesIncluded,
   };
+}
+
+/**
+ * Generate shadow queries based on context (TAYA compliance)
+ * These queries search for problems and competitive weaknesses
+ */
+function generateShadowQueries(context: {
+  product?: string;
+  brand?: string;
+  category?: string;
+}): QueryVariant[] {
+  const product = context.product || 'product';
+  const brand = context.brand || '';
+  const competitors = brand ? (BRAND_COMPETITORS[brand] || ['competitor']) : ['competitor'];
+  
+  const shadowVariants: QueryVariant[] = [];
+  
+  // Problem shadow queries
+  for (const template of SHADOW_QUERIES_PROBLEMS) {
+    const query = template
+      .replace(/{product}/g, product)
+      .replace(/{brand}/g, brand);
+    
+    shadowVariants.push({
+      query,
+      type: 'problem',
+      intent: 'TAYA Shadow: Find real problems users report',
+      expectedSources: ['Reddit', 'Forums', 'Amazon Reviews'],
+    });
+  }
+  
+  // Competition shadow queries
+  for (const template of SHADOW_QUERIES_COMPETITION) {
+    const query = template
+      .replace(/{product}/g, product)
+      .replace(/{competitor}/g, competitors[0]);
+    
+    shadowVariants.push({
+      query,
+      type: 'comparison',
+      intent: 'TAYA Shadow: Find competitive weaknesses',
+      expectedSources: ['Reddit', 'Pro Tool Reviews', 'Forums'],
+    });
+  }
+  
+  return shadowVariants;
+}
+
+/**
+ * Interleave shadow queries with regular queries
+ * Ensures problems are searched throughout, not just at the end
+ */
+function interleaveShadowQueries(
+  regular: QueryVariant[],
+  shadow: QueryVariant[]
+): QueryVariant[] {
+  if (shadow.length === 0) return regular;
+  
+  const result: QueryVariant[] = [];
+  const interval = Math.max(2, Math.floor(regular.length / shadow.length));
+  
+  let shadowIndex = 0;
+  
+  for (let i = 0; i < regular.length; i++) {
+    result.push(regular[i]);
+    
+    // Insert shadow query at intervals
+    if ((i + 1) % interval === 0 && shadowIndex < shadow.length) {
+      result.push(shadow[shadowIndex]);
+      shadowIndex++;
+    }
+  }
+  
+  // Add remaining shadow queries at the end
+  while (shadowIndex < shadow.length) {
+    result.push(shadow[shadowIndex]);
+    shadowIndex++;
+  }
+  
+  return result;
 }
