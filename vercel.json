@@ -1,4 +1,15 @@
 {
+  "functions": {
+    "app/api/workers/enrich-product/route.ts": {
+      "maxDuration": 90
+    },
+    "app/api/webhooks/enrich-product/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/cron/**/*.ts": {
+      "maxDuration": 90
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/blog-researcher",
@@ -7,6 +18,10 @@
     {
       "path": "/api/cron/taya-director",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/enrich-pending",
+      "schedule": "0 */4 * * *"
     }
   ]
 }
