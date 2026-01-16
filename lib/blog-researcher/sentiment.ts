@@ -174,7 +174,7 @@ async function searchWithSerpApi(query: string, apiKey: string): Promise<ForumPo
   
   for (const forum of italianForums) {
     try {
-      const searchQuery = `site:${forum.baseUrl} ${query}`;
+      const searchQuery = `site:${forum.domain} ${query}`;
       const url = `https://serpapi.com/search.json?q=${encodeURIComponent(searchQuery)}&api_key=${apiKey}&num=10&hl=it&gl=it`;
       
       const response = await fetch(url);
