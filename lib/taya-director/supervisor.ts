@@ -17,6 +17,12 @@ import {
   DirectorConfig,
   DEFAULT_CONFIG,
 } from './types';
+import {
+  AGENT_4_DIRECTOR_DIRECTIVE,
+  containsBannedPhrases,
+  checkKrugCompliance,
+  BANNED_PHRASES,
+} from '../core-philosophy';
 
 const MODEL = 'claude-sonnet-4-20250514';
 
@@ -34,14 +40,34 @@ export async function evaluateProductQuality(
   // Build content to evaluate
   const contentToEvaluate = buildContentString(product);
 
-  const systemPrompt = `Sei un editor esperto nella filosofia "They Ask You Answer" (TAYA).
-Il tuo compito è valutare la qualità dei contenuti di un prodotto e-commerce.
+  // The Pragmatic Truth Philosophy for Director/Evaluator
+  const systemPrompt = `${AGENT_4_DIRECTOR_DIRECTIVE}
 
-PRINCIPI TAYA DA VERIFICARE:
-1. ONESTÀ: Il contenuto ammette limiti/difetti? Evita superlativi vuoti ("il migliore", "eccezionale")?
-2. CHIAREZZA: È scritto in modo semplice? Evita gergo tecnico non spiegato?
-3. NO FLUFF: Ogni frase aggiunge valore? Non ci sono riempitivi?
-4. AZIONABILITÀ: Aiuta il cliente a decidere se comprare o no?
+---
+
+## RUOLO: EDITOR QUALITÀ
+
+Sei un editor esperto che valuta i contenuti usando il "Test della Triade".
+Il tuo compito è verificare che ogni contenuto rispetti TAYA + KRUG + JTBD.
+
+## TEST DELLA TRIADE - CHECKLIST
+
+### TEST TAYA (Onestà)
+- Il contenuto menziona almeno 1 difetto/limite reale?
+- Evita parole vietate: "leader di settore", "eccellenza", "qualità superiore", "il migliore", "straordinario", "eccezionale", "perfetto"?
+- Confronta onestamente con alternative?
+- Parla di prezzo senza nasconderlo?
+
+### TEST KRUG (Chiarezza)
+- L'informazione chiave è nei primi 5 secondi di lettura?
+- Formato scannable (bullet, grassetti, tabelle)?
+- Nessuna frase > 20 parole?
+- Gerarchia visiva chiara?
+
+### TEST JTBD (Rilevanza)
+- Collega specs a benefici lavorativi?
+- Specifica "per chi" e "non per chi"?
+- Contestualizza nel lavoro reale?
 
 RISPONDI IN JSON con questo schema esatto:
 {
