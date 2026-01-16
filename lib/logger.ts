@@ -94,12 +94,22 @@ export function createLogger(service: string) {
   };
   
   return {
-    debug: (message: string, data?: Record<string, unknown>) => log('debug', message, data),
-    info: (message: string, data?: Record<string, unknown>) => log('info', message, data),
-    warn: (message: string, data?: Record<string, unknown>) => log('warn', message, data),
-    error: (message: string, error?: Error | unknown, data?: Record<string, unknown>) => {
+    debug: (message: string, data?: Record<string, unknown> | unknown) => {
+      const safeData = data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : data ? { value: data } : undefined;
+      log('debug', message, safeData);
+    },
+    info: (message: string, data?: Record<string, unknown> | unknown) => {
+      const safeData = data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : data ? { value: data } : undefined;
+      log('info', message, safeData);
+    },
+    warn: (message: string, data?: Record<string, unknown> | unknown) => {
+      const safeData = data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : data ? { value: data } : undefined;
+      log('warn', message, safeData);
+    },
+    error: (message: string, error?: Error | unknown, data?: Record<string, unknown> | unknown) => {
       const err = error instanceof Error ? error : error ? new Error(String(error)) : undefined;
-      log('error', message, data, err);
+      const safeData = data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : data ? { value: data } : undefined;
+      log('error', message, safeData, err);
     },
   };
 }
