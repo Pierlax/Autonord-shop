@@ -6,6 +6,7 @@ import { getPostBySlug, getRelatedPosts, getAllPosts } from '@/lib/blog/posts';
 import { BlogCard } from '@/components/blog/blog-card';
 import { BlogCoverImage } from '@/components/blog/blog-cover-image';
 import { ChevronRight, Calendar, Clock, User, Share2, Facebook, Twitter, Linkedin, ArrowLeft } from 'lucide-react';
+import { TLDRBox } from '@/components/blog/tldr-box';
 
 interface BlogPostPageProps {
   params: { slug: string };
@@ -242,6 +243,9 @@ export default function BlogPostPage({ params }: BlogPostPageProps) {
         <div className="grid lg:grid-cols-4 gap-12">
           {/* Main Content */}
           <article className="lg:col-span-3">
+            {/* GAP 8: TL;DR Box at top of article */}
+            <TLDRBox content={post.content} />
+            
             <div className="prose prose-invert prose-lg max-w-none">
               {renderContent(post.content)}
               

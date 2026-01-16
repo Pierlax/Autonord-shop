@@ -10,6 +10,12 @@ import { FAQAccordion } from '@/components/product/faq-accordion';
 import { ExpertReview } from '@/components/product/expert-review';
 import { RelatedArticles } from '@/components/product/related-articles';
 import { VideoGallery } from '@/components/product/video-gallery';
+import { QuickSummary } from '@/components/product/quick-summary';
+import { JTBDDimensions } from '@/components/product/jtbd-dimensions';
+import { FourForces } from '@/components/product/four-forces';
+import { CustomerQuestion } from '@/components/product/customer-question';
+import { JobStory } from '@/components/product/job-story';
+import { CurrentSolution } from '@/components/product/current-solution';
 import { toTitleCase, getBrandName } from '@/lib/utils';
 
 type Props = {
@@ -198,6 +204,13 @@ export default async function ProductPage({ params }: Props) {
               {productTitleFormatted}
             </h1>
             
+            {/* GAP 6: Quick Summary - TAYA Style */}
+            <QuickSummary 
+              product={product} 
+              enrichedData={enrichedData}
+              formattedPrice={formattedPrice}
+            />
+            
             {/* SKU and Stock Status */}
             <div className="flex flex-col gap-3 mb-6">
               <div className="flex items-center gap-4 text-sm text-muted-foreground font-mono">
@@ -257,19 +270,37 @@ export default async function ProductPage({ params }: Props) {
               </div>
             </div>
 
-            {/* Description */}
+            {/* Description - Collapsible for better UX (GAP 5) */}
             {product.descriptionHtml && (
-              <div className="prose prose-sm max-w-none text-muted-foreground">
-                <h3 className="text-foreground font-bold text-lg mb-3">Descrizione</h3>
-                <div 
-                  dangerouslySetInnerHTML={{ __html: product.descriptionHtml }} 
-                  className="[&>p]:mb-3 [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:mb-3"
-                />
-              </div>
+              <details className="group mb-6">
+                <summary className="flex items-center justify-between cursor-pointer list-none">
+                  <h3 className="text-foreground font-bold text-lg">Descrizione Tecnica</h3>
+                  <span className="text-sm text-muted-foreground group-open:hidden">Espandi ▼</span>
+                  <span className="text-sm text-muted-foreground hidden group-open:inline">Riduci ▲</span>
+                </summary>
+                <div className="prose prose-sm max-w-none text-muted-foreground mt-3">
+                  <div 
+                    dangerouslySetInnerHTML={{ __html: product.descriptionHtml }} 
+                    className="[&>p]:mb-3 [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:mb-3"
+                  />
+                </div>
+              </details>
             )}
 
             {/* Expert Review - TAYA Style Honest Pro/Contro */}
             <ExpertReview product={product} enrichedData={enrichedData} />
+            
+            {/* GAP 9: JTBD Dimensions - Functional, Emotional, Social */}
+            <JTBDDimensions product={product} />
+            
+            {/* GAP 10: Four Forces of Progress */}
+            <FourForces product={product} />
+            
+            {/* GAP 11: Job Stories */}
+            <JobStory product={product} />
+            
+            {/* GAP 12: What are you using now? */}
+            <CurrentSolution product={product} />
 
             {/* Related Articles Section */}
             <RelatedArticles 
@@ -291,6 +322,12 @@ export default async function ProductPage({ params }: Props) {
                 brandName={brandName}
               />
             )}
+            
+            {/* GAP 15: Voice of Customer - Question Form */}
+            <CustomerQuestion 
+              productTitle={productTitleFormatted}
+              productHandle={params.handle}
+            />
           </div>
         </div>
       </div>

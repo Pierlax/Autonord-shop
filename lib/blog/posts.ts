@@ -1,4 +1,6 @@
 import { BlogPost } from './types';
+import { bestOfPosts } from './best-of-posts';
+import { problemsPosts } from './problems-posts';
 
 export const blogPosts: BlogPost[] = [
   {
@@ -1036,11 +1038,16 @@ La strategia migliore per molti professionisti è un **sistema ibrido**: LXT per
 ];
 
 export function getPostBySlug(slug: string): BlogPost | undefined {
-  return blogPosts.find(post => post.slug === slug);
+  // Search in all post collections
+  return blogPosts.find(post => post.slug === slug) || 
+         bestOfPosts.find(post => post.slug === slug) ||
+         problemsPosts.find(post => post.slug === slug);
 }
 
 export function getAllPosts(): BlogPost[] {
-  return blogPosts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  // Combine regular posts with best-of posts and problems posts
+  const allPosts = [...blogPosts, ...bestOfPosts, ...problemsPosts];
+  return allPosts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
 export function getPostsByCategory(category: string): BlogPost[] {
@@ -1048,7 +1055,8 @@ export function getPostsByCategory(category: string): BlogPost[] {
 }
 
 export function getFeaturedPosts(): BlogPost[] {
-  return blogPosts.filter(post => post.featured);
+  const allPosts = [...blogPosts, ...bestOfPosts, ...problemsPosts];
+  return allPosts.filter(post => post.featured);
 }
 
 export function getRelatedPosts(currentSlug: string, limit: number = 3): BlogPost[] {
