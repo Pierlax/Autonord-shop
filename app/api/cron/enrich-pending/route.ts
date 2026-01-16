@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { loggers } from '@/lib/logger';
 import { queueProductEnrichment, EnrichmentJob } from '@/lib/queue';
 
-const log = loggers.cron;
+const log = loggers.api;
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
