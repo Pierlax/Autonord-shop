@@ -394,3 +394,11 @@ Based on Sirio website analysis, implement the following improvements:
 - [x] Modify universal-rag.ts to load benchmarks as mandatory context
 - [x] Fix sentiment.ts with multi-strategy fallback (SerpAPI → Exa → Google → DuckDuckGo)
 - [x] Update query-expander.ts with TAYA shadow queries for problems
+
+## Code Cleanup (January 2026)
+
+- [x] Remove test-shopify.js from root (unused test file)
+- [x] Remove ai-enrichment-v2.ts (superseded by v3)
+- [x] Update ai-enrichment-v3.ts re-exports (remove v2 reference)
+- [ ] Consider replacing console.log with logger in production files
+- [ ] Consider migrating route.ts from ai-enrichment.ts to ai-enrichment-v3.ts

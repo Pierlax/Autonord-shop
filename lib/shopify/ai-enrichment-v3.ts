@@ -720,6 +720,5 @@ export function formatDescriptionAsHtmlV3(data: EnrichedProductDataV3): string {
 // EXPORTS
 // =============================================================================
 
-// Re-export V2 functions for backward compatibility
-export { generateProductContentV2, formatDescriptionAsHtmlV2 } from './ai-enrichment-v2';
+// Re-export V1 functions for backward compatibility (used by route.ts)
 export { generateProductContent, formatDescriptionAsHtml } from './ai-enrichment';
