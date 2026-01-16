@@ -1,15 +1,15 @@
 /**
- * Benchmark Loader Module
+ * Benchmark Loader Module (Next.js Compatible)
  * 
  * Loads and provides access to competitor benchmarks as the "Ancora di Verità"
  * for TAYA-compliant content generation.
  * 
- * This module ensures that every RAG query has access to verified competitor data
- * before searching external sources.
+ * NOTE: This module uses static import instead of fs.readFileSync
+ * to be compatible with Next.js client-side bundling.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+// Static import of benchmark data (Next.js compatible)
+import benchmarkData from '../../data/competitor-benchmarks.json';
 
 // =============================================================================
 // TYPES
@@ -92,43 +92,14 @@ export interface BenchmarkData {
 }
 
 // =============================================================================
-// LOADER
+// LOADER (Static Import - Next.js Compatible)
 // =============================================================================
 
-const BENCHMARK_FILE_PATH = path.join(process.cwd(), 'data', 'competitor-benchmarks.json');
-
-let cachedBenchmarks: BenchmarkData | null = null;
-let cacheTimestamp: number = 0;
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
 /**
- * Load benchmark data from file (with caching)
+ * Load benchmark data (static import, always available)
  */
-export function loadBenchmarks(): BenchmarkData | null {
-  const now = Date.now();
-  
-  // Return cached data if still valid
-  if (cachedBenchmarks && (now - cacheTimestamp) < CACHE_TTL_MS) {
-    return cachedBenchmarks;
-  }
-  
-  try {
-    if (!fs.existsSync(BENCHMARK_FILE_PATH)) {
-      console.warn('[BenchmarkLoader] Benchmark file not found:', BENCHMARK_FILE_PATH);
-      return null;
-    }
-    
-    const data = fs.readFileSync(BENCHMARK_FILE_PATH, 'utf-8');
-    cachedBenchmarks = JSON.parse(data) as BenchmarkData;
-    cacheTimestamp = now;
-    
-    console.log('[BenchmarkLoader] Loaded benchmarks, version:', cachedBenchmarks.version);
-    return cachedBenchmarks;
-    
-  } catch (error) {
-    console.error('[BenchmarkLoader] Error loading benchmarks:', error);
-    return null;
-  }
+export function loadBenchmarks(): BenchmarkData {
+  return benchmarkData as BenchmarkData;
 }
 
 /**
@@ -144,15 +115,6 @@ export function getBenchmarkContext(
   comparisonMatrix: Record<string, string> | null;
 } {
   const benchmarks = loadBenchmarks();
-  
-  if (!benchmarks) {
-    return {
-      brandProfile: null,
-      categoryData: null,
-      competitors: [],
-      comparisonMatrix: null,
-    };
-  }
   
   // Find brand profile
   const brandProfile = benchmarks.brand_profiles[vendor] || null;
@@ -324,11 +286,10 @@ function normalizeCategory(category: string): string {
 }
 
 /**
- * Check if benchmarks are available and fresh
+ * Check if benchmarks are available
  */
 export function isBenchmarkDataAvailable(): boolean {
-  const benchmarks = loadBenchmarks();
-  return benchmarks !== null;
+  return benchmarkData !== null && benchmarkData !== undefined;
 }
 
 /**
@@ -336,7 +297,6 @@ export function isBenchmarkDataAvailable(): boolean {
  */
 export function getAvailableCategories(): string[] {
   const benchmarks = loadBenchmarks();
-  if (!benchmarks) return [];
   return Object.keys(benchmarks.categories);
 }
 
@@ -345,6 +305,5 @@ export function getAvailableCategories(): string[] {
  */
 export function getAvailableBrands(): string[] {
   const benchmarks = loadBenchmarks();
-  if (!benchmarks) return [];
   return Object.keys(benchmarks.brand_profiles);
 }
