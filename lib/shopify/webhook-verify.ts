@@ -4,6 +4,9 @@
  */
 
 import crypto from 'crypto';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.shopify;
 
 /**
  * Verify Shopify webhook HMAC signature
@@ -15,12 +18,12 @@ export function verifyShopifyWebhook(
   const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
 
   if (!secret) {
-    console.error('[Webhook] Missing SHOPIFY_WEBHOOK_SECRET environment variable');
+    log.error('[Webhook] Missing SHOPIFY_WEBHOOK_SECRET environment variable');
     return false;
   }
 
   if (!hmacHeader) {
-    console.error('[Webhook] Missing X-Shopify-Hmac-SHA256 header');
+    log.error('[Webhook] Missing X-Shopify-Hmac-SHA256 header');
     return false;
   }
 
@@ -35,7 +38,7 @@ export function verifyShopifyWebhook(
   );
 
   if (!isValid) {
-    console.error('[Webhook] HMAC verification failed');
+    log.error('[Webhook] HMAC verification failed');
   }
 
   return isValid;
@@ -46,7 +49,7 @@ export function verifyShopifyWebhook(
  */
 export function getShopDomain(shopDomainHeader: string | null): string | null {
   if (!shopDomainHeader) {
-    console.error('[Webhook] Missing X-Shopify-Shop-Domain header');
+    log.error('[Webhook] Missing X-Shopify-Shop-Domain header');
     return null;
   }
   return shopDomainHeader;
@@ -57,7 +60,7 @@ export function getShopDomain(shopDomainHeader: string | null): string | null {
  */
 export function getWebhookTopic(topicHeader: string | null): string | null {
   if (!topicHeader) {
-    console.error('[Webhook] Missing X-Shopify-Topic header');
+    log.error('[Webhook] Missing X-Shopify-Topic header');
     return null;
   }
   return topicHeader;

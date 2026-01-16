@@ -10,6 +10,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.shopify;
 
 // Source types available for power tool products
 export type SourceType = 
@@ -209,7 +212,7 @@ Rispondi SOLO con JSON valido:
       skipRetrieval: parsed.skipRetrieval || false,
     };
   } catch (error) {
-    console.error('[SourceRouter] LLM routing failed, falling back to rules:', error);
+    log.error('[SourceRouter] LLM routing failed, falling back to rules:', error);
     return ruleBasedRoute(query);
   }
 }

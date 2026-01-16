@@ -13,6 +13,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.shopify;
 
 export type RetrievalNeed = 
   | 'required'           // Must retrieve external data
@@ -221,7 +224,7 @@ Rispondi SOLO con JSON:
       estimatedCostSavings,
     };
   } catch (error) {
-    console.error('[NoRetrievalDetector] LLM detection failed:', error);
+    log.error('[NoRetrievalDetector] LLM detection failed:', error);
     return detectRetrievalNeedRules(query);
   }
 }
@@ -272,7 +275,7 @@ Basati su conoscenze consolidate, evita speculazioni su prodotti specifici.`,
       confidence: knowledgeType === 'domain_knowledge' ? 0.85 : 0.7,
     };
   } catch (error) {
-    console.error('[NoRetrievalDetector] Parametric generation failed:', error);
+    log.error('[NoRetrievalDetector] Parametric generation failed:', error);
     return {
       response: 'Non sono in grado di rispondere a questa domanda senza consultare fonti esterne.',
       confidence: 0,

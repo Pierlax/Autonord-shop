@@ -9,6 +9,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.taya;
 import {
   ContentGap,
   EditorialPlan,
@@ -270,7 +273,7 @@ Suggerisci 2-3 articoli TAYA che mancano e sarebbero utili ai clienti.`;
     }));
 
   } catch (error) {
-    console.error('Error getting AI suggestions:', error);
+    log.error('Error getting AI suggestions:', error);
     return [];
   }
 }

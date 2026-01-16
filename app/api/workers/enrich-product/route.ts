@@ -9,7 +9,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { generateProductContent, formatDescriptionAsHtml } from '@/lib/shopify/ai-enrichment';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.enrichment;
+import { generateProductContentV3, formatDescriptionAsHtmlV3 } from '@/lib/shopify/ai-enrichment-v3';
 import { 
   updateProductWithEnrichedContent, 
   addProductImages,
@@ -67,7 +70,7 @@ async function handler(request: NextRequest) {
     
     // Create minimal product payload for AI generation
     // We only need title, vendor, product_type, and first variant's sku/price
-    const enrichedData = await generateProductContent({
+    const enrichedData = await generateProductContentV3({
       id: parseInt(job.productId),
       title: job.title,
       vendor: job.vendor,
@@ -127,7 +130,7 @@ async function handler(request: NextRequest) {
     });
     
     // Step 4: Format as HTML
-    const formattedHtml = formatDescriptionAsHtml(enrichedData);
+    const formattedHtml = formatDescriptionAsHtmlV3(enrichedData);
 
     // Step 5: Update Shopify product with content
     logger.logStep('shopify_update');
@@ -215,7 +218,7 @@ export async function POST(request: NextRequest) {
   
   if (!hasQStashConfig) {
     // In development or when QStash is not configured, skip verification
-    console.warn('[Worker] QStash signature verification skipped - QSTASH_CURRENT_SIGNING_KEY not set');
+    log.warn('QStash signature verification skipped - QSTASH_CURRENT_SIGNING_KEY not set');
     return handler(request);
   }
   

@@ -420,7 +420,7 @@ export class UniversalRAGPipeline {
     state.debugLog.push(`[${timestamp}] ${message}`);
     
     if (this.config.debugMode) {
-      console.log(`[UniversalRAG] ${message}`);
+      log.info(`[UniversalRAG] ${message}`);
     }
   }
   

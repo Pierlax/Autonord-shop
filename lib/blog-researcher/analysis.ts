@@ -9,6 +9,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.blog;
 import { SearchResult } from './search';
 
 // Lazy initialization of Anthropic client
@@ -126,7 +129,7 @@ Rispondi SOLO con JSON valido:
  * Analyze search results to identify the best topic for an article
  */
 export async function analyzeTopics(results: SearchResult[]): Promise<AnalysisResult> {
-  console.log(`[Analysis] Analyzing ${results.length} search results with Claude...`);
+  log.info(`[Analysis] Analyzing ${results.length} search results with Claude...`);
   
   // Prepare posts summary for Claude - include more context
   const postsSummary = results.slice(0, 60).map((r, i) => {
@@ -166,14 +169,14 @@ ${r.content ? `> ${r.content.slice(0, 400)}${r.content.length > 400 ? '...' : ''
 
     const analysis = JSON.parse(cleanedContent) as AnalysisResult;
     
-    console.log(`[Analysis] Selected topic: ${analysis.selectedTopic.topic}`);
-    console.log(`[Analysis] TAYA category: ${analysis.selectedTopic.tayaCategory}`);
-    console.log(`[Analysis] Target audience: ${analysis.selectedTopic.targetAudience}`);
-    console.log(`[Analysis] Search intent: ${analysis.selectedTopic.searchIntent}`);
+    log.info(`[Analysis] Selected topic: ${analysis.selectedTopic.topic}`);
+    log.info(`[Analysis] TAYA category: ${analysis.selectedTopic.tayaCategory}`);
+    log.info(`[Analysis] Target audience: ${analysis.selectedTopic.targetAudience}`);
+    log.info(`[Analysis] Search intent: ${analysis.selectedTopic.searchIntent}`);
     
     return analysis;
   } catch (error) {
-    console.error('[Analysis] Error analyzing topics:', error);
+    log.error('[Analysis] Error analyzing topics:', error);
     
     // Return fallback analysis with more detail
     return {

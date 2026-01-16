@@ -12,6 +12,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.shopify;
 
 // ============================================================================
 // Types
@@ -169,7 +172,7 @@ Rispondi in formato JSON:
     if (!jsonMatch) throw new Error('No JSON found');
     parsed = JSON.parse(jsonMatch[0]);
   } catch {
-    console.error('Failed to parse Simple QA response:', content.text);
+    log.error('Failed to parse Simple QA response:', content.text);
     parsed = { facts: [] };
   }
 
@@ -305,7 +308,7 @@ Rispondi in formato JSON:
       ...raw.recommendation,
     };
   } catch {
-    console.error('Failed to parse Complex QA response:', content.text);
+    log.error('Failed to parse Complex QA response:', content.text);
     // Return defaults
     return {
       suitability: {
@@ -364,17 +367,17 @@ export async function runTwoPhaseQA(
 ): Promise<TwoPhaseQAResult> {
   const totalStartTime = Date.now();
 
-  console.log(`[TwoPhaseQA] Starting for ${productData.sku}`);
+  log.info(`[TwoPhaseQA] Starting for ${productData.sku}`);
 
   // Phase 1: Simple QA - Extract atomic facts
-  console.log(`[TwoPhaseQA] Phase 1: Extracting atomic facts...`);
+  log.info(`[TwoPhaseQA] Phase 1: Extracting atomic facts...`);
   const simpleQA = await extractAtomicFacts(productData, anthropic);
-  console.log(`[TwoPhaseQA] Phase 1 complete: ${simpleQA.rawFacts.filter(f => f.verified).length} verified facts`);
+  log.info(`[TwoPhaseQA] Phase 1 complete: ${simpleQA.rawFacts.filter(f => f.verified).length} verified facts`);
 
   // Phase 2: Complex QA - Relational reasoning
-  console.log(`[TwoPhaseQA] Phase 2: Performing complex reasoning...`);
+  log.info(`[TwoPhaseQA] Phase 2: Performing complex reasoning...`);
   const complexQA = await performComplexReasoning(productData, simpleQA, anthropic);
-  console.log(`[TwoPhaseQA] Phase 2 complete: confidence=${complexQA.recommendation.confidence}`);
+  log.info(`[TwoPhaseQA] Phase 2 complete: confidence=${complexQA.recommendation.confidence}`);
 
   return {
     simpleQA,

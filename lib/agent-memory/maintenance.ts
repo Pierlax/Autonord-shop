@@ -73,7 +73,7 @@ export function cleanupExpiredMemories(): {
     const success = deleteMemory(memory.id);
     if (success) {
       deletedIds.push(memory.id);
-      console.log(`[AgeMem-Maintenance] Deleted expired memory: ${memory.id} - "${memory.title}"`);
+      log.info(`[AgeMem-Maintenance] Deleted expired memory: ${memory.id} - "${memory.title}"`);
     }
   }
   
@@ -113,7 +113,7 @@ export function cleanupLowQualityMemories(options: {
         const success = deleteMemory(memory.id);
         if (success) {
           deletedIds.push(memory.id);
-          console.log(`[AgeMem-Maintenance] Deleted low-quality memory: ${memory.id} (quality: ${quality.overall.toFixed(2)})`);
+          log.info(`[AgeMem-Maintenance] Deleted low-quality memory: ${memory.id} (quality: ${quality.overall.toFixed(2)})`);
         }
       }
     }
@@ -297,7 +297,7 @@ export function executeConsolidation(candidate: ConsolidationCandidate): {
       }
     }
     
-    console.log(`[AgeMem-Maintenance] Consolidated ${candidate.memories.length} memories into ${toKeep.id}`);
+    log.info(`[AgeMem-Maintenance] Consolidated ${candidate.memories.length} memories into ${toKeep.id}`);
     
     return {
       success: true,
@@ -333,7 +333,7 @@ export function runFullMaintenance(options: {
 } = {}): MaintenanceReport {
   const { autoConsolidate = false, dryRun = false } = options;
   
-  console.log('[AgeMem-Maintenance] Starting full maintenance run...');
+  log.info('[AgeMem-Maintenance] Starting full maintenance run...');
   
   const report: MaintenanceReport = {
     timestamp: Date.now(),
@@ -420,7 +420,7 @@ export function runFullMaintenance(options: {
     }
   }
   
-  console.log(`[AgeMem-Maintenance] Maintenance complete. Deleted: ${report.summary.deleted}, Consolidated: ${report.summary.consolidated}, Archived: ${report.summary.archived}`);
+  log.info(`[AgeMem-Maintenance] Maintenance complete. Deleted: ${report.summary.deleted}, Consolidated: ${report.summary.consolidated}, Archived: ${report.summary.archived}`);
   
   return report;
 }

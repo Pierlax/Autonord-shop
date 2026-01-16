@@ -9,7 +9,8 @@ export function NewsletterSection() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Newsletter signup:', email);
+    // In production, send email to backend API
+    // await fetch('/api/newsletter', { method: 'POST', body: JSON.stringify({ email }) });
     setSubmitted(true);
   };
 

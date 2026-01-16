@@ -4,6 +4,9 @@
  */
 
 import { EnrichedProductData } from './webhook-types';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.shopify;
 
 const SHOPIFY_ADMIN_API_VERSION = '2024-01';
 
@@ -75,7 +78,7 @@ export async function updateProductWithEnrichedContent(
     },
   });
 
-  console.log(`[Enrichment] Updated product ${productId} body_html and tags`);
+  log.info(`[Enrichment] Updated product ${productId} body_html and tags`);
 
   // Step 2: Create/Update metafields for structured data
   await createOrUpdateMetafield(productId, 'custom', 'pros', JSON.stringify(enrichedData.pros));
@@ -83,7 +86,7 @@ export async function updateProductWithEnrichedContent(
   await createOrUpdateMetafield(productId, 'custom', 'faqs', JSON.stringify(enrichedData.faqs));
   await createOrUpdateMetafield(productId, 'custom', 'ai_description', enrichedData.description);
 
-  console.log(`[Enrichment] Created metafields for product ${productId}`);
+  log.info(`[Enrichment] Created metafields for product ${productId}`);
 }
 
 /**
@@ -165,7 +168,7 @@ export async function addProductImage(
   altText?: string,
   position: number = 1
 ): Promise<{ id: number; src: string }> {
-  console.log(`[ImageUpload] Adding image to product ${productId}: ${imageUrl}`);
+  log.info(`[ImageUpload] Adding image to product ${productId}: ${imageUrl}`);
 
   const response = await shopifyAdminRequest<{ image: { id: number; src: string } }>(
     `/products/${productId}/images.json`,
@@ -179,7 +182,7 @@ export async function addProductImage(
     }
   );
 
-  console.log(`[ImageUpload] Successfully added image ${response.image.id} to product ${productId}`);
+  log.info(`[ImageUpload] Successfully added image ${response.image.id} to product ${productId}`);
   return response.image;
 }
 
@@ -208,7 +211,7 @@ export async function addProductImages(
         await new Promise(resolve => setTimeout(resolve, 500));
       }
     } catch (error) {
-      console.error(`[ImageUpload] Failed to add image ${i + 1}:`, error);
+      log.error(`[ImageUpload] Failed to add image ${i + 1}:`, error);
     }
   }
 
@@ -227,9 +230,9 @@ export async function deleteAllProductImages(productId: number): Promise<void> {
         `/products/${productId}/images/${image.id}.json`,
         'DELETE'
       );
-      console.log(`[ImageUpload] Deleted image ${image.id} from product ${productId}`);
+      log.info(`[ImageUpload] Deleted image ${image.id} from product ${productId}`);
     } catch (error) {
-      console.error(`[ImageUpload] Failed to delete image ${image.id}:`, error);
+      log.error(`[ImageUpload] Failed to delete image ${image.id}:`, error);
     }
   }
 }

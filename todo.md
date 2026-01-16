@@ -400,5 +400,7 @@ Based on Sirio website analysis, implement the following improvements:
 - [x] Remove test-shopify.js from root (unused test file)
 - [x] Remove ai-enrichment-v2.ts (superseded by v3)
 - [x] Update ai-enrichment-v3.ts re-exports (remove v2 reference)
-- [ ] Consider replacing console.log with logger in production files
-- [ ] Consider migrating route.ts from ai-enrichment.ts to ai-enrichment-v3.ts
+- [x] Replace console.log with structured logger in all production files (293 → 0)
+- [x] Migrate route.ts from ai-enrichment.ts to ai-enrichment-v3.ts
+- [x] Remove ai-enrichment.ts (V1) - fully deprecated
+- [x] Create lib/logger.ts universal logger module

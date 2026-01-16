@@ -158,17 +158,17 @@ class MetricsStore {
 
   recordGeneration(metrics: ContentGenerationMetrics): void {
     this.generationMetrics.push(metrics);
-    console.log(`[BusinessMetrics] Recorded generation for ${metrics.productName}`);
+    log.info(`[BusinessMetrics] Recorded generation for ${metrics.productName}`);
   }
 
   recordError(metrics: ErrorMetrics): void {
     this.errorMetrics.push(metrics);
-    console.log(`[BusinessMetrics] Recorded ${metrics.errorType} error for ${metrics.productId}`);
+    log.info(`[BusinessMetrics] Recorded ${metrics.errorType} error for ${metrics.productId}`);
   }
 
   recordFeedback(metrics: UserFeedbackMetrics): void {
     this.feedbackMetrics.push(metrics);
-    console.log(`[BusinessMetrics] Recorded ${metrics.feedbackType} feedback for ${metrics.productId}`);
+    log.info(`[BusinessMetrics] Recorded ${metrics.feedbackType} feedback for ${metrics.productId}`);
   }
 
   // ============================================================================

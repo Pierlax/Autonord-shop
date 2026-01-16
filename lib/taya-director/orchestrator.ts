@@ -9,6 +9,9 @@
  */
 
 import { Client } from '@upstash/qstash';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.taya;
 import {
   DirectorDecision,
   DirectorAction,
@@ -83,7 +86,7 @@ export async function queueProductReEnrichment(
     decision.status = 'queued';
     decision.qstashMessageId = result.messageId;
 
-    console.log(`✅ Queued re-enrichment for ${evaluation.productHandle} (score: ${evaluation.score.overall})`);
+    log.info(`✅ Queued re-enrichment for ${evaluation.productHandle} (score: ${evaluation.score.overall})`);
 
   } catch (error) {
     decision.status = 'failed';
@@ -93,7 +96,7 @@ export async function queueProductReEnrichment(
       message: `Failed to queue re-enrichment: ${error}`,
       context: { productId: evaluation.productId },
     });
-    console.error(`❌ Failed to queue re-enrichment for ${evaluation.productHandle}:`, error);
+    log.error(`❌ Failed to queue re-enrichment for ${evaluation.productHandle}:`, error);
   }
 
   session.decisions.push(decision);
@@ -140,7 +143,7 @@ export async function queueArticleCommission(
     decision.status = 'queued';
     decision.qstashMessageId = result.messageId;
 
-    console.log(`✅ Commissioned article: "${gap.suggestedArticleTitle}"`);
+    log.info(`✅ Commissioned article: "${gap.suggestedArticleTitle}"`);
 
   } catch (error) {
     decision.status = 'failed';
@@ -150,7 +153,7 @@ export async function queueArticleCommission(
       message: `Failed to commission article: ${error}`,
       context: { gap },
     });
-    console.error(`❌ Failed to commission article:`, error);
+    log.error(`❌ Failed to commission article:`, error);
   }
 
   session.decisions.push(decision);
@@ -215,7 +218,7 @@ export async function queueBulkEnrichment(
     session.decisions.push(decision);
   }
 
-  console.log(`✅ Queued ${decisions.filter(d => d.status === 'queued').length}/${toProcess.length} products for enrichment`);
+  log.info(`✅ Queued ${decisions.filter(d => d.status === 'queued').length}/${toProcess.length} products for enrichment`);
 
   return decisions;
 }
@@ -229,14 +232,14 @@ export async function executeOrchestration(
   session: DirectorSession,
   rateLimits: RateLimits = DEFAULT_RATE_LIMITS
 ): Promise<void> {
-  console.log('\n🎭 TAYA Director - Orchestration Phase');
-  console.log('═'.repeat(50));
+  log.info('\n🎭 TAYA Director - Orchestration Phase');
+  log.info('═'.repeat(50));
 
   // 1. Queue re-enrichment for failed products (up to daily limit)
   const productsToReEnrich = failedEvaluations.slice(0, rateLimits.maxProductReEnrichmentsPerDay);
   
   if (productsToReEnrich.length > 0) {
-    console.log(`\n📦 Re-enriching ${productsToReEnrich.length} products with low quality scores...`);
+    log.info(`\n📦 Re-enriching ${productsToReEnrich.length} products with low quality scores...`);
     
     for (const evaluation of productsToReEnrich) {
       await queueProductReEnrichment(evaluation, session);
@@ -249,7 +252,7 @@ export async function executeOrchestration(
   if (editorialPlan.nextArticleToWrite && 
       (editorialPlan.nextArticleToWrite.priority === 'critical' || 
        editorialPlan.nextArticleToWrite.priority === 'high')) {
-    console.log(`\n✍️ Commissioning article: "${editorialPlan.nextArticleToWrite.suggestedArticleTitle}"`);
+    log.info(`\n✍️ Commissioning article: "${editorialPlan.nextArticleToWrite.suggestedArticleTitle}"`);
     await queueArticleCommission(editorialPlan.nextArticleToWrite, session);
     session.articlesCommissioned++;
   }
@@ -258,11 +261,11 @@ export async function executeOrchestration(
   const productsToEnrich = editorialPlan.productsNeedingEnrichment.slice(0, 5);
   
   if (productsToEnrich.length > 0) {
-    console.log(`\n🆕 Enriching ${productsToEnrich.length} new products...`);
+    log.info(`\n🆕 Enriching ${productsToEnrich.length} new products...`);
     await queueBulkEnrichment(productsToEnrich, session, 5);
   }
 
-  console.log('\n✅ Orchestration complete');
+  log.info('\n✅ Orchestration complete');
 }
 
 /**

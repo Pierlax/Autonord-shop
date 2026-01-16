@@ -14,6 +14,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.shopify;
 
 // Granularity levels from finest to coarsest
 export type GranularityLevel = 
@@ -195,7 +198,7 @@ Rispondi SOLO con JSON:
       confidence: parsed.confidence,
     };
   } catch (error) {
-    console.error('[GranularityRetrieval] LLM detection failed:', error);
+    log.error('[GranularityRetrieval] LLM detection failed:', error);
     return detectGranularityRules(query);
   }
 }

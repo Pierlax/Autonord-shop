@@ -6,6 +6,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.blog;
 import {
   FORUM_SOURCES,
   ForumSource,
@@ -89,7 +92,7 @@ async function searchReddit(query: string, subreddits: string[]): Promise<ForumP
       });
       
       if (!response.ok) {
-        console.log(`[Sentiment] Reddit search failed for r/${subreddit}: ${response.status}`);
+        log.info(`[Sentiment] Reddit search failed for r/${subreddit}: ${response.status}`);
         continue;
       }
       
@@ -113,7 +116,7 @@ async function searchReddit(query: string, subreddits: string[]): Promise<ForumP
       await new Promise(resolve => setTimeout(resolve, 1000));
       
     } catch (error) {
-      console.error(`[Sentiment] Error searching r/${subreddit}:`, error);
+      log.error(`[Sentiment] Error searching r/${subreddit}:`, error);
     }
   }
   
@@ -160,7 +163,7 @@ async function searchItalianForums(query: string): Promise<ForumPost[]> {
   }
   
   // Strategy 4: Fallback - Direct Google search scraping (limited)
-  console.log('[Sentiment] No API keys available, using fallback Google search');
+  log.info('[Sentiment] No API keys available, using fallback Google search');
   const fallbackResults = await searchWithGoogleFallback(query);
   return fallbackResults;
 }
@@ -180,7 +183,7 @@ async function searchWithSerpApi(query: string, apiKey: string): Promise<ForumPo
       const response = await fetch(url);
       
       if (!response.ok) {
-        console.log(`[Sentiment] SerpAPI search failed: ${response.status}`);
+        log.info(`[Sentiment] SerpAPI search failed: ${response.status}`);
         continue;
       }
       
@@ -200,7 +203,7 @@ async function searchWithSerpApi(query: string, apiKey: string): Promise<ForumPo
       await new Promise(resolve => setTimeout(resolve, 500));
       
     } catch (error) {
-      console.error(`[Sentiment] SerpAPI error for ${forum.name}:`, error);
+      log.error(`[Sentiment] SerpAPI error for ${forum.name}:`, error);
     }
   }
   
@@ -232,7 +235,7 @@ async function searchWithExa(query: string, apiKey: string): Promise<ForumPost[]
     });
     
     if (!response.ok) {
-      console.log(`[Sentiment] Exa.ai search failed: ${response.status}`);
+      log.info(`[Sentiment] Exa.ai search failed: ${response.status}`);
       return posts;
     }
     
@@ -250,7 +253,7 @@ async function searchWithExa(query: string, apiKey: string): Promise<ForumPost[]
     }
     
   } catch (error) {
-    console.error('[Sentiment] Exa.ai error:', error);
+    log.error('[Sentiment] Exa.ai error:', error);
   }
   
   return posts;
@@ -274,7 +277,7 @@ async function searchWithGoogleCustomSearch(
     const response = await fetch(url);
     
     if (!response.ok) {
-      console.log(`[Sentiment] Google Custom Search failed: ${response.status}`);
+      log.info(`[Sentiment] Google Custom Search failed: ${response.status}`);
       return posts;
     }
     
@@ -292,7 +295,7 @@ async function searchWithGoogleCustomSearch(
     }
     
   } catch (error) {
-    console.error('[Sentiment] Google Custom Search error:', error);
+    log.error('[Sentiment] Google Custom Search error:', error);
   }
   
   return posts;
@@ -356,12 +359,12 @@ async function searchWithGoogleFallback(query: string): Promise<ForumPost[]> {
       await new Promise(resolve => setTimeout(resolve, 2000));
       
     } catch (error) {
-      console.error(`[Sentiment] Fallback search error for ${site}:`, error);
+      log.error(`[Sentiment] Fallback search error for ${site}:`, error);
     }
   }
   
   if (posts.length === 0) {
-    console.warn('[Sentiment] WARNING: No Italian forum results found. Consider configuring SERPAPI_API_KEY or EXA_API_KEY for better coverage.');
+    log.warn('[Sentiment] WARNING: No Italian forum results found. Consider configuring SERPAPI_API_KEY or EXA_API_KEY for better coverage.');
   }
   
   return posts;
@@ -471,7 +474,7 @@ Rispondi in formato JSON:
     return JSON.parse(jsonMatch[0]) as SentimentResult;
     
   } catch (error) {
-    console.error('[Sentiment] Claude analysis error:', error);
+    log.error('[Sentiment] Claude analysis error:', error);
     
     // Return empty result on error
     return {
@@ -553,7 +556,7 @@ Rispondi in JSON:
     return result.problems || [];
     
   } catch (error) {
-    console.error('[Sentiment] Problem extraction error:', error);
+    log.error('[Sentiment] Problem extraction error:', error);
     return [];
   }
 }
@@ -574,7 +577,7 @@ export async function researchProductSentiment(
 ): Promise<ForumResearchResult> {
   const { includeItalian = true, maxPosts = 100 } = options;
   
-  console.log(`[Sentiment] Starting research for: ${productName}`);
+  log.info(`[Sentiment] Starting research for: ${productName}`);
   
   const allPosts: ForumPost[] = [];
   
@@ -617,7 +620,7 @@ export async function researchProductSentiment(
     new Map(allPosts.map(p => [p.url, p])).values()
   ).slice(0, maxPosts);
   
-  console.log(`[Sentiment] Collected ${uniquePosts.length} unique posts`);
+  log.info(`[Sentiment] Collected ${uniquePosts.length} unique posts`);
   
   // 3. Analyze sentiment with Claude
   const sentiment = await analyzePostsWithClaude(uniquePosts, productName);

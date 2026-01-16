@@ -13,6 +13,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.blog;
 
 // ============================================================================
 // Types
@@ -215,7 +218,7 @@ Rispondi in JSON:
       expansionTime: Date.now() - startTime,
     };
   } catch {
-    console.error('Failed to parse query expansion response');
+    log.error('Failed to parse query expansion response');
     // Fallback to template-based expansion
     return expandQueryWithTemplates(baseQuery, context);
   }
@@ -378,7 +381,7 @@ export async function smartExpandQuery(
       expanded = await expandQueryWithAI(baseQuery, context, anthropic);
       method = 'ai';
     } catch (error) {
-      console.error('AI expansion failed, falling back to templates:', error);
+      log.error('AI expansion failed, falling back to templates:', error);
       expanded = expandQueryWithTemplates(baseQuery, context);
     }
   } else {
@@ -403,10 +406,10 @@ export async function smartExpandQuery(
     // Interleave shadow queries with regular queries
     prioritized = interleaveShadowQueries(prioritized, shadowToAdd);
     
-    console.log(`[QueryExpander] TAYA: Added ${shadowQueriesIncluded} shadow queries for problems/competition`);
+    log.info(`[QueryExpander] TAYA: Added ${shadowQueriesIncluded} shadow queries for problems/competition`);
   }
 
-  console.log(`[QueryExpander] Expanded "${baseQuery}" into ${prioritized.length} variants (method: ${method})`);
+  log.info(`[QueryExpander] Expanded "${baseQuery}" into ${prioritized.length} variants (method: ${method})`);
 
   return {
     queries: prioritized,

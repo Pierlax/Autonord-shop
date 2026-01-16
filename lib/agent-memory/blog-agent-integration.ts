@@ -58,7 +58,7 @@ export interface CompetitorMention {
  * ```
  */
 export function leaveNoteForProductAgent(insight: BlogInsight): MemoryEntry {
-  console.log(`[AgeMem-BlogAgent] Leaving note for Product Agent: "${insight.title}"`);
+  log.info(`[AgeMem-BlogAgent] Leaving note for Product Agent: "${insight.title}"`);
   
   return leaveNoteForAgent('blog_agent', {
     title: insight.title,
@@ -95,7 +95,7 @@ export function reportCompetitorToAvoid(mention: CompetitorMention): MemoryEntry
     ? 'Menzionare con cautela'
     : 'OK da menzionare';
   
-  console.log(`[AgeMem-BlogAgent] Reporting competitor: ${mention.competitorName} (${actionText})`);
+  log.info(`[AgeMem-BlogAgent] Reporting competitor: ${mention.competitorName} (${actionText})`);
   
   return addMemory({
     type: 'business_rule',
@@ -128,7 +128,7 @@ export function shareBrandInsight(insight: {
     avoid: 'Da evitare'
   };
   
-  console.log(`[AgeMem-BlogAgent] Sharing brand insight: ${insight.brand} - ${typeLabels[insight.insightType]}`);
+  log.info(`[AgeMem-BlogAgent] Sharing brand insight: ${insight.brand} - ${typeLabels[insight.insightType]}`);
   
   return addMemory({
     type: 'brand_note',
@@ -161,7 +161,7 @@ export function shareCategoryGuideline(guideline: {
     selling_points: 'Punti di forza'
   };
   
-  console.log(`[AgeMem-BlogAgent] Sharing category guideline: ${guideline.category} - ${typeLabels[guideline.guidelineType]}`);
+  log.info(`[AgeMem-BlogAgent] Sharing category guideline: ${guideline.category} - ${typeLabels[guideline.guidelineType]}`);
   
   return addMemory({
     type: 'content_guideline',
@@ -194,7 +194,7 @@ export function shareProductInsight(insight: {
     highlight: 'Da evidenziare'
   };
   
-  console.log(`[AgeMem-BlogAgent] Sharing product insight: ${insight.productTitle} - ${typeLabels[insight.insightType]}`);
+  log.info(`[AgeMem-BlogAgent] Sharing product insight: ${insight.productTitle} - ${typeLabels[insight.insightType]}`);
   
   return addMemory({
     type: 'product_insight',

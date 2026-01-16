@@ -4,6 +4,9 @@
  */
 
 import { ArticleDraft } from './drafting';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.blog;
 
 interface NotificationResult {
   success: boolean;
@@ -106,10 +109,10 @@ async function sendSlackNotification(
       throw new Error(`Slack webhook failed: ${response.status}`);
     }
 
-    console.log('[Notification] Slack notification sent successfully');
+    log.info('[Notification] Slack notification sent successfully');
     return { success: true, channel: 'slack', message: 'Notification sent to Slack' };
   } catch (error) {
-    console.error('[Notification] Slack error:', error);
+    log.error('[Notification] Slack error:', error);
     return { 
       success: false, 
       channel: 'slack', 
@@ -192,10 +195,10 @@ async function sendEmailNotification(
       throw new Error(`Resend API failed: ${errorData}`);
     }
 
-    console.log('[Notification] Email notification sent successfully');
+    log.info('[Notification] Email notification sent successfully');
     return { success: true, channel: 'email', message: `Email sent to ${emailTo}` };
   } catch (error) {
-    console.error('[Notification] Email error:', error);
+    log.error('[Notification] Email error:', error);
     return { 
       success: false, 
       channel: 'email', 
@@ -214,7 +217,7 @@ export async function sendNotification(
   const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN || 'your-store.myshopify.com';
   const articleUrl = `https://${shopDomain}/admin/articles/${shopifyArticleId}`;
   
-  console.log(`[Notification] Sending notifications for article: ${article.title}`);
+  log.info(`[Notification] Sending notifications for article: ${article.title}`);
   
   const results: NotificationResult[] = [];
   
@@ -228,7 +231,7 @@ export async function sendNotification(
   
   // Log summary
   const successCount = results.filter(r => r.success).length;
-  console.log(`[Notification] Sent ${successCount}/${results.length} notifications`);
+  log.info(`[Notification] Sent ${successCount}/${results.length} notifications`);
   
   return results;
 }

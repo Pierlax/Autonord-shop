@@ -12,6 +12,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.taya;
 import { runDirector, DEFAULT_CONFIG, DirectorConfig } from '@/lib/taya-director';
 
 // Vercel cron jobs have a 60-second timeout on Hobby plan
@@ -52,11 +55,11 @@ function verifyRequest(request: NextRequest): boolean {
  * GET handler for cron job
  */
 export async function GET(request: NextRequest) {
-  console.log('🎭 TAYA Director cron triggered');
+  log.info('🎭 TAYA Director cron triggered');
 
   // Verify request
   if (!verifyRequest(request)) {
-    console.warn('Unauthorized cron request');
+    log.warn('Unauthorized cron request');
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401 }
@@ -72,7 +75,7 @@ export async function GET(request: NextRequest) {
 
   const missingVars = requiredEnvVars.filter(v => !process.env[v]);
   if (missingVars.length > 0) {
-    console.error(`Missing environment variables: ${missingVars.join(', ')}`);
+    log.error(`Missing environment variables: ${missingVars.join(', ')}`);
     return NextResponse.json(
       { 
         error: 'Configuration error',
@@ -111,7 +114,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('TAYA Director cron error:', error);
+    log.error('TAYA Director cron error:', error);
     
     return NextResponse.json(
       { 
@@ -127,11 +130,11 @@ export async function GET(request: NextRequest) {
  * POST handler for manual/QStash triggers
  */
 export async function POST(request: NextRequest) {
-  console.log('🎭 TAYA Director manually triggered');
+  log.info('🎭 TAYA Director manually triggered');
 
   // Verify request
   if (!verifyRequest(request)) {
-    console.warn('Unauthorized manual trigger');
+    log.warn('Unauthorized manual trigger');
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401 }
@@ -156,7 +159,7 @@ export async function POST(request: NextRequest) {
 
   const missingVars = requiredEnvVars.filter(v => !process.env[v]);
   if (missingVars.length > 0) {
-    console.error(`Missing environment variables: ${missingVars.join(', ')}`);
+    log.error(`Missing environment variables: ${missingVars.join(', ')}`);
     return NextResponse.json(
       { 
         error: 'Configuration error',
@@ -201,7 +204,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('TAYA Director manual trigger error:', error);
+    log.error('TAYA Director manual trigger error:', error);
     
     return NextResponse.json(
       { 

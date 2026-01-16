@@ -6,6 +6,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.shopify;
 import {
   getBrandConfig,
   getBalancedReviewQueries,
@@ -168,7 +171,7 @@ Rispondi in JSON:
     return { specs, source };
     
   } catch (error) {
-    console.error('[ProductResearch] Error extracting manufacturer specs:', error);
+    log.error('[ProductResearch] Error extracting manufacturer specs:', error);
     return {
       specs: [],
       source: {
@@ -265,7 +268,7 @@ Rispondi in JSON:
     return { specs, sources };
     
   } catch (error) {
-    console.error('[ProductResearch] Error extracting retailer specs:', error);
+    log.error('[ProductResearch] Error extracting retailer specs:', error);
     return { specs: [], sources: [] };
   }
 }
@@ -353,7 +356,7 @@ Rispondi in JSON:
     };
     
   } catch (error) {
-    console.error('[ProductResearch] Error analyzing reviews:', error);
+    log.error('[ProductResearch] Error analyzing reviews:', error);
     return {
       positives: [],
       negatives: [],
@@ -430,7 +433,7 @@ Rispondi in JSON:
     }));
     
   } catch (error) {
-    console.error('[ProductResearch] Error finding accessories:', error);
+    log.error('[ProductResearch] Error finding accessories:', error);
     return [];
   }
 }
@@ -448,7 +451,7 @@ export async function researchProduct(
   sku: string,
   model?: string
 ): Promise<ProductResearchResult> {
-  console.log(`[ProductResearch] Starting research for: ${productName}`);
+  log.info(`[ProductResearch] Starting research for: ${productName}`);
   
   const result: ProductResearchResult = {
     productName,
@@ -469,7 +472,7 @@ export async function researchProduct(
   };
   
   // 1. Extract manufacturer specs (highest priority)
-  console.log('[ProductResearch] Extracting manufacturer specs...');
+  log.info('[ProductResearch] Extracting manufacturer specs...');
   const manufacturerData = await extractManufacturerSpecs(
     productName,
     brand,
@@ -479,12 +482,12 @@ export async function researchProduct(
   result.sourcesUsed.push(manufacturerData.source);
   
   // 2. Extract retailer specs for cross-validation
-  console.log('[ProductResearch] Extracting retailer specs...');
+  log.info('[ProductResearch] Extracting retailer specs...');
   const retailerData = await extractRetailerSpecs(productName, sku);
   result.sourcesUsed.push(...retailerData.sources);
   
   // 3. Check for conflicts between sources
-  console.log('[ProductResearch] Checking for data conflicts...');
+  log.info('[ProductResearch] Checking for data conflicts...');
   const specsByField = new Map<string, { source: string; value: string; priority: number }[]>();
   
   for (const spec of [...result.technicalSpecs, ...retailerData.specs]) {
@@ -526,22 +529,22 @@ export async function researchProduct(
   }
   
   // 4. Analyze balanced reviews
-  console.log('[ProductResearch] Analyzing balanced reviews...');
+  log.info('[ProductResearch] Analyzing balanced reviews...');
   const reviewAnalysis = await analyzeBalancedReviews(productName, brand);
   result.realWorldFeedback = reviewAnalysis;
   
   // 5. Find accessory recommendations
-  console.log('[ProductResearch] Finding accessory recommendations...');
+  log.info('[ProductResearch] Finding accessory recommendations...');
   result.accessories = await findAccessoryRecommendations(productName, sku, brand);
   
   // 6. Log summary
-  console.log(`[ProductResearch] Research complete:`);
-  console.log(`  - Specs: ${result.technicalSpecs.length}`);
-  console.log(`  - Conflicts: ${result.conflicts.length}`);
-  console.log(`  - Manual checks needed: ${result.manualCheckRequired.length}`);
-  console.log(`  - Positives: ${result.realWorldFeedback.positives.length}`);
-  console.log(`  - Negatives: ${result.realWorldFeedback.negatives.length}`);
-  console.log(`  - Accessories: ${result.accessories.length}`);
+  log.info(`[ProductResearch] Research complete:`);
+  log.info(`  - Specs: ${result.technicalSpecs.length}`);
+  log.info(`  - Conflicts: ${result.conflicts.length}`);
+  log.info(`  - Manual checks needed: ${result.manualCheckRequired.length}`);
+  log.info(`  - Positives: ${result.realWorldFeedback.positives.length}`);
+  log.info(`  - Negatives: ${result.realWorldFeedback.negatives.length}`);
+  log.info(`  - Accessories: ${result.accessories.length}`);
   
   return result;
 }

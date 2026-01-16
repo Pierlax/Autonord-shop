@@ -106,7 +106,7 @@ export function getProductMemoryContext(product: ProductInfo): ProductMemoryCont
   // 5. Create summary
   const summary = `Found ${businessRules.length} business rules, ${crossAgentNotes.length} agent notes, ${verifiedFacts.length} verified facts`;
   
-  console.log(`[AgeMem-ProductAgent] ${summary} for ${product.title}`);
+  log.info(`[AgeMem-ProductAgent] ${summary} for ${product.title}`);
   
   return {
     businessRules,

@@ -15,6 +15,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.shopify;
 import { EnrichedProductData, ShopifyProductWebhookPayload } from './webhook-types';
 import { researchProduct, generateSafetyLog, ProductResearchResult } from './product-research';
 import { getBrandConfig } from './product-sources';
@@ -320,10 +323,10 @@ export async function generateProductContentV3(
   const sku = product.variants[0]?.sku || 'N/A';
   const productId = product.id?.toString() || 'unknown';
   
-  console.log(`[AI-V3] Starting enhanced enrichment for: ${product.title}`);
+  log.info(`[AI-V3] Starting enhanced enrichment for: ${product.title}`);
   
   // Step 1: Research product from multiple sources
-  console.log('[AI-V3] Step 1: Researching product...');
+  log.info('[AI-V3] Step 1: Researching product...');
   const researchStart = Date.now();
   const research = await researchProduct(
     product.title,
@@ -333,11 +336,11 @@ export async function generateProductContentV3(
   timings.research = Date.now() - researchStart;
   
   // Step 2: Enrich with Knowledge Graph
-  console.log('[AI-V3] Step 2: Enriching with Knowledge Graph...');
+  log.info('[AI-V3] Step 2: Enriching with Knowledge Graph...');
   const kgContext = enrichWithKnowledgeGraph(product.title, brand);
   
   // Step 3: Fuse sources with weighted confidence
-  console.log('[AI-V3] Step 3: Fusing sources...');
+  log.info('[AI-V3] Step 3: Fusing sources...');
   const fusionStart = Date.now();
   const rawFacts = research.technicalSpecs.map(spec => ({
     key: spec.field,
@@ -349,18 +352,18 @@ export async function generateProductContentV3(
   timings.fusion = Date.now() - fusionStart;
   
   // Step 4: Track provenance
-  console.log('[AI-V3] Step 4: Tracking provenance...');
+  log.info('[AI-V3] Step 4: Tracking provenance...');
   const provenance = trackProvenance(productId, product.title, research, fusionResult);
   
   // Step 5: Generate safety log
   const safetyLog = generateSafetyLog(research);
-  console.log('[AI-V3] Safety log generated');
+  log.info('[AI-V3] Safety log generated');
   
   // Step 6: Build enhanced prompt with KG context
   const userPrompt = buildEnhancedPromptV3(product, brand, research, kgContext);
   
   // Step 7: Generate content with Claude
-  console.log('[AI-V3] Step 7: Generating content with Claude...');
+  log.info('[AI-V3] Step 7: Generating content with Claude...');
   const llmStart = Date.now();
   const content = await generateWithClaudeV3(userPrompt, research);
   timings.llm = Date.now() - llmStart;
@@ -408,8 +411,8 @@ export async function generateProductContentV3(
   // Record metrics
   getMetricsStore().recordGeneration(metrics);
   
-  console.log(`[AI-V3] Generation complete in ${timings.total}ms`);
-  console.log(`[AI-V3] Provenance: ${provenance.overallConfidence}% confidence, ${provenance.warnings.length} warnings`);
+  log.info(`[AI-V3] Generation complete in ${timings.total}ms`);
+  log.info(`[AI-V3] Provenance: ${provenance.overallConfidence}% confidence, ${provenance.warnings.length} warnings`);
   
   return {
     ...content,
@@ -590,7 +593,7 @@ async function generateWithClaudeV3(
     return parsed;
     
   } catch (error) {
-    console.error('[AI-V3] Generation Error:', error);
+    log.error('[AI-V3] Generation Error:', error);
     
     // Record error
     getMetricsStore().recordError({
@@ -720,5 +723,4 @@ export function formatDescriptionAsHtmlV3(data: EnrichedProductDataV3): string {
 // EXPORTS
 // =============================================================================
 
-// Re-export V1 functions for backward compatibility (used by route.ts)
-export { generateProductContent, formatDescriptionAsHtml } from './ai-enrichment';
+// V3 is now the primary version - V1 (ai-enrichment.ts) has been deprecated

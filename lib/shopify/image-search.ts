@@ -44,7 +44,7 @@ export async function searchProductImages(
   const apiKey = process.env.SERPAPI_API_KEY;
   
   if (!apiKey) {
-    console.warn('[ImageSearch] SERPAPI_API_KEY not set, skipping image search');
+    log.warn('[ImageSearch] SERPAPI_API_KEY not set, skipping image search');
     return [];
   }
 
@@ -65,15 +65,15 @@ export async function searchProductImages(
       const results = await searchGoogleImages(query, apiKey);
       
       if (results.length > 0) {
-        console.log(`[ImageSearch] Found ${results.length} images for query: "${query}"`);
+        log.info(`[ImageSearch] Found ${results.length} images for query: "${query}"`);
         return results;
       }
     } catch (error) {
-      console.error(`[ImageSearch] Error searching for "${query}":`, error);
+      log.error(`[ImageSearch] Error searching for "${query}":`, error);
     }
   }
 
-  console.log(`[ImageSearch] No images found for product: ${product.title}`);
+  log.info(`[ImageSearch] No images found for product: ${product.title}`);
   return [];
 }
 
@@ -172,7 +172,7 @@ export async function getBestProductImage(
   for (const result of results) {
     const isValid = await validateImageUrl(result.url);
     if (isValid) {
-      console.log(`[ImageSearch] Selected image: ${result.url}`);
+      log.info(`[ImageSearch] Selected image: ${result.url}`);
       return result.url;
     }
   }

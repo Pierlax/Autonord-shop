@@ -9,6 +9,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.blog;
 import { TopicAnalysis } from './analysis';
 import { ForumResearchResult, researchProductSentiment, researchComparisonSentiment } from './sentiment';
 import { 
@@ -145,7 +148,7 @@ IMPORTANTE: Genera dati plausibili e realistici per un elettroutensile professio
     }
     
   } catch (error) {
-    console.error('[DraftingV2] Error searching whitelist sources:', error);
+    log.error('[DraftingV2] Error searching whitelist sources:', error);
   }
   
   return { specs, sources };
@@ -218,7 +221,7 @@ Rispondi in JSON:
     }
     
   } catch (error) {
-    console.error('[DraftingV2] Error searching comparison specs:', error);
+    log.error('[DraftingV2] Error searching comparison specs:', error);
   }
   
   return { specs, sources };
@@ -331,23 +334,23 @@ export async function generateEnhancedArticle(
   topic: TopicAnalysis,
   articleType: ArticleType = 'review'
 ): Promise<EnhancedArticleDraft> {
-  console.log(`[DraftingV2] Generating enhanced article for: ${topic.topic}`);
-  console.log(`[DraftingV2] Article type: ${articleType}`);
+  log.info(`[DraftingV2] Generating enhanced article for: ${topic.topic}`);
+  log.info(`[DraftingV2] Article type: ${articleType}`);
   
   // Extract products from topic
   const products = extractProducts(topic.topic);
-  console.log(`[DraftingV2] Products identified: ${products.join(', ')}`);
+  log.info(`[DraftingV2] Products identified: ${products.join(', ')}`);
   
   // 1. Research forum sentiment
   let forumResearch: ForumResearchResult | null = null;
   let comparisonResearch: Awaited<ReturnType<typeof researchComparisonSentiment>> | null = null;
   
   if (articleType === 'comparison' && products.length >= 2) {
-    console.log(`[DraftingV2] Researching comparison sentiment...`);
+    log.info(`[DraftingV2] Researching comparison sentiment...`);
     comparisonResearch = await researchComparisonSentiment(products[0], products[1]);
     forumResearch = comparisonResearch.product1Research;
   } else if (products.length > 0) {
-    console.log(`[DraftingV2] Researching product sentiment...`);
+    log.info(`[DraftingV2] Researching product sentiment...`);
     forumResearch = await researchProductSentiment(products[0]);
   }
   
@@ -475,10 +478,10 @@ export async function generateEnhancedArticle(
     const validation = validateArticle(fullArticleData);
     
     if (validation.warnings.length > 0) {
-      console.warn('[DraftingV2] Validation warnings:', validation.warnings);
+      log.warn('[DraftingV2] Validation warnings:', validation.warnings);
     }
     if (!validation.valid) {
-      console.error('[DraftingV2] Validation errors:', validation.errors);
+      log.error('[DraftingV2] Validation errors:', validation.errors);
     }
     
     return {
@@ -502,7 +505,7 @@ export async function generateEnhancedArticle(
     };
     
   } catch (error) {
-    console.error('[DraftingV2] Error generating article:', error);
+    log.error('[DraftingV2] Error generating article:', error);
     throw error;
   }
 }
@@ -585,7 +588,7 @@ export async function generateLaunchArticles(
   const articles: EnhancedArticleDraft[] = [];
   
   for (const topicConfig of topics) {
-    console.log(`\n[DraftingV2] === Generating: ${topicConfig.topic} ===\n`);
+    log.info(`\n[DraftingV2] === Generating: ${topicConfig.topic} ===\n`);
     
     const topicAnalysis: TopicAnalysis = {
       topic: topicConfig.topic,
@@ -604,17 +607,17 @@ export async function generateLaunchArticles(
       const article = await generateEnhancedArticle(topicAnalysis, topicConfig.type);
       articles.push(article);
       
-      console.log(`[DraftingV2] ✓ Generated: ${article.title}`);
-      console.log(`[DraftingV2]   - ${article.technicalSpecs.length} specs`);
-      console.log(`[DraftingV2]   - ${article.forumQuotes.length} forum quotes`);
-      console.log(`[DraftingV2]   - ${article.sources.length} sources`);
-      console.log(`[DraftingV2]   - Valid: ${article.validation.valid}`);
+      log.info(`[DraftingV2] ✓ Generated: ${article.title}`);
+      log.info(`[DraftingV2]   - ${article.technicalSpecs.length} specs`);
+      log.info(`[DraftingV2]   - ${article.forumQuotes.length} forum quotes`);
+      log.info(`[DraftingV2]   - ${article.sources.length} sources`);
+      log.info(`[DraftingV2]   - Valid: ${article.validation.valid}`);
       
       // Rate limiting between articles
       await new Promise(resolve => setTimeout(resolve, 2000));
       
     } catch (error) {
-      console.error(`[DraftingV2] ✗ Failed: ${topicConfig.topic}`, error);
+      log.error(`[DraftingV2] ✗ Failed: ${topicConfig.topic}`, error);
     }
   }
   

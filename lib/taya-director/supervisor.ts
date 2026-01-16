@@ -9,6 +9,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.taya;
 import {
   QualityScore,
   QualityEvaluation,
@@ -164,7 +167,7 @@ Valuta secondo i principi TAYA e rispondi SOLO con il JSON richiesto.`;
     };
 
   } catch (error) {
-    console.error(`Error evaluating product ${product.handle}:`, error);
+    log.error(`Error evaluating product ${product.handle}:`, error);
     
     // Return a failed evaluation
     return {
@@ -201,11 +204,11 @@ export async function evaluateProducts(
   for (const product of products) {
     // Only evaluate products that have AI-enhanced content
     if (!product.hasAiEnhanced) {
-      console.log(`Skipping ${product.handle}: not AI-enhanced yet`);
+      log.info(`Skipping ${product.handle}: not AI-enhanced yet`);
       continue;
     }
 
-    console.log(`Evaluating: ${product.handle}`);
+    log.info(`Evaluating: ${product.handle}`);
     const evaluation = await evaluateProductQuality(product, config);
     results.push(evaluation);
 

@@ -14,6 +14,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.api;
 import { verifyShopifyWebhook, getWebhookTopic } from '@/lib/shopify/webhook-verify';
 import { isProductAlreadyEnriched } from '@/lib/shopify/admin-api';
 import { ShopifyProductWebhookPayload } from '@/lib/shopify/webhook-types';
@@ -35,13 +38,13 @@ export async function POST(request: NextRequest) {
     const topicHeader = request.headers.get('x-shopify-topic');
     const shopDomain = request.headers.get('x-shopify-shop-domain');
 
-    console.log(`[Webhook] Received from ${shopDomain}, topic: ${topicHeader}`);
+    log.info(`[Webhook] Received from ${shopDomain}, topic: ${topicHeader}`);
 
     // Step 1: Verify HMAC signature
     const isValid = verifyShopifyWebhook(rawBody, hmacHeader);
     
     if (!isValid) {
-      console.error('[Webhook] HMAC verification failed');
+      log.error('[Webhook] HMAC verification failed');
       return NextResponse.json(
         { error: 'Unauthorized - Invalid HMAC signature' },
         { status: 401 }
@@ -52,7 +55,7 @@ export async function POST(request: NextRequest) {
     const topic = getWebhookTopic(topicHeader);
     
     if (topic !== 'products/create' && topic !== 'products/update') {
-      console.log(`[Webhook] Ignoring topic: ${topic}`);
+      log.info(`[Webhook] Ignoring topic: ${topic}`);
       return NextResponse.json(
         { message: `Webhook topic ${topic} not handled` },
         { status: 200 }
@@ -62,11 +65,11 @@ export async function POST(request: NextRequest) {
     // Step 3: Parse payload
     const product: ShopifyProductWebhookPayload = JSON.parse(rawBody);
     
-    console.log(`[Webhook] Product: ${product.id} - ${product.title}`);
+    log.info(`[Webhook] Product: ${product.id} - ${product.title}`);
 
     // Step 4: Safety Check - Skip if already enriched
     if (isProductAlreadyEnriched(product.tags)) {
-      console.log(`[Webhook] Product ${product.id} already enriched, skipping`);
+      log.info(`[Webhook] Product ${product.id} already enriched, skipping`);
       return NextResponse.json(
         { 
           message: 'Product already enriched',
@@ -99,7 +102,7 @@ export async function POST(request: NextRequest) {
     const duration = Date.now() - startTime;
 
     if (queueResult.queued) {
-      console.log(`[Webhook] Product ${product.id} queued in ${duration}ms. MessageId: ${queueResult.messageId}`);
+      log.info(`[Webhook] Product ${product.id} queued in ${duration}ms. MessageId: ${queueResult.messageId}`);
       
       return NextResponse.json(
         {
@@ -114,7 +117,7 @@ export async function POST(request: NextRequest) {
         { status: 202 } // 202 Accepted - request accepted for processing
       );
     } else {
-      console.error(`[Webhook] Failed to queue product ${product.id}: ${queueResult.error}`);
+      log.error(`[Webhook] Failed to queue product ${product.id}: ${queueResult.error}`);
       
       return NextResponse.json(
         {
@@ -130,7 +133,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error(`[Webhook] Error after ${duration}ms:`, error);
+    log.error(`[Webhook] Error after ${duration}ms:`, error);
     
     // Return 200 to prevent Shopify from retrying (we'll handle errors internally)
     return NextResponse.json(

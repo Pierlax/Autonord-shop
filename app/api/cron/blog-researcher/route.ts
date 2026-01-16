@@ -15,6 +15,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.blog;
 import { searchForTopics, groupByTopic } from '@/lib/blog-researcher/search';
 import { analyzeTopics } from '@/lib/blog-researcher/analysis';
 import { generateArticleDraft, formatForShopify } from '@/lib/blog-researcher/drafting';
@@ -50,12 +53,12 @@ function verifyCronRequest(request: NextRequest): boolean {
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
   
-  console.log('[BlogResearcher] Starting cron job...');
-  console.log(`[BlogResearcher] Time: ${new Date().toISOString()}`);
+  log.info('[BlogResearcher] Starting cron job...');
+  log.info(`[BlogResearcher] Time: ${new Date().toISOString()}`);
   
   // Verify request origin
   if (!verifyCronRequest(request)) {
-    console.error('[BlogResearcher] Unauthorized request');
+    log.error('[BlogResearcher] Unauthorized request');
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401 }
@@ -64,11 +67,11 @@ export async function GET(request: NextRequest) {
 
   try {
     // Step 1: Search for topics
-    console.log('[BlogResearcher] Step 1: Searching for topics...');
+    log.info('[BlogResearcher] Step 1: Searching for topics...');
     const searchResults = await searchForTopics();
     
     if (searchResults.length === 0) {
-      console.log('[BlogResearcher] No relevant topics found');
+      log.info('[BlogResearcher] No relevant topics found');
       return NextResponse.json({
         success: true,
         message: 'No relevant topics found this week',
@@ -77,40 +80,40 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    console.log(`[BlogResearcher] Found ${searchResults.length} relevant posts`);
+    log.info(`[BlogResearcher] Found ${searchResults.length} relevant posts`);
     
     // Step 2: Analyze and select best topic
-    console.log('[BlogResearcher] Step 2: Analyzing topics...');
+    log.info('[BlogResearcher] Step 2: Analyzing topics...');
     const analysis = await analyzeTopics(searchResults);
     
-    console.log(`[BlogResearcher] Selected topic: ${analysis.selectedTopic.topic}`);
-    console.log(`[BlogResearcher] Pain point: ${analysis.selectedTopic.painPoint}`);
+    log.info(`[BlogResearcher] Selected topic: ${analysis.selectedTopic.topic}`);
+    log.info(`[BlogResearcher] Pain point: ${analysis.selectedTopic.painPoint}`);
     
     // Step 3: Generate article draft
-    console.log('[BlogResearcher] Step 3: Generating article...');
+    log.info('[BlogResearcher] Step 3: Generating article...');
     const articleDraft = await generateArticleDraft(analysis.selectedTopic);
     
     // Format content for Shopify
     articleDraft.content = formatForShopify(articleDraft);
     
-    console.log(`[BlogResearcher] Generated: ${articleDraft.title}`);
-    console.log(`[BlogResearcher] Word count: ~${articleDraft.content.split(/\s+/).length}`);
+    log.info(`[BlogResearcher] Generated: ${articleDraft.title}`);
+    log.info(`[BlogResearcher] Word count: ~${articleDraft.content.split(/\s+/).length}`);
     
     // Step 4: Create draft in Shopify
-    console.log('[BlogResearcher] Step 4: Creating Shopify draft...');
+    log.info('[BlogResearcher] Step 4: Creating Shopify draft...');
     const shopifyArticle = await createDraftArticle(articleDraft);
     
-    console.log(`[BlogResearcher] Created draft article ID: ${shopifyArticle.id}`);
+    log.info(`[BlogResearcher] Created draft article ID: ${shopifyArticle.id}`);
     
     // Step 5: Send notification
-    console.log('[BlogResearcher] Step 5: Sending notifications...');
+    log.info('[BlogResearcher] Step 5: Sending notifications...');
     const notificationResults = await sendNotification(articleDraft, shopifyArticle.id);
     
     const successfulNotifications = notificationResults.filter(r => r.success);
-    console.log(`[BlogResearcher] Sent ${successfulNotifications.length} notifications`);
+    log.info(`[BlogResearcher] Sent ${successfulNotifications.length} notifications`);
     
     const duration = Date.now() - startTime;
-    console.log(`[BlogResearcher] Completed in ${duration}ms`);
+    log.info(`[BlogResearcher] Completed in ${duration}ms`);
     
     return NextResponse.json({
       success: true,
@@ -140,7 +143,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error(`[BlogResearcher] Error after ${duration}ms:`, error);
+    log.error(`[BlogResearcher] Error after ${duration}ms:`, error);
     
     return NextResponse.json({
       success: false,

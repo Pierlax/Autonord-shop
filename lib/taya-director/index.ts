@@ -52,6 +52,9 @@ export {
 
 // Import for main runner
 import { evaluateProducts, getEvaluationStats } from './supervisor';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.taya;
 import { generateEditorialPlan, getEditorialPlanSummary } from './strategist';
 import { 
   executeOrchestration, 
@@ -75,7 +78,7 @@ async function fetchProductsForEvaluation(): Promise<DirectorProduct[]> {
   const accessToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
 
   if (!shopDomain || !accessToken) {
-    console.warn('Shopify credentials not configured');
+    log.warn('Shopify credentials not configured');
     return [];
   }
 
@@ -114,7 +117,7 @@ async function fetchProductsForEvaluation(): Promise<DirectorProduct[]> {
     }));
 
   } catch (error) {
-    console.error('Error fetching products:', error);
+    log.error('Error fetching products:', error);
     return [];
   }
 }
@@ -127,7 +130,7 @@ async function fetchBlogArticles(): Promise<DirectorArticle[]> {
   const accessToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
 
   if (!shopDomain || !accessToken) {
-    console.warn('Shopify credentials not configured');
+    log.warn('Shopify credentials not configured');
     return [];
   }
 
@@ -182,7 +185,7 @@ async function fetchBlogArticles(): Promise<DirectorArticle[]> {
     }));
 
   } catch (error) {
-    console.error('Error fetching articles:', error);
+    log.error('Error fetching articles:', error);
     return [];
   }
 }
@@ -202,29 +205,29 @@ function getYesterdayISO(): string {
 export async function runDirector(
   config: DirectorConfig = DEFAULT_CONFIG
 ): Promise<DirectorSession> {
-  console.log('\n');
-  console.log('╔════════════════════════════════════════════════════════════╗');
-  console.log('║           🎭 TAYA DIRECTOR - STARTING SESSION              ║');
-  console.log('╚════════════════════════════════════════════════════════════╝');
-  console.log('\n');
+  log.info('\n');
+  log.info('╔════════════════════════════════════════════════════════════╗');
+  log.info('║           🎭 TAYA DIRECTOR - STARTING SESSION              ║');
+  log.info('╚════════════════════════════════════════════════════════════╝');
+  log.info('\n');
 
   const session = createSession();
 
   try {
     // Phase 1: Fetch data
-    console.log('📥 Fetching data from Shopify...');
+    log.info('📥 Fetching data from Shopify...');
     const [products, articles] = await Promise.all([
       fetchProductsForEvaluation(),
       fetchBlogArticles(),
     ]);
-    console.log(`   Found ${products.length} products, ${articles.length} articles`);
+    log.info(`   Found ${products.length} products, ${articles.length} articles`);
 
     // Phase 2: Supervisor - Evaluate content quality
     if (config.modules.supervisor && products.length > 0) {
-      console.log('\n👁️ SUPERVISOR: Evaluating content quality...');
+      log.info('\n👁️ SUPERVISOR: Evaluating content quality...');
       
       const aiEnhancedProducts = products.filter(p => p.hasAiEnhanced);
-      console.log(`   ${aiEnhancedProducts.length} AI-enhanced products to evaluate`);
+      log.info(`   ${aiEnhancedProducts.length} AI-enhanced products to evaluate`);
 
       if (aiEnhancedProducts.length > 0) {
         const evaluations = await evaluateProducts(aiEnhancedProducts, config);
@@ -234,19 +237,19 @@ export async function runDirector(
         session.productsFailed = evaluations.filter(e => !e.passed).length;
 
         const stats = getEvaluationStats(evaluations);
-        console.log(`   Results: ${stats.passed} passed, ${stats.failed} failed (avg score: ${stats.averageScore})`);
+        log.info(`   Results: ${stats.passed} passed, ${stats.failed} failed (avg score: ${stats.averageScore})`);
 
         // Store failed evaluations for orchestration
         const failedEvaluations = evaluations.filter(e => !e.passed);
 
         // Phase 3: Strategist - Generate editorial plan
         if (config.modules.strategist) {
-          console.log('\n📋 STRATEGIST: Generating editorial plan...');
+          log.info('\n📋 STRATEGIST: Generating editorial plan...');
           const editorialPlan = await generateEditorialPlan(products, articles);
-          console.log(getEditorialPlanSummary(editorialPlan));
+          log.info(getEditorialPlanSummary(editorialPlan));
 
           // Phase 4: Orchestrator - Execute decisions
-          console.log('\n🎯 ORCHESTRATOR: Executing decisions...');
+          log.info('\n🎯 ORCHESTRATOR: Executing decisions...');
           await executeOrchestration(
             failedEvaluations,
             editorialPlan,
@@ -263,12 +266,12 @@ export async function runDirector(
       phase: 'orchestrator',
       message: `Director error: ${error}`,
     });
-    console.error('❌ Director error:', error);
+    log.error('❌ Director error:', error);
   }
 
   // Complete session
   completeSession(session);
-  console.log(getSessionSummary(session));
+  log.info(getSessionSummary(session));
 
   return session;
 }

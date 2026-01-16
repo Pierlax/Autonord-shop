@@ -1,11 +1,14 @@
 import { Product, Collection, EnrichedData, FAQ } from './types';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.shopify;
 
 const domain = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN;
 const storefrontAccessToken = process.env.NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN;
 
 async function ShopifyData(query: string, variables?: object) {
   if (!domain || !storefrontAccessToken) {
-    console.warn("Missing Shopify API keys");
+    log.warn("Missing Shopify API keys");
     return null;
   }
 
@@ -23,20 +26,20 @@ async function ShopifyData(query: string, variables?: object) {
     });
 
     if (!response.ok) {
-      console.error(`Shopify API HTTP Error: ${response.status}`);
+      log.error(`Shopify API HTTP Error: ${response.status}`);
       return null;
     }
 
     const json = await response.json();
 
     if (json.errors) {
-      console.error('Shopify API Errors:', json.errors);
+      log.error('Shopify API Errors:', json.errors);
       return null;
     }
 
     return json.data;
   } catch (error) {
-    console.error('Shopify Fetch Error:', error);
+    log.error('Shopify Fetch Error:', error);
     return null;
   }
 }
@@ -193,7 +196,7 @@ export function parseEnrichedData(product: any): EnrichedData {
       result.isEnriched = true;
     }
   } catch (error) {
-    console.error('Error parsing enriched data:', error);
+    log.error('Error parsing enriched data:', error);
   }
 
   return result;
@@ -256,7 +259,7 @@ export async function createCheckout(variantId: string, quantity: number): Promi
   if (!res) return null;
 
   if (res.checkoutCreate.checkoutUserErrors.length > 0) {
-    console.error("Checkout Errors:", res.checkoutCreate.checkoutUserErrors);
+    log.error("Checkout Errors:", res.checkoutCreate.checkoutUserErrors);
     return null;
   }
 

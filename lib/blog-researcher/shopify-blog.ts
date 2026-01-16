@@ -4,6 +4,9 @@
  */
 
 import { ArticleDraft } from './drafting';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.blog;
 
 // Lazy initialization of Shopify config
 function getShopifyConfig() {
@@ -65,7 +68,7 @@ async function shopifyAdminRequest<T>(
  * Get or create the main blog
  */
 async function getOrCreateBlog(blogHandle: string = 'news'): Promise<ShopifyBlog> {
-  console.log(`[ShopifyBlog] Looking for blog: ${blogHandle}`);
+  log.info(`[ShopifyBlog] Looking for blog: ${blogHandle}`);
   
   // Get all blogs
   const { blogs } = await shopifyAdminRequest<{ blogs: ShopifyBlog[] }>('/blogs.json');
@@ -74,12 +77,12 @@ async function getOrCreateBlog(blogHandle: string = 'news'): Promise<ShopifyBlog
   const existingBlog = blogs.find(b => b.handle === blogHandle);
   
   if (existingBlog) {
-    console.log(`[ShopifyBlog] Found existing blog: ${existingBlog.title} (ID: ${existingBlog.id})`);
+    log.info(`[ShopifyBlog] Found existing blog: ${existingBlog.title} (ID: ${existingBlog.id})`);
     return existingBlog;
   }
   
   // Create new blog if not found
-  console.log(`[ShopifyBlog] Creating new blog: ${blogHandle}`);
+  log.info(`[ShopifyBlog] Creating new blog: ${blogHandle}`);
   
   const { blog } = await shopifyAdminRequest<{ blog: ShopifyBlog }>('/blogs.json', 'POST', {
     blog: {
@@ -88,7 +91,7 @@ async function getOrCreateBlog(blogHandle: string = 'news'): Promise<ShopifyBlog
     },
   });
   
-  console.log(`[ShopifyBlog] Created blog: ${blog.title} (ID: ${blog.id})`);
+  log.info(`[ShopifyBlog] Created blog: ${blog.title} (ID: ${blog.id})`);
   return blog;
 }
 
@@ -99,7 +102,7 @@ export async function createDraftArticle(
   article: ArticleDraft,
   blogHandle: string = 'news'
 ): Promise<ShopifyArticle> {
-  console.log(`[ShopifyBlog] Creating draft article: ${article.title}`);
+  log.info(`[ShopifyBlog] Creating draft article: ${article.title}`);
   
   // Get the blog
   const blog = await getOrCreateBlog(blogHandle);
@@ -152,9 +155,9 @@ export async function createDraftArticle(
     }
   );
   
-  console.log(`[ShopifyBlog] Created draft article: ${shopifyArticle.title} (ID: ${shopifyArticle.id})`);
-  console.log(`[ShopifyBlog] Handle: ${shopifyArticle.handle}`);
-  console.log(`[ShopifyBlog] Status: Draft (unpublished)`);
+  log.info(`[ShopifyBlog] Created draft article: ${shopifyArticle.title} (ID: ${shopifyArticle.id})`);
+  log.info(`[ShopifyBlog] Handle: ${shopifyArticle.handle}`);
+  log.info(`[ShopifyBlog] Status: Draft (unpublished)`);
   
   return shopifyArticle;
 }
@@ -193,7 +196,7 @@ export async function publishArticle(
     }
   );
   
-  console.log(`[ShopifyBlog] Published article: ${article.title}`);
+  log.info(`[ShopifyBlog] Published article: ${article.title}`);
   return article;
 }
 
@@ -211,5 +214,5 @@ export async function deleteArticle(
     'DELETE'
   );
   
-  console.log(`[ShopifyBlog] Deleted article ID: ${articleId}`);
+  log.info(`[ShopifyBlog] Deleted article ID: ${articleId}`);
 }

@@ -104,7 +104,7 @@ async function fetchRedditPosts(subreddit: string, limit: number = 50): Promise<
     );
 
     if (!response.ok) {
-      console.error(`[Search] Failed to fetch r/${subreddit}: ${response.status}`);
+      log.error(`[Search] Failed to fetch r/${subreddit}: ${response.status}`);
       return [];
     }
 
@@ -123,7 +123,7 @@ async function fetchRedditPosts(subreddit: string, limit: number = 50): Promise<
       url: child.data.url,
     }));
   } catch (error) {
-    console.error(`[Search] Error fetching r/${subreddit}:`, error);
+    log.error(`[Search] Error fetching r/${subreddit}:`, error);
     return [];
   }
 }
@@ -155,7 +155,7 @@ async function searchExa(query: string): Promise<SearchResult[]> {
   const apiKey = process.env.EXA_API_KEY;
   
   if (!apiKey) {
-    console.log('[Search] EXA_API_KEY not set, skipping Exa search');
+    log.info('[Search] EXA_API_KEY not set, skipping Exa search');
     return [];
   }
 
@@ -182,7 +182,7 @@ async function searchExa(query: string): Promise<SearchResult[]> {
     });
 
     if (!response.ok) {
-      console.error(`[Search] Exa API error: ${response.status}`);
+      log.error(`[Search] Exa API error: ${response.status}`);
       return [];
     }
 
@@ -198,7 +198,7 @@ async function searchExa(query: string): Promise<SearchResult[]> {
       date: new Date(result.publishedDate || Date.now()),
     }));
   } catch (error) {
-    console.error('[Search] Exa search error:', error);
+    log.error('[Search] Exa search error:', error);
     return [];
   }
 }
@@ -207,18 +207,18 @@ async function searchExa(query: string): Promise<SearchResult[]> {
  * Main search function - scans all sources
  */
 export async function searchForTopics(): Promise<SearchResult[]> {
-  console.log('[Search] Starting topic search...');
+  log.info('[Search] Starting topic search...');
   
   const allResults: SearchResult[] = [];
   
   // 1. Scan Reddit subreddits
   for (const subreddit of TARGET_SUBREDDITS) {
-    console.log(`[Search] Scanning r/${subreddit}...`);
+    log.info(`[Search] Scanning r/${subreddit}...`);
     
     const posts = await fetchRedditPosts(subreddit, 50);
     const relevantPosts = filterRelevantPosts(posts);
     
-    console.log(`[Search] Found ${relevantPosts.length} relevant posts in r/${subreddit}`);
+    log.info(`[Search] Found ${relevantPosts.length} relevant posts in r/${subreddit}`);
     
     for (const post of relevantPosts) {
       allResults.push({
@@ -250,7 +250,7 @@ export async function searchForTopics(): Promise<SearchResult[]> {
     allResults.push(...exaResults);
   }
   
-  console.log(`[Search] Total results collected: ${allResults.length}`);
+  log.info(`[Search] Total results collected: ${allResults.length}`);
   
   // Sort by engagement (score + comments)
   allResults.sort((a, b) => (b.score + b.comments) - (a.score + a.comments));

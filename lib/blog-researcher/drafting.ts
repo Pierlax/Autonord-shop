@@ -10,6 +10,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.blog;
 import { TopicAnalysis } from './analysis';
 
 // Lazy initialization of Anthropic client
@@ -145,10 +148,10 @@ function getRandomOpeningStyle(): string {
  * Generate a TAYA-style article draft
  */
 export async function generateArticleDraft(topic: TopicAnalysis): Promise<ArticleDraft> {
-  console.log(`[Drafting] Generating premium article for: ${topic.topic}`);
+  log.info(`[Drafting] Generating premium article for: ${topic.topic}`);
   
   const openingStyle = getRandomOpeningStyle();
-  console.log(`[Drafting] Using opening style: ${openingStyle}`);
+  log.info(`[Drafting] Using opening style: ${openingStyle}`);
   
   const prompt = DRAFTING_PROMPT
     .replace('{topic}', topic.topic)
@@ -204,22 +207,22 @@ export async function generateArticleDraft(topic: TopicAnalysis): Promise<Articl
     const h2Count = (article.content.match(/<h2/g) || []).length;
     const paragraphCount = (article.content.match(/<p>/g) || []).length;
     
-    console.log(`[Drafting] Generated: ${article.title}`);
-    console.log(`[Drafting] Word count: ${wordCount}`);
-    console.log(`[Drafting] Structure: ${h2Count} sections, ${paragraphCount} paragraphs`);
-    console.log(`[Drafting] Read time: ${article.estimatedReadTime} min`);
+    log.info(`[Drafting] Generated: ${article.title}`);
+    log.info(`[Drafting] Word count: ${wordCount}`);
+    log.info(`[Drafting] Structure: ${h2Count} sections, ${paragraphCount} paragraphs`);
+    log.info(`[Drafting] Read time: ${article.estimatedReadTime} min`);
     
     // Quality warnings
     if (wordCount < 1200) {
-      console.warn(`[Drafting] Warning: Article may be too short (${wordCount} words)`);
+      log.warn(`[Drafting] Warning: Article may be too short (${wordCount} words)`);
     }
     if (h2Count < 4) {
-      console.warn(`[Drafting] Warning: Article may need more sections (${h2Count} h2 tags)`);
+      log.warn(`[Drafting] Warning: Article may need more sections (${h2Count} h2 tags)`);
     }
     
     return article;
   } catch (error) {
-    console.error('[Drafting] Error generating article:', error);
+    log.error('[Drafting] Error generating article:', error);
     
     // Return a more detailed fallback
     return {

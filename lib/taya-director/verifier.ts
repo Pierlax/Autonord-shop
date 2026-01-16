@@ -13,6 +13,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.taya;
 
 // ============================================================================
 // Types
@@ -136,7 +139,7 @@ Rispondi in JSON:
       coveredFacts: parsed.coveredFacts || [],
     };
   } catch {
-    console.error('Failed to parse fact coverage response');
+    log.error('Failed to parse fact coverage response');
     return { score: 50, missingFacts: [], coveredFacts: [] };
   }
 }
@@ -214,7 +217,7 @@ Rispondi in JSON:
       verifiedClaims: parsed.verifiedClaims || [],
     };
   } catch {
-    console.error('Failed to parse consistency response');
+    log.error('Failed to parse consistency response');
     return { score: 50, inconsistencies: [], verifiedClaims: [] };
   }
 }
@@ -230,7 +233,7 @@ export async function verifyContent(
   thresholds = { coverage: 70, consistency: 80, overall: 75 }
 ): Promise<VerificationResult> {
   
-  console.log(`[Verifier] Starting verification for ${sourceData.sku}`);
+  log.info(`[Verifier] Starting verification for ${sourceData.sku}`);
 
   // Run both checks in parallel
   const [factCoverage, factualConsistency] = await Promise.all([
@@ -273,7 +276,7 @@ export async function verifyContent(
     shouldRegenerate,
   };
 
-  console.log(`[Verifier] Result: passed=${result.passed}, score=${overallScore}, shouldRegenerate=${shouldRegenerate}`);
+  log.info(`[Verifier] Result: passed=${result.passed}, score=${overallScore}, shouldRegenerate=${shouldRegenerate}`);
 
   return result;
 }
@@ -287,7 +290,7 @@ export async function regenerateWithFeedback(
   anthropic: Anthropic
 ): Promise<GeneratedContent> {
   
-  console.log(`[Verifier] Regenerating content (attempt ${request.attempt}/${request.maxAttempts})`);
+  log.info(`[Verifier] Regenerating content (attempt ${request.attempt}/${request.maxAttempts})`);
 
   const { originalContent, verification, sourceData } = request;
 
@@ -373,7 +376,7 @@ GENERA IL CONTENUTO CORRETTO in JSON:
       notIdealFor: parsed.notIdealFor || originalContent.notIdealFor,
     };
   } catch {
-    console.error('Failed to parse regenerated content');
+    log.error('Failed to parse regenerated content');
     return originalContent;
   }
 }
@@ -405,7 +408,7 @@ export async function verifyAndRegenerateLoop(
     verification = await verifyContent(currentContent, sourceData, anthropic);
 
     if (verification.passed) {
-      console.log(`[Verifier] Content passed verification on attempt ${attempts}`);
+      log.info(`[Verifier] Content passed verification on attempt ${attempts}`);
       return {
         finalContent: currentContent,
         verification,
@@ -415,7 +418,7 @@ export async function verifyAndRegenerateLoop(
     }
 
     if (attempts >= maxAttempts) {
-      console.log(`[Verifier] Max attempts reached, returning best effort`);
+      log.info(`[Verifier] Max attempts reached, returning best effort`);
       break;
     }
 

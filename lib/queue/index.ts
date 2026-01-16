@@ -11,6 +11,9 @@
  */
 
 import { Client } from '@upstash/qstash';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.queue;
 
 // Lazy initialization to avoid build-time errors
 let qstashClient: Client | null = null;
@@ -63,14 +66,14 @@ export async function queueProductEnrichment(
       // QStash will retry with exponential backoff
     });
 
-    console.log(`[Queue] Product ${job.productId} queued for enrichment. MessageId: ${result.messageId}`);
+    log.info(`[Queue] Product ${job.productId} queued for enrichment. MessageId: ${result.messageId}`);
     
     return {
       messageId: result.messageId,
       queued: true,
     };
   } catch (error) {
-    console.error('[Queue] Failed to queue product enrichment:', error);
+    log.error('[Queue] Failed to queue product enrichment:', error);
     return {
       error: error instanceof Error ? error.message : 'Unknown error',
       queued: false,
@@ -94,14 +97,14 @@ export async function queueBlogResearch(
       retries: 2,
     });
 
-    console.log(`[Queue] Blog research job queued. MessageId: ${result.messageId}`);
+    log.info(`[Queue] Blog research job queued. MessageId: ${result.messageId}`);
     
     return {
       messageId: result.messageId,
       queued: true,
     };
   } catch (error) {
-    console.error('[Queue] Failed to queue blog research:', error);
+    log.error('[Queue] Failed to queue blog research:', error);
     return {
       error: error instanceof Error ? error.message : 'Unknown error',
       queued: false,

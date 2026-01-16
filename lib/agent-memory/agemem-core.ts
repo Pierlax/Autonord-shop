@@ -16,6 +16,9 @@
  */
 
 import * as fs from 'fs';
+import { loggers } from '@/lib/logger';
+
+const log = loggers.memory;
 import * as path from 'path';
 
 // ============================================================================
@@ -150,7 +153,7 @@ function loadMemoryStore(): MemoryStore {
     const data = fs.readFileSync(MEMORY_FILE_PATH, 'utf-8');
     return JSON.parse(data) as MemoryStore;
   } catch (error) {
-    console.error('[AgeMem] Error loading memory store:', error);
+    log.error('[AgeMem] Error loading memory store:', error);
     return { version: '1.0.0', lastUpdated: Date.now(), entries: [] };
   }
 }
@@ -203,7 +206,7 @@ export function addMemory(input: AddMemoryInput): MemoryEntry {
   store.entries.push(entry);
   saveMemoryStore(store);
   
-  console.log(`[AgeMem] Added memory: ${entry.id} - "${entry.title}"`);
+  log.info(`[AgeMem] Added memory: ${entry.id} - "${entry.title}"`);
   
   return entry;
 }
@@ -327,7 +330,7 @@ export function updateMemory(input: UpdateMemoryInput): MemoryEntry | null {
   
   const entryIndex = store.entries.findIndex(e => e.id === input.id);
   if (entryIndex === -1) {
-    console.warn(`[AgeMem] Memory not found: ${input.id}`);
+    log.warn(`[AgeMem] Memory not found: ${input.id}`);
     return null;
   }
   
@@ -352,7 +355,7 @@ export function updateMemory(input: UpdateMemoryInput): MemoryEntry | null {
   
   saveMemoryStore(store);
   
-  console.log(`[AgeMem] Updated memory: ${entry.id} - "${entry.title}"`);
+  log.info(`[AgeMem] Updated memory: ${entry.id} - "${entry.title}"`);
   
   return entry;
 }
@@ -365,14 +368,14 @@ export function deleteMemory(id: string): boolean {
   
   const entryIndex = store.entries.findIndex(e => e.id === id);
   if (entryIndex === -1) {
-    console.warn(`[AgeMem] Memory not found for deletion: ${id}`);
+    log.warn(`[AgeMem] Memory not found for deletion: ${id}`);
     return false;
   }
   
   const removed = store.entries.splice(entryIndex, 1)[0];
   saveMemoryStore(store);
   
-  console.log(`[AgeMem] Deleted memory: ${id} - "${removed.title}"`);
+  log.info(`[AgeMem] Deleted memory: ${id} - "${removed.title}"`);
   
   return true;
 }
@@ -790,15 +793,15 @@ export function markMemoryAsUseful(memoryId: string, agentSource?: AgentSource):
     // Upgrade priority after 5 useful uses
     if (usefulCount >= 5 && entry.priority === 'low') {
       entry.priority = 'medium';
-      console.log(`[AgeMem] Upgraded memory ${memoryId} to medium priority (5+ useful uses)`);
+      log.info(`[AgeMem] Upgraded memory ${memoryId} to medium priority (5+ useful uses)`);
     } else if (usefulCount >= 10 && entry.priority === 'medium') {
       entry.priority = 'high';
-      console.log(`[AgeMem] Upgraded memory ${memoryId} to high priority (10+ useful uses)`);
+      log.info(`[AgeMem] Upgraded memory ${memoryId} to high priority (10+ useful uses)`);
     }
   }
   
   saveExtendedStore(store);
-  console.log(`[AgeMem] Marked memory ${memoryId} as useful`);
+  log.info(`[AgeMem] Marked memory ${memoryId} as useful`);
 }
 
 /**
@@ -835,20 +838,20 @@ export function markMemoryAsProblematic(
     // Downgrade priority after 3 negative uses
     if (negativeCount >= 3 && entry.priority === 'high') {
       entry.priority = 'medium';
-      console.log(`[AgeMem] Downgraded memory ${memoryId} to medium priority (3+ negative feedback)`);
+      log.info(`[AgeMem] Downgraded memory ${memoryId} to medium priority (3+ negative feedback)`);
     } else if (negativeCount >= 3 && entry.priority === 'medium') {
       entry.priority = 'low';
-      console.log(`[AgeMem] Downgraded memory ${memoryId} to low priority (3+ negative feedback)`);
+      log.info(`[AgeMem] Downgraded memory ${memoryId} to low priority (3+ negative feedback)`);
     }
     
     // Flag for review if marked as incorrect
     if (type === 'incorrect' && negativeCount >= 2) {
-      console.warn(`[AgeMem] Memory ${memoryId} flagged for review - multiple 'incorrect' reports`);
+      log.warn(`[AgeMem] Memory ${memoryId} flagged for review - multiple 'incorrect' reports`);
     }
   }
   
   saveExtendedStore(store);
-  console.log(`[AgeMem] Marked memory ${memoryId} as ${type}${reason ? `: ${reason}` : ''}`);
+  log.info(`[AgeMem] Marked memory ${memoryId} as ${type}${reason ? `: ${reason}` : ''}`);
 }
 
 /**
@@ -980,18 +983,18 @@ export function applyMemoryDecay(options: {
       if (!entry.expiresAt) {
         entry.expiresAt = now + (30 * 24 * 60 * 60 * 1000); // Expire in 30 days
         flaggedForArchive++;
-        console.log(`[AgeMem] Flagged memory ${entry.id} for archive (${Math.round(ageInDays)} days inactive)`);
+        log.info(`[AgeMem] Flagged memory ${entry.id} for archive (${Math.round(ageInDays)} days inactive)`);
       }
     } else if (ageInDays > daysUntilDecay) {
       // Decay priority
       if (entry.priority === 'high') {
         entry.priority = 'medium';
         decayed++;
-        console.log(`[AgeMem] Decayed memory ${entry.id} from high to medium (${Math.round(ageInDays)} days inactive)`);
+        log.info(`[AgeMem] Decayed memory ${entry.id} from high to medium (${Math.round(ageInDays)} days inactive)`);
       } else if (entry.priority === 'medium' && ageInDays > daysUntilDecay * 2) {
         entry.priority = 'low';
         decayed++;
-        console.log(`[AgeMem] Decayed memory ${entry.id} from medium to low (${Math.round(ageInDays)} days inactive)`);
+        log.info(`[AgeMem] Decayed memory ${entry.id} from medium to low (${Math.round(ageInDays)} days inactive)`);
       } else {
         unchanged++;
       }
@@ -1002,7 +1005,7 @@ export function applyMemoryDecay(options: {
   
   saveMemoryStore(store);
   
-  console.log(`[AgeMem] Decay complete: ${decayed} decayed, ${flaggedForArchive} flagged for archive, ${unchanged} unchanged`);
+  log.info(`[AgeMem] Decay complete: ${decayed} decayed, ${flaggedForArchive} flagged for archive, ${unchanged} unchanged`);
   
   return { decayed, flaggedForArchive, unchanged };
 }

@@ -27,8 +27,8 @@ export function NewsletterPopup() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Here you would typically send the email to your backend
-    console.log('Newsletter signup:', email);
+    // In production, send email to backend API
+    // await fetch('/api/newsletter', { method: 'POST', body: JSON.stringify({ email }) });
     setSubmitted(true);
     setTimeout(() => {
       handleClose();

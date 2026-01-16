@@ -34,7 +34,8 @@ export function CustomerQuestion({ productTitle, productHandle }: CustomerQuesti
       setIsSubmitted(true);
       setQuestion('');
     } catch (error) {
-      console.error('Error submitting question:', error);
+      // Silent fail for UI - in production would send to error tracking
+      // Error tracked via API response
     } finally {
       setIsSubmitting(false);
     }

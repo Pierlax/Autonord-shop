@@ -224,7 +224,7 @@ export function recordMemoryUsage(record: MemoryUsageRecord): void {
     for (const memoryId of record.memoryIds) {
       markMemoryAsUseful(memoryId, record.agentSource);
     }
-    console.log(`[AgeMem-AutoInject] Recorded successful usage of ${record.memoryIds.length} memories`);
+    log.info(`[AgeMem-AutoInject] Recorded successful usage of ${record.memoryIds.length} memories`);
   }
   // Note: For unsuccessful usage, the agent should call markMemoryAsProblematic directly
   // with specific feedback about what went wrong
