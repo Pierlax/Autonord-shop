@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
             productId: product.id,
             title: product.title,
             queued: result.queued,
-            messageId: result.messageId,
+            messageId: result.queued ? result.messageId : undefined,
           };
         } catch (error) {
           return {
