@@ -45,6 +45,11 @@ const SHOPIFY_ADMIN_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
  * Fetch from Shopify Admin API
  */
 async function adminFetch(query: string, variables?: Record<string, unknown>) {
+  if (!SHOPIFY_ADMIN_TOKEN) {
+    console.error('[ShopifyBlogAdmin] Missing SHOPIFY_ADMIN_ACCESS_TOKEN');
+    return null;
+  }
+
   const url = `https://${SHOPIFY_ADMIN_DOMAIN}/admin/api/2024-01/graphql.json`;
   
   try {
