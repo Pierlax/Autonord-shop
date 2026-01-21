@@ -2,12 +2,12 @@
  * Worker per rigenerare un singolo prodotto
  * Chiamato da QStash
  * 
- * FLUSSO CORRETTO:
+ * FLUSSO:
  * 1. Mantiene i dati originali (SKU, titolo, vendor, prezzo)
- * 2. Ricerca RAG con lo SKU esatto per trovare info tecniche
- * 3. Claude arricchisce la descrizione SENZA inventare
- * 4. Cerca immagine specifica con lo SKU
- * 5. Crea il prodotto su Shopify mantenendo i dati originali
+ * 2. Cerca sul sito ufficiale del brand (Milwaukee, Makita, etc.) usando lo SKU
+ * 3. Estrae immagine e info dalla pagina ufficiale
+ * 4. Claude arricchisce la descrizione con le info trovate
+ * 5. Crea il prodotto su Shopify
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -31,167 +31,159 @@ interface ProductPayload {
 }
 
 // ============================================
-// STEP 1: RICERCA RAG CON SKU ESATTO
+// STEP 1: CERCA SUL SITO UFFICIALE DEL BRAND
 // ============================================
 
-async function searchProductInfoRAG(sku: string, title: string, vendor: string): Promise<{
-  foundInfo: string;
-  officialSpecs: string | null;
+interface BrandSearchResult {
   brand: string;
-}> {
-  // Determina il brand dallo SKU Milwaukee (inizia con 49)
+  productUrl: string | null;
+  imageUrl: string | null;
+  officialTitle: string | null;
+  officialDescription: string | null;
+  specs: string | null;
+}
+
+async function searchOnOfficialBrandSite(sku: string, title: string, vendor: string): Promise<BrandSearchResult> {
+  // Determina il brand
   let brand = 'Milwaukee';
   if (vendor.toLowerCase().includes('makita')) brand = 'Makita';
   else if (vendor.toLowerCase().includes('dewalt')) brand = 'DeWalt';
   else if (vendor.toLowerCase().includes('bosch')) brand = 'Bosch';
   else if (vendor.toLowerCase().includes('hilti')) brand = 'Hilti';
-  else if (vendor.toLowerCase().includes('autonord')) brand = 'Autonord Service';
+  else if (vendor.toLowerCase().includes('hikoki')) brand = 'HiKOKI';
+  else if (sku.startsWith('49')) brand = 'Milwaukee';
   
-  // Se lo SKU inizia con 49, è sicuramente Milwaukee
-  if (sku.startsWith('49')) brand = 'Milwaukee';
+  const result: BrandSearchResult = {
+    brand,
+    productUrl: null,
+    imageUrl: null,
+    officialTitle: null,
+    officialDescription: null,
+    specs: null
+  };
   
   if (!SERPAPI_API_KEY) {
-    return {
-      foundInfo: `SKU: ${sku}\nTitolo originale: ${title}\nBrand: ${brand}\nNessuna ricerca effettuata (API key mancante)`,
-      officialSpecs: null,
-      brand
-    };
+    console.log('SERPAPI_API_KEY not set');
+    return result;
   }
   
   try {
-    // Ricerca 1: SKU esatto sul sito Milwaukee
-    const skuSearchQuery = `Milwaukee ${sku} site:milwaukeetool.eu OR site:milwaukeetool.com`;
-    console.log(`RAG Search 1: ${skuSearchQuery}`);
+    // Cerca la pagina prodotto sul sito ufficiale usando lo SKU
+    const brandSites: Record<string, string> = {
+      'Milwaukee': 'site:milwaukeetool.eu OR site:milwaukeetool.com',
+      'Makita': 'site:makita.it OR site:makita.com',
+      'DeWalt': 'site:dewalt.it OR site:dewalt.com',
+      'Bosch': 'site:bosch-professional.com',
+      'Hilti': 'site:hilti.it OR site:hilti.com',
+      'HiKOKI': 'site:hikoki-powertools.it'
+    };
     
-    const url1 = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(skuSearchQuery)}&num=5&hl=it&gl=it&api_key=${SERPAPI_API_KEY}`;
-    const response1 = await fetch(url1);
-    const data1 = await response1.json();
+    const siteFilter = brandSites[brand] || '';
+    const searchQuery = `${sku} ${siteFilter}`;
     
-    let foundInfo = `SKU: ${sku}\nTitolo originale: ${title}\nBrand: ${brand}\n\n`;
-    let officialSpecs: string | null = null;
+    console.log(`Searching official site: ${searchQuery}`);
     
-    if (data1.organic_results && data1.organic_results.length > 0) {
-      foundInfo += `=== RISULTATI RICERCA SKU ===\n`;
-      for (const result of data1.organic_results.slice(0, 3)) {
-        foundInfo += `\nFonte: ${result.link}\nTitolo: ${result.title}\nDescrizione: ${result.snippet || 'N/A'}\n`;
-        
-        // Se troviamo il sito ufficiale Milwaukee, salva le specifiche
-        if (result.link?.includes('milwaukeetool')) {
-          officialSpecs = result.snippet || null;
-        }
+    const url = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(searchQuery)}&num=3&hl=it&gl=it&api_key=${SERPAPI_API_KEY}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    if (data.organic_results && data.organic_results.length > 0) {
+      const firstResult = data.organic_results[0];
+      result.productUrl = firstResult.link;
+      result.officialTitle = firstResult.title;
+      result.officialDescription = firstResult.snippet;
+      
+      console.log(`Found official page: ${result.productUrl}`);
+      
+      // Cerca l'immagine dalla pagina ufficiale
+      const imageUrl = await searchImageFromOfficialPage(sku, brand, result.productUrl);
+      if (imageUrl) {
+        result.imageUrl = imageUrl;
       }
     }
     
-    // Ricerca 2: Titolo prodotto per più contesto
-    const titleSearchQuery = `${brand} "${title.replace(/"/g, '')}" scheda tecnica`;
-    console.log(`RAG Search 2: ${titleSearchQuery}`);
-    
-    const url2 = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(titleSearchQuery)}&num=3&hl=it&gl=it&api_key=${SERPAPI_API_KEY}`;
-    const response2 = await fetch(url2);
-    const data2 = await response2.json();
-    
-    if (data2.organic_results && data2.organic_results.length > 0) {
-      foundInfo += `\n=== RISULTATI RICERCA TITOLO ===\n`;
-      for (const result of data2.organic_results.slice(0, 2)) {
-        foundInfo += `\nFonte: ${result.link}\nTitolo: ${result.title}\nDescrizione: ${result.snippet || 'N/A'}\n`;
-      }
-    }
-    
-    return { foundInfo, officialSpecs, brand };
+    return result;
     
   } catch (error) {
-    console.error('Error in RAG search:', error);
-    return {
-      foundInfo: `SKU: ${sku}\nTitolo originale: ${title}\nBrand: ${brand}\nErrore nella ricerca`,
-      officialSpecs: null,
-      brand
-    };
+    console.error('Error searching official site:', error);
+    return result;
   }
 }
 
-// ============================================
-// STEP 2: RICERCA IMMAGINE CON SKU ESATTO
-// ============================================
-
-async function searchProductImageBySKU(sku: string, brand: string, title: string): Promise<string | null> {
-  if (!SERPAPI_API_KEY) {
-    console.log('SERPAPI_API_KEY not set, skipping image search');
-    return null;
-  }
+async function searchImageFromOfficialPage(sku: string, brand: string, productUrl: string | null): Promise<string | null> {
+  if (!SERPAPI_API_KEY) return null;
   
   try {
-    // Strategia 1: Ricerca immagine con SKU esatto
-    const searchQueries = [
-      `${brand} ${sku}`, // Milwaukee 4932498628
-      `${sku} ${brand} product`, // 4932498628 Milwaukee product
-      `${brand} ${title.split(' ').slice(0, 3).join(' ')}` // Milwaukee ACCETTA 40
-    ];
+    // Cerca immagini con lo SKU specifico
+    const searchQuery = `${brand} ${sku} product`;
     
-    for (const query of searchQueries) {
-      console.log(`Image search: ${query}`);
+    console.log(`Searching image: ${searchQuery}`);
+    
+    const url = `https://serpapi.com/search.json?engine=google_images&q=${encodeURIComponent(searchQuery)}&num=10&safe=active&api_key=${SERPAPI_API_KEY}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    if (data.images_results && data.images_results.length > 0) {
+      // Priorità ai domini ufficiali del brand
+      const brandDomains: Record<string, string[]> = {
+        'Milwaukee': ['milwaukeetool.eu', 'milwaukeetool.com', 'milwaukee'],
+        'Makita': ['makita.it', 'makita.com', 'makita'],
+        'DeWalt': ['dewalt.it', 'dewalt.com', 'dewalt'],
+        'Bosch': ['bosch-professional.com', 'bosch'],
+        'Hilti': ['hilti.it', 'hilti.com', 'hilti'],
+        'HiKOKI': ['hikoki-powertools.it', 'hikoki']
+      };
       
-      const url = `https://serpapi.com/search.json?engine=google_images&q=${encodeURIComponent(query)}&num=15&safe=active&api_key=${SERPAPI_API_KEY}`;
-      const response = await fetch(url);
-      const data = await response.json();
+      const preferredDomains = brandDomains[brand] || [];
       
-      if (data.images_results && data.images_results.length > 0) {
-        // Filtra immagini valide
-        const validImages = data.images_results.filter((img: any) => {
-          if (!img.original) return false;
-          const imgUrl = img.original.toLowerCase();
-          
-          // Escludi immagini non valide
-          if (imgUrl.includes('placeholder')) return false;
-          if (imgUrl.includes('logo')) return false;
-          if (imgUrl.includes('icon')) return false;
-          if (imgUrl.includes('banner')) return false;
-          if (imgUrl.includes('avatar')) return false;
-          
-          // Deve essere un formato immagine valido
-          if (!imgUrl.match(/\.(jpg|jpeg|png|webp)/i)) return false;
-          
-          // Escludi immagini troppo larghe o alte (banner)
-          if (img.original_width && img.original_height) {
-            const ratio = img.original_width / img.original_height;
-            if (ratio > 2.5 || ratio < 0.4) return false;
-          }
-          
-          return true;
-        });
+      // Filtra immagini valide
+      const validImages = data.images_results.filter((img: any) => {
+        if (!img.original) return false;
+        const imgUrl = img.original.toLowerCase();
         
-        // Priorità ai domini ufficiali
-        const priorityDomains = [
-          'milwaukeetool.eu',
-          'milwaukeetool.com',
-          'milwaukee',
-          'cdn.shopify.com',
-          'media.wurth',
-          'ferramenta',
-          'bricoman',
-          'leroymerlin',
-          'amazon'
-        ];
+        // Escludi immagini non valide
+        if (imgUrl.includes('placeholder')) return false;
+        if (imgUrl.includes('logo') && !imgUrl.includes('product')) return false;
+        if (imgUrl.includes('icon')) return false;
+        if (imgUrl.includes('banner')) return false;
+        if (imgUrl.includes('avatar')) return false;
         
-        // Cerca prima nei domini prioritari
-        for (const domain of priorityDomains) {
-          const found = validImages.find((img: any) => 
-            img.original?.toLowerCase().includes(domain)
-          );
-          if (found?.original) {
-            console.log(`Found priority image from ${domain}: ${found.original}`);
-            return found.original;
-          }
+        // Deve essere un formato immagine valido
+        if (!imgUrl.match(/\.(jpg|jpeg|png|webp)/i)) return false;
+        
+        return true;
+      });
+      
+      // Prima cerca nei domini ufficiali del brand
+      for (const domain of preferredDomains) {
+        const found = validImages.find((img: any) => 
+          img.original?.toLowerCase().includes(domain)
+        );
+        if (found?.original) {
+          console.log(`Found official brand image: ${found.original}`);
+          return found.original;
         }
-        
-        // Altrimenti prendi la prima immagine valida
-        if (validImages.length > 0) {
-          console.log(`Found image: ${validImages[0].original}`);
-          return validImages[0].original;
+      }
+      
+      // Poi cerca in altri domini affidabili
+      const trustedDomains = ['cdn.shopify.com', 'amazon', 'ferramenta', 'bricoman', 'leroymerlin', 'wurth'];
+      for (const domain of trustedDomains) {
+        const found = validImages.find((img: any) => 
+          img.original?.toLowerCase().includes(domain)
+        );
+        if (found?.original) {
+          console.log(`Found trusted domain image: ${found.original}`);
+          return found.original;
         }
+      }
+      
+      // Altrimenti prendi la prima immagine valida
+      if (validImages.length > 0) {
+        console.log(`Found image: ${validImages[0].original}`);
+        return validImages[0].original;
       }
     }
     
-    console.log('No suitable image found');
     return null;
     
   } catch (error) {
@@ -201,16 +193,16 @@ async function searchProductImageBySKU(sku: string, brand: string, title: string
 }
 
 // ============================================
-// STEP 3: GENERAZIONE SCHEDA CON CLAUDE
+// STEP 2: GENERAZIONE SCHEDA CON CLAUDE
 // ============================================
 
 const PRODUCT_SYSTEM_PROMPT = `Sei Marco, il tecnico senior di Autonord Service a Genova. Scrivi schede prodotto per l'e-commerce.
 
 ## REGOLE FONDAMENTALI:
 1. **MANTIENI IL TITOLO ORIGINALE** - Puliscilo solo se duplicato (es. "ACCETTA 40 CM ACCETTA 40 CM" → "Accetta 40 cm")
-2. **NON INVENTARE** - Usa SOLO le informazioni fornite dalla ricerca RAG
+2. **NON INVENTARE** - Usa SOLO le informazioni fornite dalla ricerca
 3. **SE NON SAI, SCRIVI "Contattaci"** - Mai inventare specifiche tecniche
-4. **MANTIENI LO SKU** - È il codice identificativo, non cambiarlo
+4. **USA LE INFO UFFICIALI** - Se hai trovato info dal sito ufficiale, usale
 
 ## STRUTTURA JSON DA RESTITUIRE:
 {
@@ -220,49 +212,55 @@ const PRODUCT_SYSTEM_PROMPT = `Sei Marco, il tecnico senior di Autonord Service 
   "metaTitle": "Max 60 caratteri",
   "metaDescription": "Max 160 caratteri",
   "tags": ["tag1", "tag2"],
-  "productType": "Categoria (es. Adattatori, Accessori, Utensili)"
+  "productType": "Categoria (es. Accette, Adattatori, Accessori)"
 }
 
 ## FORMATO bodyHtml:
 <h2>Descrizione</h2>
-<p>[2-3 frasi basate SOLO sulle info trovate. Se non ci sono info, scrivi "Prodotto professionale [brand]. Contattaci per specifiche dettagliate."]</p>
+<p>[2-3 frasi basate sulle info trovate dal sito ufficiale. Se non ci sono info, scrivi "Prodotto professionale [brand]. Contattaci per specifiche dettagliate."]</p>
 
-<h3>Specifiche Tecniche</h3>
-<p>[Se hai info dalla ricerca, elencale. Altrimenti: "Specifiche disponibili su richiesta - Chiama 010 7456076"]</p>
+<h3>Caratteristiche</h3>
+<ul>
+<li>[Caratteristica 1 dal sito ufficiale]</li>
+<li>[Caratteristica 2]</li>
+</ul>
 
 <h3>Codice Prodotto</h3>
 <p>SKU: [sku] | Brand: [brand]</p>
 
 ## IMPORTANTE:
 - Il titolo deve essere LEGGIBILE ma fedele all'originale
-- NON aggiungere "Milwaukee" se non è nel titolo originale
+- Se hai info dal sito ufficiale Milwaukee/Makita/etc, usale!
 - NON inventare funzionalità o specifiche
-- Se il titolo è un codice (es. "0411"), lascialo così: "Prodotto Codice 0411"
 
 Restituisci SOLO il JSON valido.`;
 
 async function generateProductContent(
   sku: string,
   originalTitle: string,
-  brand: string,
-  ragInfo: string,
+  brandInfo: BrandSearchResult,
   price: string
 ): Promise<any> {
   const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+  
+  const officialInfo = brandInfo.officialTitle || brandInfo.officialDescription 
+    ? `\n\n**Informazioni dal sito ufficiale ${brandInfo.brand}:**
+Titolo: ${brandInfo.officialTitle || 'N/A'}
+Descrizione: ${brandInfo.officialDescription || 'N/A'}
+URL: ${brandInfo.productUrl || 'N/A'}`
+    : '\n\nNessuna informazione trovata dal sito ufficiale.';
   
   const userPrompt = `Genera la scheda prodotto per:
 
 **SKU:** ${sku}
 **Titolo originale:** ${originalTitle}
-**Brand:** ${brand}
+**Brand:** ${brandInfo.brand}
 **Prezzo:** €${price}
-
-**Informazioni trovate dalla ricerca RAG:**
-${ragInfo}
+${officialInfo}
 
 RICORDA: 
-- Pulisci il titolo SOLO se duplicato, altrimenti mantienilo fedele
-- Usa SOLO le informazioni dalla ricerca RAG
+- Pulisci il titolo SOLO se duplicato
+- Usa le informazioni dal sito ufficiale se disponibili
 - Se non ci sono info, scrivi "Contattaci per specifiche"`;
 
   const response = await anthropic.messages.create({
@@ -284,14 +282,14 @@ RICORDA:
     }
   }
   
-  // Fallback: genera contenuto minimale
+  // Fallback
   return {
     cleanTitle: cleanTitle(originalTitle),
-    shortDescription: `${brand} ${cleanTitle(originalTitle)} - SKU ${sku}`,
-    bodyHtml: `<h2>Descrizione</h2><p>Prodotto professionale ${brand}. Contattaci per specifiche dettagliate al 010 7456076.</p><h3>Codice Prodotto</h3><p>SKU: ${sku} | Brand: ${brand}</p>`,
-    metaTitle: `${cleanTitle(originalTitle)} | ${brand}`,
-    metaDescription: `${brand} ${cleanTitle(originalTitle)}. SKU ${sku}. Disponibile presso Autonord Service Genova.`,
-    tags: [brand, 'Utensili'],
+    shortDescription: `${brandInfo.brand} ${cleanTitle(originalTitle)} - SKU ${sku}`,
+    bodyHtml: `<h2>Descrizione</h2><p>Prodotto professionale ${brandInfo.brand}. Contattaci per specifiche dettagliate al 010 7456076.</p><h3>Codice Prodotto</h3><p>SKU: ${sku} | Brand: ${brandInfo.brand}</p>`,
+    metaTitle: `${cleanTitle(originalTitle)} | ${brandInfo.brand}`,
+    metaDescription: `${brandInfo.brand} ${cleanTitle(originalTitle)}. SKU ${sku}. Disponibile presso Autonord Service Genova.`,
+    tags: [brandInfo.brand, 'Utensili'],
     productType: 'Accessori'
   };
 }
@@ -301,7 +299,6 @@ function cleanTitle(title: string): string {
   const words = title.split(' ');
   const halfLength = Math.floor(words.length / 2);
   
-  // Controlla se la seconda metà è uguale alla prima
   const firstHalf = words.slice(0, halfLength).join(' ').toLowerCase();
   const secondHalf = words.slice(halfLength).join(' ').toLowerCase();
   
@@ -310,7 +307,6 @@ function cleanTitle(title: string): string {
     cleanedTitle = words.slice(0, halfLength).join(' ');
   }
   
-  // Capitalizza correttamente
   return cleanedTitle
     .toLowerCase()
     .split(' ')
@@ -321,7 +317,7 @@ function cleanTitle(title: string): string {
 }
 
 // ============================================
-// STEP 4: CREAZIONE PRODOTTO SU SHOPIFY
+// STEP 3: CREAZIONE PRODOTTO SU SHOPIFY
 // ============================================
 
 async function createShopifyProduct(
@@ -330,11 +326,10 @@ async function createShopifyProduct(
   imageUrl: string | null,
   brand: string
 ): Promise<any> {
-  // Usa il titolo pulito ma mantieni i dati originali
   const productInput: any = {
     title: generatedContent.cleanTitle,
     descriptionHtml: generatedContent.bodyHtml || '',
-    vendor: brand, // Usa il brand identificato, non il vendor legale
+    vendor: brand,
     productType: generatedContent.productType || 'Accessori',
     tags: Array.from(new Set([brand, ...(generatedContent.tags || []), 'AI-Enhanced'])),
     status: 'ACTIVE',
@@ -394,7 +389,6 @@ async function createShopifyProduct(
 }
 
 async function createProductVariant(productId: string, product: ProductPayload): Promise<void> {
-  // Prima ottieni la variante di default
   const getVariantQuery = `
     query GetProduct($id: ID!) {
       product(id: $id) {
@@ -426,7 +420,6 @@ async function createProductVariant(productId: string, product: ProductPayload):
   
   if (!variantId) return;
   
-  // Aggiorna la variante con SKU e prezzo ORIGINALI
   const updateMutation = `
     mutation UpdateVariant($input: ProductVariantInput!) {
       productVariantUpdate(input: $input) {
@@ -454,10 +447,10 @@ async function createProductVariant(productId: string, product: ProductPayload):
       variables: {
         input: {
           id: variantId,
-          sku: product.sku, // SKU ORIGINALE
-          price: product.price, // PREZZO ORIGINALE
+          sku: product.sku,
+          price: product.price,
           barcode: product.barcode,
-          inventoryPolicy: 'CONTINUE' // Permetti ordini anche senza stock
+          inventoryPolicy: 'CONTINUE'
         }
       }
     })
@@ -465,7 +458,6 @@ async function createProductVariant(productId: string, product: ProductPayload):
 }
 
 async function publishProduct(productId: string): Promise<void> {
-  // Ottieni l'ID della pubblicazione Online Store
   const getPublicationsQuery = `
     query {
       publications(first: 10) {
@@ -495,7 +487,6 @@ async function publishProduct(productId: string): Promise<void> {
   
   if (!onlineStore) return;
   
-  // Pubblica il prodotto
   const publishMutation = `
     mutation PublishProduct($id: ID!, $input: [PublicationInput!]!) {
       publishablePublish(id: $id, input: $input) {
@@ -533,41 +524,47 @@ export async function POST(request: NextRequest) {
     
     console.log(`\n🔄 Processing: ${payload.sku} - ${payload.title}`);
     
-    // STEP 1: Ricerca RAG con SKU
-    console.log('   📚 RAG Search...');
-    const { foundInfo, brand } = await searchProductInfoRAG(
+    // STEP 1: Cerca sul sito ufficiale del brand
+    console.log('   🌐 Searching official brand site...');
+    const brandInfo = await searchOnOfficialBrandSite(
       payload.sku,
       payload.title,
       payload.vendor
     );
-    console.log(`   ✅ Brand identified: ${brand}`);
+    console.log(`   ✅ Brand: ${brandInfo.brand}`);
+    if (brandInfo.productUrl) {
+      console.log(`   ✅ Official page found: ${brandInfo.productUrl}`);
+    }
+    if (brandInfo.imageUrl) {
+      console.log(`   ✅ Image found`);
+    }
     
     // STEP 2: Genera contenuto con Claude
     console.log('   🤖 Generating content...');
     const generatedContent = await generateProductContent(
       payload.sku,
       payload.title,
-      brand,
-      foundInfo,
+      brandInfo,
       payload.price
     );
     console.log(`   ✅ Title: ${generatedContent.cleanTitle}`);
     
-    // STEP 3: Cerca immagine con SKU
-    console.log('   🖼️ Searching image...');
-    const imageUrl = await searchProductImageBySKU(payload.sku, brand, payload.title);
-    console.log(imageUrl ? `   ✅ Image found` : '   ⚠️ No image');
-    
-    // STEP 4: Crea prodotto su Shopify
+    // STEP 3: Crea prodotto su Shopify
     console.log('   📤 Creating on Shopify...');
-    const result = await createShopifyProduct(payload, generatedContent, imageUrl, brand);
+    const result = await createShopifyProduct(
+      payload,
+      generatedContent,
+      brandInfo.imageUrl,
+      brandInfo.brand
+    );
     
     if (result.data?.productCreate?.product) {
       console.log(`   ✅ Created: ${result.data.productCreate.product.handle}`);
       return NextResponse.json({
         success: true,
         product: result.data.productCreate.product,
-        sku: payload.sku
+        sku: payload.sku,
+        imageFound: !!brandInfo.imageUrl
       });
     } else {
       console.error('   ❌ Shopify errors:', result.data?.productCreate?.userErrors);
