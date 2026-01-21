@@ -7,6 +7,10 @@ const log = loggers.shopify;
 const domain = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN;
 const storefrontAccessToken = process.env.NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN;
 
+export async function shopifyFetch(query: string, variables?: object) {
+  return ShopifyData(query, variables);
+}
+
 async function ShopifyData(query: string, variables?: object) {
   if (!domain || !storefrontAccessToken) {
     log.warn("Missing Shopify API keys");

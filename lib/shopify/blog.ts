@@ -189,23 +189,14 @@ function transformArticle(article: ShopifyBlogArticle): BlogPost {
  */
 export async function getShopifyBlogArticles(blogHandle: string = 'news', limit: number = 50): Promise<BlogPost[]> {
   try {
-    const response = await shopifyFetch<{
-      blog: {
-        articles: {
-          edges: Array<{ node: ShopifyBlogArticle }>;
-        };
-      } | null;
-    }>({
-      query: ARTICLES_QUERY,
-      variables: { first: limit, blogHandle },
-    });
+    const data = await shopifyFetch(ARTICLES_QUERY, { first: limit, blogHandle });
 
-    if (!response.body.data.blog?.articles?.edges) {
+    if (!data?.blog?.articles?.edges) {
       console.log('[ShopifyBlog] No articles found for blog:', blogHandle);
       return [];
     }
 
-    return response.body.data.blog.articles.edges.map(({ node }) => transformArticle(node));
+    return data.blog.articles.edges.map(({ node }: { node: ShopifyBlogArticle }) => transformArticle(node));
   } catch (error) {
     console.error('[ShopifyBlog] Error fetching articles:', error);
     return [];
@@ -217,25 +208,16 @@ export async function getShopifyBlogArticles(blogHandle: string = 'news', limit:
  */
 export async function getAllShopifyBlogArticles(): Promise<BlogPost[]> {
   try {
-    const response = await shopifyFetch<{
-      blogs: {
-        edges: Array<{
-          node: {
-            handle: string;
-            title: string;
-            articles: {
-              edges: Array<{ node: ShopifyBlogArticle }>;
-            };
-          };
-        }>;
-      };
-    }>({
-      query: ALL_BLOGS_QUERY,
-    });
+    const data = await shopifyFetch(ALL_BLOGS_QUERY);
+
+    if (!data?.blogs?.edges) {
+      console.log('[ShopifyBlog] No blogs found');
+      return [];
+    }
 
     const allArticles: BlogPost[] = [];
 
-    for (const blogEdge of response.body.data.blogs.edges) {
+    for (const blogEdge of data.blogs.edges) {
       for (const articleEdge of blogEdge.node.articles.edges) {
         allArticles.push(transformArticle(articleEdge.node));
       }
@@ -256,16 +238,9 @@ export async function getAllShopifyBlogArticles(): Promise<BlogPost[]> {
  */
 export async function getShopifyBlogArticle(articleHandle: string, blogHandle: string = 'news'): Promise<BlogPost | null> {
   try {
-    const response = await shopifyFetch<{
-      blog: {
-        articleByHandle: ShopifyBlogArticle | null;
-      } | null;
-    }>({
-      query: ARTICLE_BY_HANDLE_QUERY,
-      variables: { blogHandle, articleHandle },
-    });
+    const data = await shopifyFetch(ARTICLE_BY_HANDLE_QUERY, { blogHandle, articleHandle });
 
-    const article = response.body.data.blog?.articleByHandle;
+    const article = data?.blog?.articleByHandle;
     
     if (!article) {
       console.log('[ShopifyBlog] Article not found:', articleHandle);

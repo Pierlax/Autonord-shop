@@ -3,7 +3,7 @@ import { Inter, Oswald, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
-import { Toaster } from "sonner";
+import { ToasterProvider } from "@/components/ui/toaster-provider";
 import { WhatsAppButton } from "@/components/ui/whatsapp-button";
 import { NewsletterPopup } from "@/components/ui/newsletter-popup";
 
@@ -35,7 +35,7 @@ export default function RootLayout({
         <Footer />
         <WhatsAppButton />
         <NewsletterPopup />
-        <Toaster position="top-center" />
+        <ToasterProvider />
       </body>
     </html>
   );
