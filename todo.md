@@ -404,3 +404,25 @@ Based on Sirio website analysis, implement the following improvements:
 - [x] Migrate route.ts from ai-enrichment.ts to ai-enrichment-v3.ts
 - [x] Remove ai-enrichment.ts (V1) - fully deprecated
 - [x] Create lib/logger.ts universal logger module
+
+
+## Danea Sync Integration (January 2026)
+
+### API Endpoints
+- [x] Create /api/sync/danea endpoint for CSV upload
+- [x] Create /api/sync/danea/orders endpoint for orders export
+- [x] Implement CSV parser for Danea format
+- [x] Implement Shopify Admin API sync
+- [x] Add rate limiting (2 req/sec)
+- [x] Add authentication via SYNC_SECRET
+
+### Documentation
+- [x] Create docs/DANEA_SYNC.md with full guide
+- [x] Document CSV column mapping
+- [x] Document API usage examples
+- [x] Document Windows batch script for automation
+
+### Configuration
+- [ ] Add SYNC_SECRET to Vercel environment variables
+- [ ] Test sync with sample CSV
+- [ ] Configure Danea for automatic export (optional)
