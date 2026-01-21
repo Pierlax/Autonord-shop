@@ -28,7 +28,7 @@
     },
     {
       "path": "/api/cron/auto-process-products",
-      "schedule": "*/15 * * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }

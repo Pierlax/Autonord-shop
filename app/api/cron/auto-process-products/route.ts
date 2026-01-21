@@ -16,7 +16,8 @@ const CRON_SECRET = process.env.CRON_SECRET || 'autonord-cron-2024-xK9mP2vL8nQ4'
 const BASE_URL = 'https://autonord-shop.vercel.app';
 
 // Numero di prodotti da processare per ogni esecuzione del cron
-const PRODUCTS_PER_RUN = 3;
+// 1 prodotto per run perché Claude con ricerca web richiede ~2-3 minuti
+const PRODUCTS_PER_RUN = 1;
 
 interface ShopifyProduct {
   id: string;
