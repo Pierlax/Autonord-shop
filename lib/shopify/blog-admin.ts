@@ -25,8 +25,8 @@ interface ShopifyArticleNode {
   id: string;
   handle: string;
   title: string;
-  excerpt: string | null;
-  contentHtml: string;
+  summary: string | null;
+  body: string;
   publishedAt: string;
   tags: string[];
   image: {
@@ -121,8 +121,8 @@ function transformArticle(article: ShopifyArticleNode): BlogPost {
   return {
     slug: article.handle,
     title: article.title,
-    excerpt: article.excerpt || '',
-    content: article.contentHtml,
+    excerpt: article.summary || '',
+    content: article.body,
     coverImage: article.image?.url || '/blog/default-cover.jpg',
     date: article.publishedAt.split('T')[0],
     author: {
@@ -131,7 +131,7 @@ function transformArticle(article: ShopifyArticleNode): BlogPost {
     },
     category: mapCategory(article.tags),
     tags: article.tags,
-    readingTime: estimateReadingTime(article.contentHtml),
+    readingTime: estimateReadingTime(article.body),
     featured: article.tags.some(t => 
       t.toLowerCase().includes('featured') || 
       t.toLowerCase().includes('in-evidenza') ||
@@ -148,8 +148,8 @@ const ALL_ARTICLES_QUERY = `
           id
           handle
           title
-          excerpt
-          contentHtml
+          summary
+          body
           publishedAt
           tags
           image {
@@ -173,8 +173,8 @@ const ARTICLE_BY_HANDLE_QUERY = `
           id
           handle
           title
-          excerpt
-          contentHtml
+          summary
+          body
           publishedAt
           tags
           image {
