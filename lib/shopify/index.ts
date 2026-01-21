@@ -1,5 +1,6 @@
 import { Product, Collection, EnrichedData, FAQ } from './types';
 import { loggers } from '@/lib/logger';
+import { parseDescriptionHtml, hasAiEnrichedContent } from './parse-description-html';
 
 const log = loggers.shopify;
 
@@ -151,7 +152,15 @@ const productFragment = `
 `;
 
 /**
- * Parse metafields from Shopify response into structured EnrichedData
+ * Parse enriched data from product - now extracts from descriptionHtml
+ * 
+ * The AI-generated content is embedded in descriptionHtml with a specific
+ * HTML structure. This function parses that structure to extract:
+ * - Main description
+ * - Pros (benefits)
+ * - Cons (considerations)
+ * - FAQs
+ * - Accessories
  */
 export function parseEnrichedData(product: any): EnrichedData {
   const result: EnrichedData = {
@@ -163,7 +172,36 @@ export function parseEnrichedData(product: any): EnrichedData {
   };
 
   try {
-    // Parse pros (JSON array of strings)
+    // First, try to parse from descriptionHtml (primary source)
+    const descriptionHtml = product.descriptionHtml || product.description;
+    
+    if (descriptionHtml && hasAiEnrichedContent(descriptionHtml)) {
+      const parsed = parseDescriptionHtml(descriptionHtml);
+      
+      if (parsed.isAiEnriched) {
+        result.isEnriched = true;
+        
+        if (parsed.pros.length > 0) {
+          result.pros = parsed.pros;
+        }
+        
+        if (parsed.cons.length > 0) {
+          result.cons = parsed.cons;
+        }
+        
+        if (parsed.faqs.length > 0) {
+          result.faqs = parsed.faqs;
+        }
+        
+        if (parsed.mainDescription) {
+          result.aiDescription = parsed.mainDescription;
+        }
+        
+        return result;
+      }
+    }
+
+    // Fallback: try metafields (legacy support)
     if (product.pros?.value) {
       const parsed = JSON.parse(product.pros.value);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -172,7 +210,6 @@ export function parseEnrichedData(product: any): EnrichedData {
       }
     }
 
-    // Parse cons (JSON array of strings)
     if (product.cons?.value) {
       const parsed = JSON.parse(product.cons.value);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -181,7 +218,6 @@ export function parseEnrichedData(product: any): EnrichedData {
       }
     }
 
-    // Parse FAQs (JSON array of {question, answer} objects)
     if (product.faqs?.value) {
       const parsed = JSON.parse(product.faqs.value);
       if (Array.isArray(parsed) && parsed.length > 0) {
@@ -190,7 +226,6 @@ export function parseEnrichedData(product: any): EnrichedData {
       }
     }
 
-    // Parse AI description (plain text)
     if (product.aiDescription?.value) {
       result.aiDescription = product.aiDescription.value;
       result.isEnriched = true;
