@@ -8,6 +8,9 @@
     },
     "app/api/cron/**/*.ts": {
       "maxDuration": 90
+    },
+    "app/api/workers/regenerate-product/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -22,6 +25,10 @@
     {
       "path": "/api/cron/enrich-pending",
       "schedule": "0 */4 * * *"
+    },
+    {
+      "path": "/api/cron/auto-process-products",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
