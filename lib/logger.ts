@@ -124,6 +124,7 @@ export const loggers = {
   queue: createLogger('queue'),
   api: createLogger('api'),
   ui: createLogger('ui'),
+  sync: createLogger('danea-sync'),
 };
 
 // Default export for quick usage
