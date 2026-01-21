@@ -1,6 +1,6 @@
 # Danea Sync - Guida Integrazione
 
-Questa guida spiega come sincronizzare i prodotti da Danea gestionale a Shopify tramite l'API di Autonord-shop.
+Questa guida spiega come sincronizzare i prodotti da Danea EasyFatt a Shopify tramite l'API di Autonord-shop.
 
 ---
 
@@ -11,15 +11,19 @@ Questa guida spiega come sincronizzare i prodotti da Danea gestionale a Shopify 
 │                      FLUSSO SYNC                            │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  DANEA GESTIONALE                                           │
+│  DANEA EASYFATT                                             │
+│       │                                                     │
+│       ├── Opzione A: Export XML automatico (consigliato)    │
+│       │   Strumenti → E-Commerce → Aggiorna articoli        │
+│       │                                                     │
+│       └── Opzione B: Export CSV manuale                     │
+│           Magazzino → Articoli → Esporta                    │
 │       │                                                     │
 │       ▼                                                     │
-│  Export CSV (manuale o automatico)                          │
+│  POST /api/sync/danea/xml  (XML nativo)                     │
+│  POST /api/sync/danea      (CSV)                            │
 │       │                                                     │
-│       ▼                                                     │
-│  POST /api/sync/danea                                       │
-│       │                                                     │
-│       ├── Parse CSV                                         │
+│       ├── Parse XML/CSV                                     │
 │       ├── Filtra prodotti e-commerce                        │
 │       └── Per ogni prodotto:                                │
 │           ├── Cerca per SKU su Shopify                      │
@@ -60,7 +64,80 @@ SYNC_SECRET=una-password-segreta-lunga
 
 ---
 
-## Formato CSV Danea
+## Metodo 1: XML Nativo Danea (Consigliato)
+
+Danea EasyFatt supporta nativamente l'invio XML via HTTP POST. Questo è il metodo più affidabile.
+
+### Configurazione in Danea EasyFatt
+
+1. Apri Danea EasyFatt
+2. Vai su **Strumenti → E-Commerce → Aggiorna articoli**
+3. Clicca sulla tab **Impostazioni**
+4. Configura:
+   - **URL**: `https://autonord-shop.vercel.app/api/sync/danea/xml?secret=TUO_SYNC_SECRET`
+   - **Login**: (lascia vuoto se usi secret nell'URL)
+   - **Password**: (lascia vuoto se usi secret nell'URL)
+5. Clicca **Salva**
+
+### Invio Prodotti
+
+1. Vai su **Strumenti → E-Commerce → Aggiorna articoli**
+2. Seleziona i prodotti da sincronizzare
+3. Clicca **Invia**
+4. Danea invierà automaticamente il file XML
+5. Se ricevi "OK", la sincronizzazione è riuscita
+
+### Modalità Sync
+
+Danea supporta due modalità:
+
+| Modalità | Descrizione | Quando Usarla |
+|----------|-------------|---------------|
+| **Full** | Invia tutti i prodotti | Prima sincronizzazione, reset completo |
+| **Incremental** | Invia solo modifiche | Aggiornamenti quotidiani |
+
+### Formato XML Danea
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<EasyfattProducts AppVersion="2" Mode="full" Warehouse="Negozio">
+  <Products>
+    <Product>
+      <Code>4933479862</Code>
+      <Description>TRAPANO MILWAUKEE M18 FPD3-502X</Description>
+      <Category>Trapani</Category>
+      <ProducerName>Milwaukee</ProducerName>
+      <GrossPrice1>599.00</GrossPrice1>
+      <AvailableQty>5</AvailableQty>
+      <ImageFileName>milwaukee-m18.jpg</ImageFileName>
+    </Product>
+  </Products>
+</EasyfattProducts>
+```
+
+### Campi XML Supportati
+
+| Campo XML | Campo Shopify | Note |
+|-----------|---------------|------|
+| `Code` | SKU | **Obbligatorio** |
+| `Description` | Title | Nome prodotto |
+| `DescriptionHTML` | Body HTML | Descrizione formattata |
+| `Category` | Product Type | Categoria |
+| `ProducerName` | Vendor | Brand/Produttore |
+| `GrossPrice1` | Price | Prezzo IVA inclusa |
+| `NetPrice1` | Price | Prezzo netto (se GrossPrice assente) |
+| `AvailableQty` | Inventory | Quantità disponibile |
+| `Barcode` | Barcode | Codice a barre |
+| `ImageFileName` | Images | Nome file immagine |
+| `Notes` | Description | Note aggiuntive |
+
+---
+
+## Metodo 2: CSV Manuale
+
+Se preferisci usare CSV invece di XML.
+
+### Formato CSV Danea
 
 Il parser riconosce automaticamente le colonne standard di Danea:
 
@@ -76,63 +153,13 @@ Il parser riconosce automaticamente le colonne standard di Danea:
 | `Cod. a barre` o `EAN` | barcode | Codice a barre |
 | `E-commerce` | ecommerce | Sì/No - se pubblicare |
 | `Note` | description | Descrizione breve |
-| `Prezzo forn.` | costPrice | Costo (non pubblicato) |
 
-### Esempio CSV
-
-```csv
-Cod.;Descrizione;Categoria;Listino 1;Produttore;Q.tà in giacenza;E-commerce
-4933479862;TRAPANO MILWAUKEE M18 FPD3-502X;Trapani;599,00;Milwaukee;5;Sì
-DCD996B;TRAPANO DEWALT 20V MAX XR;Trapani;329,00;DeWalt;12;Sì
-```
-
----
-
-## Utilizzo API
-
-### 1. Upload CSV (Multipart Form)
+### Upload CSV
 
 ```bash
 curl -X POST https://autonord-shop.vercel.app/api/sync/danea \
   -H "Authorization: Bearer TUO_SYNC_SECRET" \
   -F "file=@prodotti.csv"
-```
-
-### 2. Upload CSV (Raw Content)
-
-```bash
-curl -X POST https://autonord-shop.vercel.app/api/sync/danea \
-  -H "Authorization: Bearer TUO_SYNC_SECRET" \
-  -H "Content-Type: text/csv" \
-  --data-binary @prodotti.csv
-```
-
-### 3. Upload CSV (JSON)
-
-```bash
-curl -X POST https://autonord-shop.vercel.app/api/sync/danea \
-  -H "Authorization: Bearer TUO_SYNC_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"csv": "Cod.;Descrizione;Prezzo\n123;Prodotto Test;99,00"}'
-```
-
-### Risposta
-
-```json
-{
-  "success": true,
-  "message": "Sync completed successfully",
-  "summary": {
-    "total": 150,
-    "created": 45,
-    "updated": 100,
-    "failed": 5,
-    "skipped": 0
-  },
-  "errors": [
-    "ABC123: Shopify API error: 422 - Invalid price format"
-  ]
-}
 ```
 
 ---
@@ -160,10 +187,6 @@ GET /api/sync/danea/orders
 curl -H "Authorization: Bearer TUO_SYNC_SECRET" \
   "https://autonord-shop.vercel.app/api/sync/danea/orders?status=open" \
   -o ordini.csv
-
-# JSON per debug
-curl -H "Authorization: Bearer TUO_SYNC_SECRET" \
-  "https://autonord-shop.vercel.app/api/sync/danea/orders?format=json"
 ```
 
 ### Formato CSV Output
@@ -175,38 +198,22 @@ curl -H "Authorization: Bearer TUO_SYNC_SECRET" \
 
 ---
 
-## Configurazione Danea
+## Automazione con Script Batch
 
-### Opzione A: Export Manuale
-
-1. In Danea, vai su **Magazzino → Articoli**
-2. Seleziona i prodotti da esportare
-3. Clicca **Esporta → CSV**
-4. Carica il file su `/api/sync/danea`
-
-### Opzione B: Export Automatico (Schedulato)
-
-Se Danea supporta export HTTP automatici:
-
-1. Configura un task schedulato in Danea
-2. URL destinazione: `https://autonord-shop.vercel.app/api/sync/danea`
-3. Metodo: POST
-4. Header: `Authorization: Bearer TUO_SYNC_SECRET`
-5. Content-Type: `text/csv`
-
-### Opzione C: Script Batch Windows
-
-Crea un file `sync-danea.bat`:
+### Windows - sync-danea.bat
 
 ```batch
 @echo off
-set EXPORT_PATH=C:\Danea\Export\prodotti.csv
-set API_URL=https://autonord-shop.vercel.app/api/sync/danea
+set API_URL=https://autonord-shop.vercel.app/api/sync/danea/xml
 set API_SECRET=TUO_SYNC_SECRET
+set EXPORT_PATH=C:\Danea\Export\articoli.xml
 
-curl -X POST %API_URL% ^
-  -H "Authorization: Bearer %API_SECRET%" ^
-  -H "Content-Type: text/csv" ^
+REM Esporta da Danea (se supporta command line)
+REM danea.exe /export /file:%EXPORT_PATH%
+
+REM Invia a Shopify
+curl -X POST "%API_URL%?secret=%API_SECRET%" ^
+  -H "Content-Type: application/xml" ^
   --data-binary @%EXPORT_PATH%
 
 echo Sync completato!
@@ -219,11 +226,16 @@ Pianifica l'esecuzione con Task Scheduler di Windows.
 
 ## Troubleshooting
 
-### Errore: "No valid products found in CSV"
+### Errore: Danea mostra errore dopo invio
 
-- Verifica che le colonne abbiano i nomi corretti (vedi tabella sopra)
-- Verifica che il delimitatore sia `;` o `,`
-- Verifica che ci sia almeno la colonna `Cod.` o `Codice`
+- Verifica che l'URL sia corretto
+- Verifica che il secret sia corretto
+- Controlla i log su Vercel → Logs
+
+### Errore: "No valid products found"
+
+- Verifica che i prodotti abbiano il campo `Code` compilato
+- Verifica che i prodotti siano marcati per e-commerce
 
 ### Errore: "Missing SHOPIFY_SHOP_DOMAIN"
 
@@ -238,20 +250,30 @@ Pianifica l'esecuzione con Task Scheduler di Windows.
 
 ### Prodotti non visibili sul sito
 
-- Verifica che `E-commerce` sia "Sì" nel CSV
 - Verifica che il prodotto sia stato creato su Shopify Admin
 - L'enrichment AI può richiedere qualche minuto
+- Controlla i webhook su Shopify → Settings → Notifications
 
 ---
 
 ## Flusso Completo Go-Live
 
-1. **Configura variabili ambiente** su Vercel
-2. **Esporta CSV** da Danea con tutti i prodotti e-commerce
-3. **Carica CSV** tramite API o curl
+1. **Configura variabili ambiente** su Vercel (già fatto ✅)
+2. **Configura Danea EasyFatt** con URL sync
+3. **Invia prodotti** da Danea → Strumenti → E-Commerce → Aggiorna articoli
 4. **Verifica** su Shopify Admin che i prodotti siano stati creati
 5. **Attendi enrichment** (webhook automatico arricchisce i prodotti)
 6. **Verifica frontend** che i prodotti siano visibili con descrizioni AI
+
+---
+
+## Endpoints Disponibili
+
+| Endpoint | Metodo | Descrizione |
+|----------|--------|-------------|
+| `/api/sync/danea/xml` | POST | Riceve XML nativo da Danea EasyFatt |
+| `/api/sync/danea` | POST | Riceve CSV prodotti |
+| `/api/sync/danea/orders` | GET | Export ordini per Danea |
 
 ---
 
