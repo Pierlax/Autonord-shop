@@ -186,7 +186,7 @@ async function createArticle(
   
   if (imageUrl) {
     articleInput.image = {
-      src: imageUrl,
+      url: imageUrl,
       altText: title
     };
   }
