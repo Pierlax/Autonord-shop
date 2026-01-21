@@ -10,6 +10,7 @@ const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN!;
 const QSTASH_TOKEN = process.env.QSTASH_TOKEN!;
 
 const CRON_SECRET = 'autonord-cron-2024-xK9mP2vL8nQ4';
+const BASE_URL = 'https://autonord-shop.vercel.app';
 
 interface ShopifyProduct {
   id: string;
@@ -119,10 +120,8 @@ export async function POST(request: NextRequest) {
     // Inizializza QStash
     const qstash = new Client({ token: QSTASH_TOKEN });
     
-    // Ottieni l'URL base per il worker
-    const host = request.headers.get('host') || 'autonord-shop.vercel.app';
-    const protocol = host.includes('localhost') ? 'http' : 'https';
-    const workerUrl = `${protocol}://${host}/api/workers/regenerate-product`;
+    // URL del worker
+    const workerUrl = `${BASE_URL}/api/workers/regenerate-product`;
 
     let queued = 0;
     let failed = 0;
