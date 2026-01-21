@@ -118,7 +118,7 @@ export async function createDraftArticle(
         body_html: article.content,
         summary_html: article.excerpt,
         tags: article.tags.join(', '),
-        published: false, // Draft mode
+        published: true, // Auto-publish articles
         metafields: [
           {
             namespace: 'custom',

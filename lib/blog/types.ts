@@ -9,7 +9,7 @@ export interface BlogPost {
     name: string;
     avatar: string;
   };
-  category: 'prezzi' | 'problemi' | 'confronti' | 'recensioni' | 'guide';
+  category: string;
   tags: string[];
   readingTime: number;
   featured?: boolean;

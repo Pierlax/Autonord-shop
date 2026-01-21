@@ -2,25 +2,29 @@ import { Metadata } from 'next';
 import Link from 'next/link';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
-import { getPostBySlug, getRelatedPosts, getAllPosts } from '@/lib/blog/posts';
+import { getPostBySlugAsync, getRelatedPostsAsync, getAllPostsAsync } from '@/lib/blog';
 import { BlogCard } from '@/components/blog/blog-card';
 import { BlogCoverImage } from '@/components/blog/blog-cover-image';
 import { ChevronRight, Calendar, Clock, User, Share2, Facebook, Twitter, Linkedin, ArrowLeft } from 'lucide-react';
 import { TLDRBox } from '@/components/blog/tldr-box';
 
 interface BlogPostPageProps {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }
 
+// Revalidate every 5 minutes
+export const revalidate = 300;
+
 export async function generateStaticParams() {
-  const posts = getAllPosts();
+  const posts = await getAllPostsAsync();
   return posts.map((post) => ({
     slug: post.slug,
   }));
 }
 
 export async function generateMetadata({ params }: BlogPostPageProps): Promise<Metadata> {
-  const post = getPostBySlug(params.slug);
+  const { slug } = await params;
+  const post = await getPostBySlugAsync(slug);
   
   if (!post) {
     return {
@@ -58,14 +62,15 @@ const categoryLabels: Record<string, string> = {
   guide: 'Guide Pratiche',
 };
 
-export default function BlogPostPage({ params }: BlogPostPageProps) {
-  const post = getPostBySlug(params.slug);
+export default async function BlogPostPage({ params }: BlogPostPageProps) {
+  const { slug } = await params;
+  const post = await getPostBySlugAsync(slug);
   
   if (!post) {
     notFound();
   }
 
-  const relatedPosts = getRelatedPosts(params.slug, 3);
+  const relatedPosts = await getRelatedPostsAsync(slug, 3);
   
   const formattedDate = new Date(post.date).toLocaleDateString('it-IT', {
     day: 'numeric',
@@ -73,8 +78,11 @@ export default function BlogPostPage({ params }: BlogPostPageProps) {
     year: 'numeric',
   });
 
+  // Check if content is HTML (from Shopify) or Markdown (static)
+  const isHtmlContent = post.content.trim().startsWith('<');
+
   // Simple markdown to HTML conversion for the content
-  const renderContent = (content: string) => {
+  const renderMarkdownContent = (content: string) => {
     return content
       .split('\n')
       .map((line, index) => {
@@ -157,7 +165,7 @@ export default function BlogPostPage({ params }: BlogPostPageProps) {
     return tables;
   };
 
-  const tables = extractTables(post.content);
+  const tables = !isHtmlContent ? extractTables(post.content) : [];
 
   return (
     <div className="min-h-screen bg-zinc-900">
@@ -186,8 +194,8 @@ export default function BlogPostPage({ params }: BlogPostPageProps) {
 
           {/* Category Badge */}
           <div className="mb-4">
-            <span className={`px-3 py-1 text-sm font-medium rounded-full border ${categoryColors[post.category]}`}>
-              {categoryLabels[post.category]}
+            <span className={`px-3 py-1 text-sm font-medium rounded-full border ${categoryColors[post.category] || 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'}`}>
+              {categoryLabels[post.category] || post.category}
             </span>
           </div>
 
@@ -243,45 +251,55 @@ export default function BlogPostPage({ params }: BlogPostPageProps) {
         <div className="grid lg:grid-cols-4 gap-12">
           {/* Main Content */}
           <article className="lg:col-span-3">
-            {/* GAP 8: TL;DR Box at top of article */}
+            {/* TL;DR Box at top of article */}
             <TLDRBox content={post.content} />
             
             <div className="prose prose-invert prose-lg max-w-none">
-              {renderContent(post.content)}
-              
-              {/* Render Tables */}
-              {tables.map((table, tableIndex) => (
-                <div key={tableIndex} className="overflow-x-auto my-8">
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr>
-                        {table[0]?.map((cell, cellIndex) => (
-                          <th 
-                            key={cellIndex}
-                            className="px-4 py-3 text-left text-sm font-semibold text-white bg-zinc-800 border border-zinc-700"
-                          >
-                            {cell}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {table.slice(1).map((row, rowIndex) => (
-                        <tr key={rowIndex} className="hover:bg-zinc-800/50">
-                          {row.map((cell, cellIndex) => (
-                            <td 
-                              key={cellIndex}
-                              className="px-4 py-3 text-sm text-zinc-300 border border-zinc-700"
-                            >
-                              {cell}
-                            </td>
+              {isHtmlContent ? (
+                // Render HTML content from Shopify
+                <div 
+                  className="shopify-blog-content"
+                  dangerouslySetInnerHTML={{ __html: post.content }} 
+                />
+              ) : (
+                <>
+                  {renderMarkdownContent(post.content)}
+                  
+                  {/* Render Tables */}
+                  {tables.map((table, tableIndex) => (
+                    <div key={tableIndex} className="overflow-x-auto my-8">
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr>
+                            {table[0]?.map((cell, cellIndex) => (
+                              <th 
+                                key={cellIndex}
+                                className="px-4 py-3 text-left text-sm font-semibold text-white bg-zinc-800 border border-zinc-700"
+                              >
+                                {cell}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {table.slice(1).map((row, rowIndex) => (
+                            <tr key={rowIndex} className="hover:bg-zinc-800/50">
+                              {row.map((cell, cellIndex) => (
+                                <td 
+                                  key={cellIndex}
+                                  className="px-4 py-3 text-sm text-zinc-300 border border-zinc-700"
+                                >
+                                  {cell}
+                                </td>
+                              ))}
+                            </tr>
                           ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
 
             {/* Share */}
@@ -323,43 +341,33 @@ export default function BlogPostPage({ params }: BlogPostPageProps) {
 
           {/* Sidebar */}
           <aside className="lg:col-span-1">
-            <div className="sticky top-24 space-y-8">
+            <div className="sticky top-8 space-y-8">
               {/* Author Card */}
-              <div className="p-6 bg-zinc-800/50 rounded-xl border border-zinc-700">
+              <div className="bg-zinc-800/50 rounded-xl p-6 border border-zinc-700">
                 <h3 className="text-lg font-semibold text-white mb-4">Autore</h3>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-red-600 flex items-center justify-center text-white font-bold">
                     {post.author.name.charAt(0)}
                   </div>
                   <div>
-                    <p className="font-medium text-white">{post.author.name}</p>
-                    <p className="text-sm text-zinc-400">Autonord Service</p>
+                    <p className="text-white font-medium">{post.author.name}</p>
+                    <p className="text-zinc-400 text-sm">Autonord Service</p>
                   </div>
                 </div>
               </div>
 
-              {/* CTA Card */}
-              <div className="p-6 bg-gradient-to-br from-red-900/50 to-zinc-800 rounded-xl border border-red-500/30">
+              {/* CTA */}
+              <div className="bg-gradient-to-br from-red-900/50 to-zinc-800 rounded-xl p-6 border border-red-500/20">
                 <h3 className="text-lg font-semibold text-white mb-2">Hai Domande?</h3>
-                <p className="text-sm text-zinc-300 mb-4">
-                  Contattaci per una consulenza gratuita sui prodotti citati in questo articolo.
+                <p className="text-zinc-300 text-sm mb-4">
+                  Contattaci per una consulenza gratuita sui tuoi utensili.
                 </p>
-                <a 
-                  href="https://wa.me/393331234567"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block w-full py-2 px-4 bg-green-600 hover:bg-green-700 text-white text-center font-medium rounded-lg transition-colors"
+                <Link
+                  href="/contact"
+                  className="block w-full py-2 px-4 bg-red-600 hover:bg-red-700 text-white text-center font-medium rounded-lg transition-colors"
                 >
-                  Scrivici su WhatsApp
-                </a>
-              </div>
-
-              {/* Table of Contents placeholder */}
-              <div className="p-6 bg-zinc-800/50 rounded-xl border border-zinc-700">
-                <h3 className="text-lg font-semibold text-white mb-4">In Questo Articolo</h3>
-                <p className="text-sm text-zinc-400">
-                  Scorri l'articolo per scoprire tutti i dettagli su questo argomento.
-                </p>
+                  Contattaci
+                </Link>
               </div>
             </div>
           </aside>
@@ -370,11 +378,8 @@ export default function BlogPostPage({ params }: BlogPostPageProps) {
       {relatedPosts.length > 0 && (
         <section className="py-16 bg-zinc-800/30">
           <div className="container mx-auto px-4">
-            <h2 className="text-2xl font-bold text-white mb-8 flex items-center gap-3">
-              <span className="w-1 h-8 bg-red-500 rounded-full" />
-              Articoli Correlati
-            </h2>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <h2 className="text-2xl font-bold text-white mb-8">Articoli Correlati</h2>
+            <div className="grid md:grid-cols-3 gap-6">
               {relatedPosts.map((relatedPost) => (
                 <BlogCard key={relatedPost.slug} post={relatedPost} />
               ))}
@@ -382,32 +387,6 @@ export default function BlogPostPage({ params }: BlogPostPageProps) {
           </div>
         </section>
       )}
-
-      {/* CTA Section */}
-      <section className="py-16 bg-gradient-to-br from-red-900/30 to-zinc-900">
-        <div className="container mx-auto px-4 text-center">
-          <h2 className="text-3xl font-bold text-white mb-4">
-            Pronto a Scegliere i Tuoi Utensili?
-          </h2>
-          <p className="text-zinc-300 mb-8 max-w-2xl mx-auto">
-            Visita il nostro catalogo o contattaci per una consulenza personalizzata.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              href="/products"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors"
-            >
-              Sfoglia il Catalogo
-            </Link>
-            <Link
-              href="/contact"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-zinc-700 hover:bg-zinc-600 text-white font-semibold rounded-lg transition-colors"
-            >
-              Contattaci
-            </Link>
-          </div>
-        </div>
-      </section>
     </div>
   );
 }

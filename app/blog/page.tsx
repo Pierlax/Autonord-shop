@@ -1,7 +1,6 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
-import { getAllPosts, getFeaturedPosts } from '@/lib/blog/posts';
-import { BLOG_CATEGORIES } from '@/lib/blog/types';
+import { getAllPostsAsync, getFeaturedPostsAsync, BLOG_CATEGORIES } from '@/lib/blog';
 import { BlogCard } from '@/components/blog/blog-card';
 import { ChevronRight, BookOpen, TrendingUp, HelpCircle, Scale, Star } from 'lucide-react';
 
@@ -9,6 +8,9 @@ export const metadata: Metadata = {
   title: 'Blog & Risorse | Autonord Service',
   description: 'Guide, confronti e recensioni oneste su utensili professionali. Rispondiamo alle domande che i nostri clienti ci fanno ogni giorno.',
 };
+
+// Revalidate every 5 minutes to pick up new Shopify articles
+export const revalidate = 300;
 
 const categoryIcons: Record<string, React.ReactNode> = {
   prezzi: <TrendingUp className="w-5 h-5" />,
@@ -18,9 +20,12 @@ const categoryIcons: Record<string, React.ReactNode> = {
   guide: <BookOpen className="w-5 h-5" />,
 };
 
-export default function BlogPage() {
-  const allPosts = getAllPosts();
-  const featuredPosts = getFeaturedPosts();
+export default async function BlogPage() {
+  const [allPosts, featuredPosts] = await Promise.all([
+    getAllPostsAsync(),
+    getFeaturedPostsAsync(),
+  ]);
+  
   const regularPosts = allPosts.filter(post => !post.featured);
 
   return (
