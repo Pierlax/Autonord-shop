@@ -135,7 +135,6 @@ Ricorda:
 }
 
 async function createArticle(
-  blogId: string,
   title: string,
   content: string,
   category: string,
@@ -157,9 +156,10 @@ async function createArticle(
     tags.push(...categoryTags[category]);
   }
   
+  // Updated mutation with correct Shopify GraphQL syntax
   const mutation = `
-    mutation CreateArticle($blogId: ID!, $article: ArticleCreateInput!) {
-      articleCreate(blogId: $blogId, article: $article) {
+    mutation CreateArticle($article: ArticleCreateInput!, $blog: ArticleBlogInput!) {
+      articleCreate(article: $article, blog: $blog) {
         article {
           id
           handle
@@ -177,6 +177,9 @@ async function createArticle(
     title,
     body: content,
     tags,
+    author: {
+      name: "Marco - Autonord Service"
+    },
     isPublished: true,
     publishDate: new Date().toISOString()
   };
@@ -189,7 +192,9 @@ async function createArticle(
   }
   
   const variables = {
-    blogId,
+    blog: {
+      title: "News"
+    },
     article: articleInput
   };
   
@@ -226,7 +231,6 @@ export async function POST(request: NextRequest) {
     // Create article on Shopify
     console.log('   📤 Publishing to Shopify...');
     const result = await createArticle(
-      payload.blogId,
       payload.title,
       content,
       payload.category,
