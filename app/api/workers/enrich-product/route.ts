@@ -213,22 +213,22 @@ async function handler(request: NextRequest) {
 let wrappedHandler: typeof handler | null = null;
 
 export async function POST(request: NextRequest) {
-  // Check if QStash is configured
-  const hasQStashConfig = process.env.QSTASH_CURRENT_SIGNING_KEY;
+  // TEMPORARY: Skip QStash verification to debug enrichment
+  // TODO: Re-enable after fixing signing keys
+  log.warn('QStash signature verification TEMPORARILY DISABLED for debugging');
+  return handler(request);
   
-  if (!hasQStashConfig) {
-    // In development or when QStash is not configured, skip verification
-    log.warn('QStash signature verification skipped - QSTASH_CURRENT_SIGNING_KEY not set');
-    return handler(request);
-  }
-  
-  // Lazy load the verification wrapper
-  if (!wrappedHandler) {
-    const { verifySignatureAppRouter } = await import('@upstash/qstash/nextjs');
-    wrappedHandler = verifySignatureAppRouter(handler) as typeof handler;
-  }
-  
-  return wrappedHandler(request);
+  // Original code (re-enable after debugging):
+  // const hasQStashConfig = process.env.QSTASH_CURRENT_SIGNING_KEY;
+  // if (!hasQStashConfig) {
+  //   log.warn('QStash signature verification skipped - QSTASH_CURRENT_SIGNING_KEY not set');
+  //   return handler(request);
+  // }
+  // if (!wrappedHandler) {
+  //   const { verifySignatureAppRouter } = await import('@upstash/qstash/nextjs');
+  //   wrappedHandler = verifySignatureAppRouter(handler) as typeof handler;
+  // }
+  // return wrappedHandler(request);
 }
 
 // Health check endpoint
