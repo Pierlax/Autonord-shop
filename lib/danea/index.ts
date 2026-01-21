@@ -6,5 +6,5 @@
  */
 
 export { parseDaneaCSV, exportOrdersToCSV } from './csv-parser';
-export { syncProductsToShopify, syncSingleProduct, type SyncResult } from './shopify-sync';
-export { type DaneaProduct, type ParsedProduct } from './types';
+export { syncProductsToShopify, syncSingleProduct } from './shopify-sync';
+export { type DaneaProduct, type ParsedProduct, type SyncResult } from './types';
