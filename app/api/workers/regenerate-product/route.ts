@@ -122,40 +122,143 @@ async function searchProductInfo(title: string, sku: string, vendor: string): Pr
   }
 }
 
-async function searchProductImage(title: string, vendor: string): Promise<string | null> {
+async function searchProductImage(title: string, vendor: string, sku: string): Promise<string | null> {
   if (!SERPAPI_API_KEY) {
     console.log('SERPAPI_API_KEY not set, skipping image search');
     return null;
   }
   
   try {
-    const searchQuery = `${vendor} ${title} product official`;
-    const url = `https://serpapi.com/search.json?engine=google_images&q=${encodeURIComponent(searchQuery)}&num=10&api_key=${SERPAPI_API_KEY}`;
-    const response = await fetch(url);
-    const data = await response.json();
+    // Clean up vendor name for better search
+    const brandName = extractBrandName(vendor);
     
-    if (data.images_results && data.images_results.length > 0) {
-      // Filter good images
-      const goodImages = data.images_results.filter((img: any) => 
-        img.original && 
-        !img.original.includes('placeholder') &&
-        !img.original.includes('logo') &&
-        img.original.match(/\.(jpg|jpeg|png|webp)/i)
-      );
+    // Clean up title - remove duplicates and noise
+    const cleanTitle = title
+      .replace(/\s+/g, ' ')
+      .replace(/\([^)]*\)/g, '') // Remove parentheses content
+      .trim();
+    
+    // Try multiple search strategies
+    const searchStrategies = [
+      // Strategy 1: Brand + SKU (most precise)
+      sku ? `${brandName} ${sku} product image` : null,
+      // Strategy 2: Brand + clean title
+      `${brandName} ${cleanTitle} utensile`,
+      // Strategy 3: Just the product name with "official"
+      `${cleanTitle} ${brandName} official product`,
+    ].filter(Boolean);
+    
+    for (const searchQuery of searchStrategies) {
+      console.log(`Searching image with: ${searchQuery}`);
       
-      // Prefer official brand domains
-      const preferredDomains = ['milwaukeetool', 'makitatools', 'dewalt', 'hilti', 'bosch', 'hikoki', 'husqvarna', 'yanmar'];
-      const preferred = goodImages.find((img: any) => 
-        preferredDomains.some(d => img.original?.toLowerCase().includes(d))
-      );
+      const url = `https://serpapi.com/search.json?engine=google_images&q=${encodeURIComponent(searchQuery!)}&num=20&safe=active&api_key=${SERPAPI_API_KEY}`;
+      const response = await fetch(url);
+      const data = await response.json();
       
-      return preferred?.original || goodImages[0]?.original || null;
+      if (data.images_results && data.images_results.length > 0) {
+        // Filter good images with stricter criteria
+        const goodImages = data.images_results.filter((img: any) => {
+          if (!img.original) return false;
+          const url = img.original.toLowerCase();
+          
+          // Exclude bad images
+          if (url.includes('placeholder')) return false;
+          if (url.includes('logo')) return false;
+          if (url.includes('icon')) return false;
+          if (url.includes('avatar')) return false;
+          if (url.includes('banner')) return false;
+          if (url.includes('thumbnail')) return false;
+          
+          // Must be a proper image format
+          if (!url.match(/\.(jpg|jpeg|png|webp)/i)) return false;
+          
+          // Check image dimensions if available (prefer square/product images)
+          if (img.original_width && img.original_height) {
+            const ratio = img.original_width / img.original_height;
+            // Exclude very wide or very tall images (likely banners)
+            if (ratio > 3 || ratio < 0.3) return false;
+          }
+          
+          return true;
+        });
+        
+        // Prefer official brand domains
+        const preferredDomains = [
+          'milwaukeetool', 'milwaukee', 
+          'makitatools', 'makita',
+          'dewalt', 
+          'hilti', 
+          'bosch', 'bosch-professional',
+          'hikoki', 
+          'husqvarna', 
+          'yanmar',
+          'metabo',
+          'festool',
+          'amazon', // Often has good product images
+          'ferramenta', // Italian hardware stores
+          'bricoman',
+          'leroy-merlin'
+        ];
+        
+        // First try to find image from preferred domain
+        const preferred = goodImages.find((img: any) => 
+          preferredDomains.some(d => img.original?.toLowerCase().includes(d))
+        );
+        
+        if (preferred?.original) {
+          console.log(`Found preferred image: ${preferred.original}`);
+          return preferred.original;
+        }
+        
+        // Otherwise return first good image
+        if (goodImages.length > 0) {
+          console.log(`Found image: ${goodImages[0].original}`);
+          return goodImages[0].original;
+        }
+      }
     }
+    
+    console.log('No suitable image found');
     return null;
   } catch (error) {
     console.error('Error searching for image:', error);
     return null;
   }
+}
+
+function extractBrandName(vendor: string): string {
+  // Map common vendor legal names to brand names
+  const brandMap: Record<string, string> = {
+    'techtronic industries italia srl': 'Milwaukee',
+    'techtronic industries': 'Milwaukee',
+    'milwaukee': 'Milwaukee',
+    'makita': 'Makita',
+    'makita italia': 'Makita',
+    'dewalt': 'DeWalt',
+    'stanley black & decker': 'DeWalt',
+    'hilti': 'Hilti',
+    'bosch': 'Bosch',
+    'robert bosch': 'Bosch',
+    'hikoki': 'HiKOKI',
+    'hitachi': 'HiKOKI',
+    'metabo': 'Metabo',
+    'festool': 'Festool',
+    'husqvarna': 'Husqvarna',
+    'yanmar': 'Yanmar',
+    'autonord': 'Autonord Service',
+    'autonord-service': 'Autonord Service',
+  };
+  
+  const vendorLower = vendor.toLowerCase();
+  
+  for (const [key, brand] of Object.entries(brandMap)) {
+    if (vendorLower.includes(key)) {
+      return brand;
+    }
+  }
+  
+  // Return cleaned vendor name if no mapping found
+  return vendor.split(' ')[0]; // Just first word
 }
 
 async function generateProductContent(product: ProductPayload, additionalInfo: string): Promise<any> {
@@ -403,7 +506,7 @@ export async function POST(request: NextRequest) {
     
     // Step 3: Search for product image
     console.log('   🖼️ Searching for image...');
-    const imageUrl = await searchProductImage(payload.title, payload.vendor);
+    const imageUrl = await searchProductImage(payload.title, payload.vendor, payload.sku);
     console.log(imageUrl ? '   ✅ Image found' : '   ⚠️ No image found');
     
     // Step 4: Create product on Shopify
