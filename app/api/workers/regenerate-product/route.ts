@@ -2,10 +2,12 @@
  * Worker per rigenerare un singolo prodotto
  * Chiamato da QStash
  * 
- * 1. Ricerca informazioni tecniche online
- * 2. Genera scheda prodotto con Claude (filosofia TAYA)
- * 3. Cerca immagini con SerpAPI
- * 4. Crea il prodotto su Shopify
+ * FLUSSO CORRETTO:
+ * 1. Mantiene i dati originali (SKU, titolo, vendor, prezzo)
+ * 2. Ricerca RAG con lo SKU esatto per trovare info tecniche
+ * 3. Claude arricchisce la descrizione SENZA inventare
+ * 4. Cerca immagine specifica con lo SKU
+ * 5. Crea il prodotto su Shopify mantenendo i dati originali
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -28,297 +30,313 @@ interface ProductPayload {
   tags: string[];
 }
 
-const PRODUCT_SYSTEM_PROMPT = `Sei Marco, il tecnico senior di Autonord Service a Genova con 25 anni di esperienza. Scrivi schede prodotto per l'e-commerce aziendale seguendo rigorosamente la filosofia TAYA (They Ask, You Answer).
+// ============================================
+// STEP 1: RICERCA RAG CON SKU ESATTO
+// ============================================
 
-## FILOSOFIA TAYA - REGOLE FONDAMENTALI:
-1. **Onestà Radicale**: Ammetti sempre i difetti dei prodotti. Se un utensile ha problemi noti, dillo chiaramente.
-2. **Prezzi Trasparenti**: Il prezzo è già nel sistema, tu devi spiegare se vale quei soldi.
-3. **Per Chi È / Per Chi NON È**: Sii chiaro su chi dovrebbe comprarlo e chi no.
-4. **Rispondi alle Domande Scomode**: Le domande che i venditori evitano sono quelle a cui devi rispondere per primo.
-
-## STRUTTURA SCHEDA PRODOTTO (JSON):
-Restituisci un JSON con questa struttura:
-
-{
-  "cleanTitle": "Titolo pulito e professionale del prodotto",
-  "shortDescription": "Descrizione breve (max 160 caratteri) per SEO e anteprima",
-  "bodyHtml": "Descrizione HTML completa (vedi formato sotto)",
-  "metaTitle": "Titolo SEO (max 60 caratteri)",
-  "metaDescription": "Meta description SEO (max 160 caratteri)",
-  "tags": ["tag1", "tag2", "tag3"],
-  "productType": "Categoria prodotto pulita"
-}
-
-## FORMATO bodyHtml:
-La descrizione deve includere queste sezioni in HTML:
-
-1. **Sintesi Rapida** (3-4 righe che rispondono: Cosa fa? Per chi? Perché sceglierlo?)
-2. **Specifiche Tecniche** (tabella con dati reali se disponibili, altrimenti "Contattaci per specifiche")
-3. **Per Chi È Questo Prodotto** (lista bullet: ideale per X, Y, Z)
-4. **Per Chi NON È** (lista bullet: sconsigliato se X, Y)
-5. **Domande Frequenti** (2-3 FAQ reali che un cliente farebbe)
-6. **Il Nostro Consiglio** (opinione onesta del tecnico)
-
-Usa questi tag HTML: <h2>, <h3>, <p>, <ul>, <li>, <table>, <tr>, <th>, <td>, <strong>, <em>
-
-## REGOLE IMPORTANTI:
-- Se non conosci le specifiche esatte, scrivi "Specifiche dettagliate disponibili su richiesta - Contattaci"
-- NON inventare dati tecnici falsi
-- Se il titolo originale è confuso (es. "ACCETTA 40 cm ACCETTA 40 cm"), puliscilo
-- Identifica il brand dal vendor o dal codice SKU (MIL = Milwaukee, MAK = Makita, etc.)
-- Scrivi in italiano professionale ma accessibile
-
-## PAROLE BANNATE:
-- "leader di settore", "eccellenza", "qualità superiore" (senza dati)
-- "il migliore" (senza confronto), "innovativo", "rivoluzionario"
-- "soluzione ideale", "perfetto per"
-
-Restituisci SOLO il JSON valido, senza markdown o altro testo.`;
-
-async function searchProductInfo(title: string, sku: string, vendor: string): Promise<string> {
-  // Build search query
-  const brandHints: Record<string, string> = {
-    'MIL': 'Milwaukee',
-    'MAK': 'Makita',
-    'DEW': 'DeWalt',
-    'BOS': 'Bosch',
-    'HIL': 'Hilti',
-    'HIK': 'HiKOKI',
-    'HUS': 'Husqvarna',
-    'YAN': 'Yanmar'
-  };
+async function searchProductInfoRAG(sku: string, title: string, vendor: string): Promise<{
+  foundInfo: string;
+  officialSpecs: string | null;
+  brand: string;
+}> {
+  // Determina il brand dallo SKU Milwaukee (inizia con 49)
+  let brand = 'Milwaukee';
+  if (vendor.toLowerCase().includes('makita')) brand = 'Makita';
+  else if (vendor.toLowerCase().includes('dewalt')) brand = 'DeWalt';
+  else if (vendor.toLowerCase().includes('bosch')) brand = 'Bosch';
+  else if (vendor.toLowerCase().includes('hilti')) brand = 'Hilti';
+  else if (vendor.toLowerCase().includes('autonord')) brand = 'Autonord Service';
   
-  const skuPrefix = sku.substring(0, 3).toUpperCase();
-  const brand = brandHints[skuPrefix] || vendor || '';
-  
-  const searchQuery = `${brand} ${title} specifiche tecniche scheda prodotto`;
+  // Se lo SKU inizia con 49, è sicuramente Milwaukee
+  if (sku.startsWith('49')) brand = 'Milwaukee';
   
   if (!SERPAPI_API_KEY) {
-    return `Prodotto: ${title}\nBrand: ${brand}\nSKU: ${sku}\nNessuna informazione aggiuntiva disponibile (API key mancante)`;
+    return {
+      foundInfo: `SKU: ${sku}\nTitolo originale: ${title}\nBrand: ${brand}\nNessuna ricerca effettuata (API key mancante)`,
+      officialSpecs: null,
+      brand
+    };
   }
   
   try {
-    const url = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(searchQuery)}&num=5&hl=it&gl=it&api_key=${SERPAPI_API_KEY}`;
-    const response = await fetch(url);
-    const data = await response.json();
+    // Ricerca 1: SKU esatto sul sito Milwaukee
+    const skuSearchQuery = `Milwaukee ${sku} site:milwaukeetool.eu OR site:milwaukeetool.com`;
+    console.log(`RAG Search 1: ${skuSearchQuery}`);
     
-    let info = `Prodotto: ${title}\nBrand: ${brand}\nSKU: ${sku}\n\nInformazioni trovate online:\n`;
+    const url1 = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(skuSearchQuery)}&num=5&hl=it&gl=it&api_key=${SERPAPI_API_KEY}`;
+    const response1 = await fetch(url1);
+    const data1 = await response1.json();
     
-    if (data.organic_results && data.organic_results.length > 0) {
-      for (const result of data.organic_results.slice(0, 3)) {
-        info += `\n- ${result.title}\n  ${result.snippet || ''}\n`;
+    let foundInfo = `SKU: ${sku}\nTitolo originale: ${title}\nBrand: ${brand}\n\n`;
+    let officialSpecs: string | null = null;
+    
+    if (data1.organic_results && data1.organic_results.length > 0) {
+      foundInfo += `=== RISULTATI RICERCA SKU ===\n`;
+      for (const result of data1.organic_results.slice(0, 3)) {
+        foundInfo += `\nFonte: ${result.link}\nTitolo: ${result.title}\nDescrizione: ${result.snippet || 'N/A'}\n`;
+        
+        // Se troviamo il sito ufficiale Milwaukee, salva le specifiche
+        if (result.link?.includes('milwaukeetool')) {
+          officialSpecs = result.snippet || null;
+        }
       }
     }
     
-    // Also get knowledge graph if available
-    if (data.knowledge_graph) {
-      info += `\nKnowledge Graph: ${JSON.stringify(data.knowledge_graph, null, 2)}`;
+    // Ricerca 2: Titolo prodotto per più contesto
+    const titleSearchQuery = `${brand} "${title.replace(/"/g, '')}" scheda tecnica`;
+    console.log(`RAG Search 2: ${titleSearchQuery}`);
+    
+    const url2 = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(titleSearchQuery)}&num=3&hl=it&gl=it&api_key=${SERPAPI_API_KEY}`;
+    const response2 = await fetch(url2);
+    const data2 = await response2.json();
+    
+    if (data2.organic_results && data2.organic_results.length > 0) {
+      foundInfo += `\n=== RISULTATI RICERCA TITOLO ===\n`;
+      for (const result of data2.organic_results.slice(0, 2)) {
+        foundInfo += `\nFonte: ${result.link}\nTitolo: ${result.title}\nDescrizione: ${result.snippet || 'N/A'}\n`;
+      }
     }
     
-    return info;
+    return { foundInfo, officialSpecs, brand };
+    
   } catch (error) {
-    console.error('Error searching product info:', error);
-    return `Prodotto: ${title}\nBrand: ${brand}\nSKU: ${sku}\nErrore nella ricerca informazioni`;
+    console.error('Error in RAG search:', error);
+    return {
+      foundInfo: `SKU: ${sku}\nTitolo originale: ${title}\nBrand: ${brand}\nErrore nella ricerca`,
+      officialSpecs: null,
+      brand
+    };
   }
 }
 
-async function searchProductImage(title: string, vendor: string, sku: string): Promise<string | null> {
+// ============================================
+// STEP 2: RICERCA IMMAGINE CON SKU ESATTO
+// ============================================
+
+async function searchProductImageBySKU(sku: string, brand: string, title: string): Promise<string | null> {
   if (!SERPAPI_API_KEY) {
     console.log('SERPAPI_API_KEY not set, skipping image search');
     return null;
   }
   
   try {
-    // Clean up vendor name for better search
-    const brandName = extractBrandName(vendor);
+    // Strategia 1: Ricerca immagine con SKU esatto
+    const searchQueries = [
+      `${brand} ${sku}`, // Milwaukee 4932498628
+      `${sku} ${brand} product`, // 4932498628 Milwaukee product
+      `${brand} ${title.split(' ').slice(0, 3).join(' ')}` // Milwaukee ACCETTA 40
+    ];
     
-    // Clean up title - remove duplicates and noise
-    const cleanTitle = title
-      .replace(/\s+/g, ' ')
-      .replace(/\([^)]*\)/g, '') // Remove parentheses content
-      .trim();
-    
-    // Try multiple search strategies
-    const searchStrategies = [
-      // Strategy 1: Brand + SKU (most precise)
-      sku ? `${brandName} ${sku} product image` : null,
-      // Strategy 2: Brand + clean title
-      `${brandName} ${cleanTitle} utensile`,
-      // Strategy 3: Just the product name with "official"
-      `${cleanTitle} ${brandName} official product`,
-    ].filter(Boolean);
-    
-    for (const searchQuery of searchStrategies) {
-      console.log(`Searching image with: ${searchQuery}`);
+    for (const query of searchQueries) {
+      console.log(`Image search: ${query}`);
       
-      const url = `https://serpapi.com/search.json?engine=google_images&q=${encodeURIComponent(searchQuery!)}&num=20&safe=active&api_key=${SERPAPI_API_KEY}`;
+      const url = `https://serpapi.com/search.json?engine=google_images&q=${encodeURIComponent(query)}&num=15&safe=active&api_key=${SERPAPI_API_KEY}`;
       const response = await fetch(url);
       const data = await response.json();
       
       if (data.images_results && data.images_results.length > 0) {
-        // Filter good images with stricter criteria
-        const goodImages = data.images_results.filter((img: any) => {
+        // Filtra immagini valide
+        const validImages = data.images_results.filter((img: any) => {
           if (!img.original) return false;
-          const url = img.original.toLowerCase();
+          const imgUrl = img.original.toLowerCase();
           
-          // Exclude bad images
-          if (url.includes('placeholder')) return false;
-          if (url.includes('logo')) return false;
-          if (url.includes('icon')) return false;
-          if (url.includes('avatar')) return false;
-          if (url.includes('banner')) return false;
-          if (url.includes('thumbnail')) return false;
+          // Escludi immagini non valide
+          if (imgUrl.includes('placeholder')) return false;
+          if (imgUrl.includes('logo')) return false;
+          if (imgUrl.includes('icon')) return false;
+          if (imgUrl.includes('banner')) return false;
+          if (imgUrl.includes('avatar')) return false;
           
-          // Must be a proper image format
-          if (!url.match(/\.(jpg|jpeg|png|webp)/i)) return false;
+          // Deve essere un formato immagine valido
+          if (!imgUrl.match(/\.(jpg|jpeg|png|webp)/i)) return false;
           
-          // Check image dimensions if available (prefer square/product images)
+          // Escludi immagini troppo larghe o alte (banner)
           if (img.original_width && img.original_height) {
             const ratio = img.original_width / img.original_height;
-            // Exclude very wide or very tall images (likely banners)
-            if (ratio > 3 || ratio < 0.3) return false;
+            if (ratio > 2.5 || ratio < 0.4) return false;
           }
           
           return true;
         });
         
-        // Prefer official brand domains
-        const preferredDomains = [
-          'milwaukeetool', 'milwaukee', 
-          'makitatools', 'makita',
-          'dewalt', 
-          'hilti', 
-          'bosch', 'bosch-professional',
-          'hikoki', 
-          'husqvarna', 
-          'yanmar',
-          'metabo',
-          'festool',
-          'amazon', // Often has good product images
-          'ferramenta', // Italian hardware stores
+        // Priorità ai domini ufficiali
+        const priorityDomains = [
+          'milwaukeetool.eu',
+          'milwaukeetool.com',
+          'milwaukee',
+          'cdn.shopify.com',
+          'media.wurth',
+          'ferramenta',
           'bricoman',
-          'leroy-merlin'
+          'leroymerlin',
+          'amazon'
         ];
         
-        // First try to find image from preferred domain
-        const preferred = goodImages.find((img: any) => 
-          preferredDomains.some(d => img.original?.toLowerCase().includes(d))
-        );
-        
-        if (preferred?.original) {
-          console.log(`Found preferred image: ${preferred.original}`);
-          return preferred.original;
+        // Cerca prima nei domini prioritari
+        for (const domain of priorityDomains) {
+          const found = validImages.find((img: any) => 
+            img.original?.toLowerCase().includes(domain)
+          );
+          if (found?.original) {
+            console.log(`Found priority image from ${domain}: ${found.original}`);
+            return found.original;
+          }
         }
         
-        // Otherwise return first good image
-        if (goodImages.length > 0) {
-          console.log(`Found image: ${goodImages[0].original}`);
-          return goodImages[0].original;
+        // Altrimenti prendi la prima immagine valida
+        if (validImages.length > 0) {
+          console.log(`Found image: ${validImages[0].original}`);
+          return validImages[0].original;
         }
       }
     }
     
     console.log('No suitable image found');
     return null;
+    
   } catch (error) {
     console.error('Error searching for image:', error);
     return null;
   }
 }
 
-function extractBrandName(vendor: string): string {
-  // Map common vendor legal names to brand names
-  const brandMap: Record<string, string> = {
-    'techtronic industries italia srl': 'Milwaukee',
-    'techtronic industries': 'Milwaukee',
-    'milwaukee': 'Milwaukee',
-    'makita': 'Makita',
-    'makita italia': 'Makita',
-    'dewalt': 'DeWalt',
-    'stanley black & decker': 'DeWalt',
-    'hilti': 'Hilti',
-    'bosch': 'Bosch',
-    'robert bosch': 'Bosch',
-    'hikoki': 'HiKOKI',
-    'hitachi': 'HiKOKI',
-    'metabo': 'Metabo',
-    'festool': 'Festool',
-    'husqvarna': 'Husqvarna',
-    'yanmar': 'Yanmar',
-    'autonord': 'Autonord Service',
-    'autonord-service': 'Autonord Service',
-  };
-  
-  const vendorLower = vendor.toLowerCase();
-  
-  for (const [key, brand] of Object.entries(brandMap)) {
-    if (vendorLower.includes(key)) {
-      return brand;
-    }
-  }
-  
-  // Return cleaned vendor name if no mapping found
-  return vendor.split(' ')[0]; // Just first word
+// ============================================
+// STEP 3: GENERAZIONE SCHEDA CON CLAUDE
+// ============================================
+
+const PRODUCT_SYSTEM_PROMPT = `Sei Marco, il tecnico senior di Autonord Service a Genova. Scrivi schede prodotto per l'e-commerce.
+
+## REGOLE FONDAMENTALI:
+1. **MANTIENI IL TITOLO ORIGINALE** - Puliscilo solo se duplicato (es. "ACCETTA 40 CM ACCETTA 40 CM" → "Accetta 40 cm")
+2. **NON INVENTARE** - Usa SOLO le informazioni fornite dalla ricerca RAG
+3. **SE NON SAI, SCRIVI "Contattaci"** - Mai inventare specifiche tecniche
+4. **MANTIENI LO SKU** - È il codice identificativo, non cambiarlo
+
+## STRUTTURA JSON DA RESTITUIRE:
+{
+  "cleanTitle": "Titolo pulito (rimuovi duplicati, mantieni sostanza)",
+  "shortDescription": "Max 160 caratteri per SEO",
+  "bodyHtml": "Descrizione HTML (vedi sotto)",
+  "metaTitle": "Max 60 caratteri",
+  "metaDescription": "Max 160 caratteri",
+  "tags": ["tag1", "tag2"],
+  "productType": "Categoria (es. Adattatori, Accessori, Utensili)"
 }
 
-async function generateProductContent(product: ProductPayload, additionalInfo: string): Promise<any> {
+## FORMATO bodyHtml:
+<h2>Descrizione</h2>
+<p>[2-3 frasi basate SOLO sulle info trovate. Se non ci sono info, scrivi "Prodotto professionale [brand]. Contattaci per specifiche dettagliate."]</p>
+
+<h3>Specifiche Tecniche</h3>
+<p>[Se hai info dalla ricerca, elencale. Altrimenti: "Specifiche disponibili su richiesta - Chiama 010 7456076"]</p>
+
+<h3>Codice Prodotto</h3>
+<p>SKU: [sku] | Brand: [brand]</p>
+
+## IMPORTANTE:
+- Il titolo deve essere LEGGIBILE ma fedele all'originale
+- NON aggiungere "Milwaukee" se non è nel titolo originale
+- NON inventare funzionalità o specifiche
+- Se il titolo è un codice (es. "0411"), lascialo così: "Prodotto Codice 0411"
+
+Restituisci SOLO il JSON valido.`;
+
+async function generateProductContent(
+  sku: string,
+  originalTitle: string,
+  brand: string,
+  ragInfo: string,
+  price: string
+): Promise<any> {
   const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
   
-  const userPrompt = `Genera una scheda prodotto professionale per:
+  const userPrompt = `Genera la scheda prodotto per:
 
-**Titolo originale:** ${product.title}
-**SKU:** ${product.sku}
-**Vendor:** ${product.vendor}
-**Categoria:** ${product.productType}
-**Prezzo:** €${product.price}
-**Disponibilità:** ${product.inventoryQuantity > 0 ? `${product.inventoryQuantity} disponibili` : 'Su ordinazione'}
-${product.barcode ? `**Barcode:** ${product.barcode}` : ''}
+**SKU:** ${sku}
+**Titolo originale:** ${originalTitle}
+**Brand:** ${brand}
+**Prezzo:** €${price}
 
-**Informazioni aggiuntive trovate:**
-${additionalInfo}
+**Informazioni trovate dalla ricerca RAG:**
+${ragInfo}
 
-Ricorda:
-- Pulisci il titolo se è duplicato o confuso
-- Se non hai specifiche tecniche certe, indica "Contattaci per specifiche dettagliate"
-- Sii onesto su pro e contro
-- Identifica il brand corretto dal vendor o SKU`;
+RICORDA: 
+- Pulisci il titolo SOLO se duplicato, altrimenti mantienilo fedele
+- Usa SOLO le informazioni dalla ricerca RAG
+- Se non ci sono info, scrivi "Contattaci per specifiche"`;
 
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 3000,
-    messages: [
-      { role: 'user', content: userPrompt }
-    ],
+    max_tokens: 2000,
+    messages: [{ role: 'user', content: userPrompt }],
     system: PRODUCT_SYSTEM_PROMPT
   });
   
   const content = response.content[0];
   if (content.type === 'text') {
     try {
-      // Try to parse JSON from response
       const jsonMatch = content.text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0]);
       }
     } catch (e) {
-      console.error('Failed to parse JSON from Claude response:', e);
+      console.error('Failed to parse JSON:', e);
     }
   }
   
-  throw new Error('Failed to get valid JSON from Claude');
+  // Fallback: genera contenuto minimale
+  return {
+    cleanTitle: cleanTitle(originalTitle),
+    shortDescription: `${brand} ${cleanTitle(originalTitle)} - SKU ${sku}`,
+    bodyHtml: `<h2>Descrizione</h2><p>Prodotto professionale ${brand}. Contattaci per specifiche dettagliate al 010 7456076.</p><h3>Codice Prodotto</h3><p>SKU: ${sku} | Brand: ${brand}</p>`,
+    metaTitle: `${cleanTitle(originalTitle)} | ${brand}`,
+    metaDescription: `${brand} ${cleanTitle(originalTitle)}. SKU ${sku}. Disponibile presso Autonord Service Genova.`,
+    tags: [brand, 'Utensili'],
+    productType: 'Accessori'
+  };
 }
+
+function cleanTitle(title: string): string {
+  // Rimuovi duplicati (es. "ACCETTA 40 CM ACCETTA 40 CM" → "Accetta 40 Cm")
+  const words = title.split(' ');
+  const halfLength = Math.floor(words.length / 2);
+  
+  // Controlla se la seconda metà è uguale alla prima
+  const firstHalf = words.slice(0, halfLength).join(' ').toLowerCase();
+  const secondHalf = words.slice(halfLength).join(' ').toLowerCase();
+  
+  let cleanedTitle = title;
+  if (firstHalf === secondHalf && halfLength > 0) {
+    cleanedTitle = words.slice(0, halfLength).join(' ');
+  }
+  
+  // Capitalizza correttamente
+  return cleanedTitle
+    .toLowerCase()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// ============================================
+// STEP 4: CREAZIONE PRODOTTO SU SHOPIFY
+// ============================================
 
 async function createShopifyProduct(
   product: ProductPayload,
   generatedContent: any,
-  imageUrl: string | null
+  imageUrl: string | null,
+  brand: string
 ): Promise<any> {
+  // Usa il titolo pulito ma mantieni i dati originali
   const productInput: any = {
-    title: generatedContent.cleanTitle || product.title,
+    title: generatedContent.cleanTitle,
     descriptionHtml: generatedContent.bodyHtml || '',
-    vendor: product.vendor,
-    productType: generatedContent.productType || product.productType,
-    tags: Array.from(new Set([...product.tags, ...(generatedContent.tags || []), 'AI-Enhanced'])),
+    vendor: brand, // Usa il brand identificato, non il vendor legale
+    productType: generatedContent.productType || 'Accessori',
+    tags: Array.from(new Set([brand, ...(generatedContent.tags || []), 'AI-Enhanced'])),
     status: 'ACTIVE',
     seo: {
       title: generatedContent.metaTitle,
@@ -345,7 +363,7 @@ async function createShopifyProduct(
   const media = imageUrl ? [{
     originalSource: imageUrl,
     mediaContentType: 'IMAGE',
-    alt: generatedContent.cleanTitle || product.title
+    alt: generatedContent.cleanTitle
   }] : [];
   
   const response = await fetch(`https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`, {
@@ -363,11 +381,12 @@ async function createShopifyProduct(
   const result = await response.json();
   
   if (result.data?.productCreate?.product) {
-    // Now create the variant with price and inventory
     const productId = result.data.productCreate.product.id;
+    
+    // Crea variante con SKU e prezzo originali
     await createProductVariant(productId, product);
     
-    // Publish to Online Store
+    // Pubblica su Online Store
     await publishProduct(productId);
   }
   
@@ -375,7 +394,7 @@ async function createShopifyProduct(
 }
 
 async function createProductVariant(productId: string, product: ProductPayload): Promise<void> {
-  // First get the default variant
+  // Prima ottieni la variante di default
   const getVariantQuery = `
     query GetProduct($id: ID!) {
       product(id: $id) {
@@ -403,16 +422,18 @@ async function createProductVariant(productId: string, product: ProductPayload):
   });
   
   const getData = await getResponse.json();
-  const variantId = getData.data?.product?.variants?.edges[0]?.node?.id;
+  const variantId = getData.data?.product?.variants?.edges?.[0]?.node?.id;
   
   if (!variantId) return;
   
-  // Update the variant
+  // Aggiorna la variante con SKU e prezzo ORIGINALI
   const updateMutation = `
     mutation UpdateVariant($input: ProductVariantInput!) {
       productVariantUpdate(input: $input) {
         productVariant {
           id
+          sku
+          price
         }
         userErrors {
           field
@@ -433,11 +454,10 @@ async function createProductVariant(productId: string, product: ProductPayload):
       variables: {
         input: {
           id: variantId,
-          price: product.price,
-          compareAtPrice: product.compareAtPrice,
-          sku: product.sku,
+          sku: product.sku, // SKU ORIGINALE
+          price: product.price, // PREZZO ORIGINALE
           barcode: product.barcode,
-          inventoryManagement: 'SHOPIFY'
+          inventoryPolicy: 'CONTINUE' // Permetti ordini anche senza stock
         }
       }
     })
@@ -445,8 +465,19 @@ async function createProductVariant(productId: string, product: ProductPayload):
 }
 
 async function publishProduct(productId: string): Promise<void> {
-  // Get Online Store publication ID
-  const pubQuery = `query { publications(first: 10) { edges { node { id name } } } }`;
+  // Ottieni l'ID della pubblicazione Online Store
+  const getPublicationsQuery = `
+    query {
+      publications(first: 10) {
+        edges {
+          node {
+            id
+            name
+          }
+        }
+      }
+    }
+  `;
   
   const pubResponse = await fetch(`https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`, {
     method: 'POST',
@@ -454,7 +485,7 @@ async function publishProduct(productId: string): Promise<void> {
       'Content-Type': 'application/json',
       'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN
     },
-    body: JSON.stringify({ query: pubQuery })
+    body: JSON.stringify({ query: getPublicationsQuery })
   });
   
   const pubData = await pubResponse.json();
@@ -464,10 +495,14 @@ async function publishProduct(productId: string): Promise<void> {
   
   if (!onlineStore) return;
   
+  // Pubblica il prodotto
   const publishMutation = `
-    mutation Publish($id: ID!, $input: [PublicationInput!]!) {
+    mutation PublishProduct($id: ID!, $input: [PublicationInput!]!) {
       publishablePublish(id: $id, input: $input) {
-        userErrors { field message }
+        userErrors {
+          field
+          message
+        }
       }
     }
   `;
@@ -488,52 +523,73 @@ async function publishProduct(productId: string): Promise<void> {
   });
 }
 
+// ============================================
+// MAIN HANDLER
+// ============================================
+
 export async function POST(request: NextRequest) {
   try {
     const payload: ProductPayload = await request.json();
     
-    console.log(`🔧 Regenerating product: ${payload.title} (${payload.sku})`);
+    console.log(`\n🔄 Processing: ${payload.sku} - ${payload.title}`);
     
-    // Step 1: Search for product information
-    console.log('   🔍 Searching for product info...');
-    const additionalInfo = await searchProductInfo(payload.title, payload.sku, payload.vendor);
-    console.log('   ✅ Info gathered');
+    // STEP 1: Ricerca RAG con SKU
+    console.log('   📚 RAG Search...');
+    const { foundInfo, brand } = await searchProductInfoRAG(
+      payload.sku,
+      payload.title,
+      payload.vendor
+    );
+    console.log(`   ✅ Brand identified: ${brand}`);
     
-    // Step 2: Generate content with Claude
-    console.log('   🤖 Generating content with Claude...');
-    const generatedContent = await generateProductContent(payload, additionalInfo);
-    console.log('   ✅ Content generated');
+    // STEP 2: Genera contenuto con Claude
+    console.log('   🤖 Generating content...');
+    const generatedContent = await generateProductContent(
+      payload.sku,
+      payload.title,
+      brand,
+      foundInfo,
+      payload.price
+    );
+    console.log(`   ✅ Title: ${generatedContent.cleanTitle}`);
     
-    // Step 3: Search for product image
-    console.log('   🖼️ Searching for image...');
-    const imageUrl = await searchProductImage(payload.title, payload.vendor, payload.sku);
-    console.log(imageUrl ? '   ✅ Image found' : '   ⚠️ No image found');
+    // STEP 3: Cerca immagine con SKU
+    console.log('   🖼️ Searching image...');
+    const imageUrl = await searchProductImageBySKU(payload.sku, brand, payload.title);
+    console.log(imageUrl ? `   ✅ Image found` : '   ⚠️ No image');
     
-    // Step 4: Create product on Shopify
-    console.log('   📤 Creating product on Shopify...');
-    const result = await createShopifyProduct(payload, generatedContent, imageUrl);
+    // STEP 4: Crea prodotto su Shopify
+    console.log('   📤 Creating on Shopify...');
+    const result = await createShopifyProduct(payload, generatedContent, imageUrl, brand);
     
     if (result.data?.productCreate?.product) {
       console.log(`   ✅ Created: ${result.data.productCreate.product.handle}`);
       return NextResponse.json({
         success: true,
         product: result.data.productCreate.product,
-        generatedTitle: generatedContent.cleanTitle
+        sku: payload.sku
       });
     } else {
-      const errorMsg = JSON.stringify(result.data?.productCreate?.userErrors || result.errors);
-      console.log(`   ❌ Error: ${errorMsg}`);
+      console.error('   ❌ Shopify errors:', result.data?.productCreate?.userErrors);
       return NextResponse.json({
         success: false,
-        error: errorMsg
+        error: 'Failed to create product',
+        details: result.data?.productCreate?.userErrors
       }, { status: 500 });
     }
     
   } catch (error) {
-    console.error('Error regenerating product:', error);
+    console.error('Worker error:', error);
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : String(error)
     }, { status: 500 });
   }
+}
+
+export async function GET() {
+  return NextResponse.json({
+    message: 'Product regeneration worker',
+    description: 'POST with product payload to regenerate a single product'
+  });
 }
