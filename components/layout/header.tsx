@@ -5,7 +5,6 @@ import Image from 'next/image';
 import { Search, ShoppingCart, Menu, Phone, Truck, User, BookOpen, ChevronDown, Package, FileText } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { blogPosts } from '@/lib/blog/posts';
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -34,30 +33,30 @@ export function Header() {
     }
 
     const query = searchQuery.toLowerCase();
-    const articleSuggestions = blogPosts
-      .filter(post => 
-        post.title.toLowerCase().includes(query) ||
-        post.tags.some(tag => tag.toLowerCase().includes(query))
-      )
-      .slice(0, 3)
-      .map(post => ({
-        type: 'article' as const,
-        title: post.title,
-        url: `/blog/${post.slug}`
-      }));
-
-    // Add some common product search suggestions
-    const productKeywords = ['milwaukee', 'makita', 'dewalt', 'bosch', 'avvitatore', 'trapano', 'smerigliatrice', 'batteria', 'tassellatore'];
+    
+    // Product search suggestions based on common keywords
+    const productKeywords = ['milwaukee', 'makita', 'dewalt', 'bosch', 'avvitatore', 'trapano', 'smerigliatrice', 'batteria', 'tassellatore', 'hilti'];
     const productSuggestions = productKeywords
       .filter(keyword => keyword.includes(query))
-      .slice(0, 2)
+      .slice(0, 3)
       .map(keyword => ({
         type: 'product' as const,
         title: `Cerca "${keyword}" nei prodotti`,
         url: `/products?q=${keyword}`
       }));
 
-    setSuggestions([...articleSuggestions, ...productSuggestions]);
+    // Article search suggestions based on common topics
+    const articleKeywords = ['confronto', 'guida', 'prezzi', 'problemi', 'recensione', 'migliori'];
+    const articleSuggestions = articleKeywords
+      .filter(keyword => keyword.includes(query))
+      .slice(0, 2)
+      .map(keyword => ({
+        type: 'article' as const,
+        title: `Cerca "${keyword}" nelle guide`,
+        url: `/blog?q=${keyword}`
+      }));
+
+    setSuggestions([...productSuggestions, ...articleSuggestions]);
   }, [searchQuery]);
 
   const handleSearch = (e: React.FormEvent) => {
@@ -252,66 +251,61 @@ export function Header() {
             <div className="flex-1" />
             
             {/* Quick Links to Popular Articles */}
-            <div className="flex items-center gap-4 text-xs text-zinc-400">
-              <Link href="/blog/milwaukee-vs-makita-vs-dewalt-confronto-definitivo-2026" className="hover:text-primary transition-colors">
-                Milwaukee vs Makita →
-              </Link>
-              <Link href="/blog/quanto-costa-attrezzare-furgone-elettricista-2026" className="hover:text-primary transition-colors">
-                Guida Prezzi 2026 →
-              </Link>
-            </div>
+            <Link 
+              href="/blog/milwaukee-vs-makita-vs-dewalt-confronto-definitivo-per-professionisti-2026" 
+              className="px-3 py-3 text-xs text-primary hover:underline"
+            >
+              Milwaukee vs Makita →
+            </Link>
+            <Link 
+              href="/blog/quanto-costa-davvero-attrezzare-un-furgone-da-elettricista-guida-ai-prezzi-2026" 
+              className="px-3 py-3 text-xs text-primary hover:underline"
+            >
+              Guida Prezzi 2026 →
+            </Link>
           </nav>
         </div>
       </div>
 
       {/* Mobile Menu */}
       {isMenuOpen && (
-        <div className="md:hidden border-t border-border p-4 bg-background">
-          {/* Mobile Search */}
-          <form onSubmit={handleSearch} className="mb-4">
-            <div className="relative w-full">
+        <div className="md:hidden border-t border-border bg-background">
+          <div className="container px-4 py-4 space-y-4">
+            {/* Mobile Search */}
+            <form onSubmit={handleSearch} className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <input
                 type="search"
                 placeholder="Cerca prodotti e guide..."
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm pl-9"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pl-9"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
-            </div>
-          </form>
-          
-          <nav className="flex flex-col gap-4">
-            <Link href="/" className="text-sm font-medium" onClick={() => setIsMenuOpen(false)}>Home</Link>
-            <Link href="/products" className="text-sm font-medium" onClick={() => setIsMenuOpen(false)}>Prodotti</Link>
+            </form>
             
-            {/* GUIDE E CONFRONTI - Mobile */}
-            <Link 
-              href="/blog" 
-              className="text-sm font-bold text-primary flex items-center gap-2" 
-              onClick={() => setIsMenuOpen(false)}
-            >
-              <BookOpen className="h-4 w-4" />
-              GUIDE E CONFRONTI
-              <span className="px-1.5 py-0.5 text-[10px] bg-primary/20 rounded">NUOVO</span>
-            </Link>
-            
-            <Link href="/services" className="text-sm font-medium" onClick={() => setIsMenuOpen(false)}>Noleggio & Assistenza</Link>
-            <Link href="/about" className="text-sm font-medium" onClick={() => setIsMenuOpen(false)}>Chi Siamo</Link>
-            <Link href="/contact" className="text-sm font-medium" onClick={() => setIsMenuOpen(false)}>Contatti</Link>
-            
-            <div className="border-t border-border pt-4 mt-2">
-              <p className="text-xs text-muted-foreground mb-2">Articoli Popolari:</p>
-              <Link href="/blog/milwaukee-vs-makita-vs-dewalt-confronto-definitivo-2026" className="text-xs text-primary block mb-1" onClick={() => setIsMenuOpen(false)}>
-                → Milwaukee vs Makita vs DeWalt
+            <nav className="flex flex-col space-y-2">
+              <Link href="/products" className="px-3 py-2 text-sm font-medium hover:bg-accent rounded-md" onClick={() => setIsMenuOpen(false)}>
+                Prodotti
               </Link>
-              <Link href="/blog/quanto-costa-attrezzare-furgone-elettricista-2026" className="text-xs text-primary block" onClick={() => setIsMenuOpen(false)}>
-                → Guida Prezzi Elettricista 2026
+              <Link href="/blog" className="px-3 py-2 text-sm font-medium bg-primary/10 text-primary rounded-md flex items-center gap-2" onClick={() => setIsMenuOpen(false)}>
+                <BookOpen className="h-4 w-4" />
+                Guide e Confronti
               </Link>
-            </div>
-            
-            <Link href="/b2b" className="text-sm font-medium text-primary border-t border-border pt-4" onClick={() => setIsMenuOpen(false)}>Area B2B</Link>
-          </nav>
+              <Link href="/services" className="px-3 py-2 text-sm font-medium hover:bg-accent rounded-md" onClick={() => setIsMenuOpen(false)}>
+                Noleggio & Assistenza
+              </Link>
+              <Link href="/about" className="px-3 py-2 text-sm font-medium hover:bg-accent rounded-md" onClick={() => setIsMenuOpen(false)}>
+                Chi Siamo
+              </Link>
+              <Link href="/contact" className="px-3 py-2 text-sm font-medium hover:bg-accent rounded-md" onClick={() => setIsMenuOpen(false)}>
+                Contatti
+              </Link>
+              <Link href="/account" className="px-3 py-2 text-sm font-medium hover:bg-accent rounded-md flex items-center gap-2" onClick={() => setIsMenuOpen(false)}>
+                <User className="h-4 w-4" />
+                Accedi
+              </Link>
+            </nav>
+          </div>
         </div>
       )}
     </header>

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Search, Package, BookOpen, ArrowRight } from 'lucide-react';
 import { getProducts } from '@/lib/shopify';
 import { ProductCard } from '@/components/product/product-card';
-import { blogPosts } from '@/lib/blog/posts';
+import { getAllPostsAsync } from '@/lib/blog';
 import { BlogCard } from '@/components/blog/blog-card';
 
 interface SearchPageProps {
@@ -23,9 +23,10 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       )
     : [];
   
-  // Search blog articles
+  // Search blog articles from Shopify
+  const allPosts = await getAllPostsAsync();
   const matchingArticles = query
-    ? blogPosts.filter(post =>
+    ? allPosts.filter(post =>
         post.title.toLowerCase().includes(query) ||
         post.excerpt.toLowerCase().includes(query) ||
         post.category.toLowerCase().includes(query) ||
