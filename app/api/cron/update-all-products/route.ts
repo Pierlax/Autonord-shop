@@ -63,7 +63,7 @@ async function getAllProducts(): Promise<ShopifyProduct[]> {
       }
     `;
 
-    const response = await fetch(url, {
+    const response: Response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
