@@ -1,9 +1,8 @@
 /**
  * Endpoint per rigenerare tutte le schede prodotto
  * 
- * 1. Legge i 70 prodotti da Shopify (dati base)
- * 2. Cancella tutti i prodotti esistenti
- * 3. Accoda la rigenerazione di ogni prodotto con QStash
+ * 1. Usa i dati dal backup dei prodotti originali
+ * 2. Accoda la rigenerazione di ogni prodotto con QStash
  * 
  * POST /api/cron/regenerate-all-products
  */
@@ -18,6 +17,79 @@ const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN!;
 
 // Use production URL
 const BASE_URL = 'https://autonord-shop.vercel.app';
+
+// Backup dei 70 prodotti originali da Danea
+const PRODUCTS_BACKUP = [
+  { sku: "0411", title: "0411", vendor: "autonord-service", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932459783", title: "ADAT.1/2\"a 1/4\" 50mm 1pz xbit", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932471828", title: "ADAT.1/2\"Q.1/4\"ES.50mm 1pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932471829", title: "ADAT.1/2\"Q.3/4\"Q.50mm 1pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932498628", title: "ACCETTA 40 CM ACCETTA 40 CM", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932498629", title: "ACCETTA 66 CM ACCETTA 66 CM", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932471830", title: "ADAT.HEX 1/4\"a 1/2\" 50mm SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932352462", title: "ADATT.ANGOL.COMP.1/2\"QUADRO", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932471831", title: "ADAT.HEX 1/4\"a 3/8\" 50mm SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932430853", title: "ADATT.MAGN.1/4\"ES.60mm 1pz", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932430855", title: "ADATT.MAGN.1/4\"ES.150mm 1pz", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932352460", title: "ADATT.MAGN.1/4\"ES.300mm 1pz", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932459398", title: "ADATT.MAGN.1/4\"ES.60mm 10pz", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932459399", title: "ADATT.MAGN.1/4\"ES.150mm 10pz", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932352461", title: "ADATT.MAGN.1/4\"ES.300mm 10pz", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932472063", title: "ADATT.MAGN.1/4\"ES.75mm 1pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932472064", title: "ADATT.MAGN.1/4\"ES.150mm 1pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932472065", title: "ADATT.MAGN.1/4\"ES.300mm 1pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932430854", title: "ADATT.MAGN.1/4\"ES.75mm 1pz", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932459784", title: "ADATT.MAGN.1/4\"ES.75mm 10pz", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932459785", title: "ADATT.MAGN.1/4\"ES.150mm 10pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932459786", title: "ADATT.MAGN.1/4\"ES.300mm 10pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932472066", title: "ADATT.MAGN.1/4\"ES.75mm 10pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932464067", title: "ADATT.RAPIDO 1/4\"ES.60mm 1pz", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932464068", title: "ADATT.RAPIDO 1/4\"ES.150mm 1pz", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932459787", title: "ADATT.RAPIDO 1/4\"ES.60mm 10pz", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932459788", title: "ADATT.RAPIDO 1/4\"ES.150mm 10pz", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932459789", title: "ADATT.RAPIDO 1/4\"ES.300mm 10pz", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932464069", title: "ADATT.RAPIDO 1/4\"ES.300mm 1pz", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932472067", title: "ADATT.RAPIDO 1/4\"ES.60mm 1pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932472068", title: "ADATT.RAPIDO 1/4\"ES.150mm 1pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932472069", title: "ADATT.RAPIDO 1/4\"ES.300mm 1pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932472070", title: "ADATT.RAPIDO 1/4\"ES.60mm 10pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932472071", title: "ADATT.RAPIDO 1/4\"ES.150mm 10pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932472072", title: "ADATT.RAPIDO 1/4\"ES.300mm 10pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932471824", title: "ADATT.TILT.1/4\"ES.60mm 1pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932471825", title: "ADATT.TILT.1/4\"ES.90mm 1pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932471826", title: "ADATT.TILT.1/4\"ES.150mm 1pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932471827", title: "ADATT.TILT.1/4\"ES.300mm 1pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932352463", title: "ADATT.UNIV.COMP.1/2\"QUADRO", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932464070", title: "ADATT.x BUSSOLE 3/8\"Q.1/4\"ES.50mm", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932464071", title: "ADATT.x BUSSOLE 1/2\"Q.1/4\"ES.50mm", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932464072", title: "ADATT.x BUSSOLE 1/4\"Q.1/4\"ES.50mm", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932459790", title: "ADATT.x BUSSOLE 1/2\"Q.1/4\"ES.50mm 10pz", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932459791", title: "ADATT.x BUSSOLE 3/8\"Q.1/4\"ES.50mm 10pz", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932459792", title: "ADATT.x BUSSOLE 1/4\"Q.1/4\"ES.50mm 10pz", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932472073", title: "ADATT.x BUSSOLE 1/4\"Q.1/4\"ES.50mm SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932472074", title: "ADATT.x BUSSOLE 3/8\"Q.1/4\"ES.50mm SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932472075", title: "ADATT.x BUSSOLE 1/2\"Q.1/4\"ES.50mm SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932472076", title: "ADATT.x BUSSOLE 1/4\"Q.1/4\"ES.50mm 10pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932472077", title: "ADATT.x BUSSOLE 3/8\"Q.1/4\"ES.50mm 10pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932472078", title: "ADATT.x BUSSOLE 1/2\"Q.1/4\"ES.50mm 10pz SHKW", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932459793", title: "ADATT.x BUSSOLE 1/4\"Q.3/8\"ES.50mm", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932459794", title: "ADATT.x BUSSOLE 3/8\"Q.3/8\"ES.50mm", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932459795", title: "ADATT.x BUSSOLE 1/2\"Q.3/8\"ES.50mm", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932459796", title: "ADATT.x BUSSOLE 1/4\"Q.1/2\"ES.50mm", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932459797", title: "ADATT.x BUSSOLE 3/8\"Q.1/2\"ES.50mm", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932459798", title: "ADATT.x BUSSOLE 1/2\"Q.1/2\"ES.50mm", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4932352080", title: "MANOMETRO x COMPRESSORE", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4933479767", title: "M12 FUEL SEGA CIRCOLARE 140mm", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4933479768", title: "M12 FUEL SEGA CIRCOLARE 140mm KIT", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4933479769", title: "M18 FUEL SEGA CIRCOLARE 165mm", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4933479770", title: "M18 FUEL SEGA CIRCOLARE 165mm KIT", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4933479771", title: "M18 FUEL SEGA CIRCOLARE 190mm", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4933479772", title: "M18 FUEL SEGA CIRCOLARE 190mm KIT", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4933479773", title: "M18 FUEL SEGA CIRCOLARE 210mm", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4933479774", title: "M18 FUEL SEGA CIRCOLARE 210mm KIT", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4933479775", title: "MX FUEL SEGA CIRCOLARE 355mm", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+  { sku: "4933479776", title: "MX FUEL SEGA CIRCOLARE 355mm KIT", vendor: "TECHTRONIC INDUSTRIES ITALIA SRL", productType: "", price: "0.00", inventoryQuantity: 0 },
+];
 
 interface ShopifyProduct {
   id: string;
@@ -145,35 +217,18 @@ export async function POST(request: NextRequest) {
   console.log('🚀 Starting product regeneration process...');
   
   try {
-    // Step 1: Get all products
-    console.log('📦 Fetching all products from Shopify...');
-    const products = await getAllProducts();
-    console.log(`   Found ${products.length} products`);
+    // Step 1: Delete any existing products
+    console.log('📦 Checking for existing products...');
+    const existingProducts = await getAllProducts();
     
-    if (products.length === 0) {
-      return NextResponse.json({
-        success: false,
-        error: 'No products found to regenerate'
-      }, { status: 400 });
+    if (existingProducts.length > 0) {
+      console.log(`🗑️ Deleting ${existingProducts.length} existing products...`);
+      const deleteResult = await deleteAllProducts(existingProducts);
+      console.log(`   Deleted: ${deleteResult.deleted}, Failed: ${deleteResult.failed}`);
     }
     
-    // Save product data for regeneration
-    const productData = products.map(p => ({
-      sku: p.variants.edges[0]?.node.sku || p.id.split('/').pop(),
-      title: p.title,
-      vendor: p.vendor,
-      productType: p.productType,
-      price: p.variants.edges[0]?.node.price || '0',
-      compareAtPrice: p.variants.edges[0]?.node.compareAtPrice,
-      barcode: p.variants.edges[0]?.node.barcode,
-      inventoryQuantity: p.variants.edges[0]?.node.inventoryQuantity || 0,
-      tags: p.tags
-    }));
-    
-    // Step 2: Delete all existing products
-    console.log('🗑️ Deleting all existing products...');
-    const deleteResult = await deleteAllProducts(products);
-    console.log(`   Deleted: ${deleteResult.deleted}, Failed: ${deleteResult.failed}`);
+    // Step 2: Use backup data for regeneration
+    console.log(`📋 Using backup data: ${PRODUCTS_BACKUP.length} products`);
     
     // Step 3: Queue regeneration for each product
     console.log('📤 Queueing product regeneration with QStash...');
@@ -182,19 +237,24 @@ export async function POST(request: NextRequest) {
     let queued = 0;
     let queueFailed = 0;
     
-    for (let i = 0; i < productData.length; i++) {
-      const product = productData[i];
+    for (let i = 0; i < PRODUCTS_BACKUP.length; i++) {
+      const product = PRODUCTS_BACKUP[i];
       
       try {
         // Queue with delay to avoid rate limiting
         // Each product gets 90 seconds delay (Claude + SerpAPI + Shopify)
         await qstash.publishJSON({
           url: `${BASE_URL}/api/workers/regenerate-product`,
-          body: product,
+          body: {
+            ...product,
+            barcode: null,
+            compareAtPrice: null,
+            tags: []
+          },
           delay: i * 90 // 90 seconds between each product
         });
         
-        console.log(`✅ Queued [${i + 1}/${productData.length}]: ${product.title}`);
+        console.log(`✅ Queued [${i + 1}/${PRODUCTS_BACKUP.length}]: ${product.sku} - ${product.title}`);
         queued++;
         
       } catch (error) {
@@ -209,9 +269,8 @@ export async function POST(request: NextRequest) {
       success: true,
       message: `Product regeneration started`,
       summary: {
-        totalProducts: products.length,
-        deleted: deleteResult.deleted,
-        deleteFailed: deleteResult.failed,
+        totalProducts: PRODUCTS_BACKUP.length,
+        existingDeleted: existingProducts.length,
         queued,
         queueFailed,
         estimatedCompletionMinutes: estimatedMinutes
@@ -234,13 +293,15 @@ export async function GET() {
     return NextResponse.json({
       message: 'Use POST to start product regeneration',
       currentProductCount: products.length,
+      backupProductCount: PRODUCTS_BACKUP.length,
       warning: 'This will DELETE all existing products and regenerate them with AI',
-      estimatedTimeMinutes: Math.ceil((products.length * 90) / 60)
+      estimatedTimeMinutes: Math.ceil((PRODUCTS_BACKUP.length * 90) / 60)
     });
   } catch (error) {
     return NextResponse.json({
       message: 'Use POST to start product regeneration',
-      error: 'Could not fetch product count'
+      backupProductCount: PRODUCTS_BACKUP.length,
+      error: 'Could not fetch current product count'
     });
   }
 }
