@@ -216,6 +216,6 @@ export async function GET() {
   return NextResponse.json({
     message: 'Use POST to queue article generation',
     articlesPlanned: ARTICLES_PLAN.length,
-    categories: [...new Set(ARTICLES_PLAN.map(a => a.category))]
+    categories: Array.from(new Set(ARTICLES_PLAN.map(a => a.category)))
   });
 }
