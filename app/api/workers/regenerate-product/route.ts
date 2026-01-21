@@ -26,6 +26,24 @@ interface ProductPayload {
   tags: string[];
 }
 
+// Funzione per sanitizzare gli handle - rimuove caratteri speciali
+function sanitizeHandle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[™®©]/g, '') // Rimuovi simboli trademark
+    .replace(/[àáâãäå]/g, 'a')
+    .replace(/[èéêë]/g, 'e')
+    .replace(/[ìíîï]/g, 'i')
+    .replace(/[òóôõö]/g, 'o')
+    .replace(/[ùúûü]/g, 'u')
+    .replace(/[ñ]/g, 'n')
+    .replace(/[^a-z0-9\s-]/g, '') // Rimuovi altri caratteri speciali
+    .replace(/\s+/g, '-') // Spazi -> trattini
+    .replace(/-+/g, '-') // Rimuovi trattini multipli
+    .replace(/^-|-$/g, '') // Rimuovi trattini iniziali/finali
+    .substring(0, 100); // Limita lunghezza
+}
+
 interface GeneratedContent {
   title: string;
   description: string;
@@ -241,6 +259,7 @@ async function updateProductOnShopify(
         input: {
           id: productId,
           title: content.title,
+          handle: sanitizeHandle(content.title), // Aggiungi handle sanitizzato
           descriptionHtml: fullDescription,
           tags: allTags,
           seo: {
