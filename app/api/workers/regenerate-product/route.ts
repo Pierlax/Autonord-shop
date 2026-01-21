@@ -215,7 +215,7 @@ async function createShopifyProduct(
     descriptionHtml: generatedContent.bodyHtml || '',
     vendor: product.vendor,
     productType: generatedContent.productType || product.productType,
-    tags: [...new Set([...product.tags, ...(generatedContent.tags || []), 'AI-Enhanced'])],
+    tags: Array.from(new Set([...product.tags, ...(generatedContent.tags || []), 'AI-Enhanced'])),
     status: 'ACTIVE',
     seo: {
       title: generatedContent.metaTitle,
