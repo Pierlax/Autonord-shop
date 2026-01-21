@@ -3,6 +3,7 @@
  * 
  * Syncs parsed Danea products to Shopify via Admin API.
  * Creates new products or updates existing ones based on SKU matching.
+ * Automatically publishes products to Online Store sales channel.
  */
 
 import { ParsedProduct, ShopifyProductInput, ProductSyncResult, SyncResult } from './types';
@@ -51,6 +52,151 @@ async function shopifyAdminRequest<T>(
   }
 
   return response.json();
+}
+
+/**
+ * Make authenticated GraphQL request to Shopify Admin API
+ */
+async function shopifyGraphQLRequest<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
+  const domain = process.env.SHOPIFY_SHOP_DOMAIN;
+  const token = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
+
+  if (!domain || !token) {
+    throw new Error('Missing SHOPIFY_SHOP_DOMAIN or SHOPIFY_ADMIN_ACCESS_TOKEN');
+  }
+
+  const url = `https://${domain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Shopify-Access-Token': token,
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Shopify GraphQL error: ${response.status} - ${errorText}`);
+  }
+
+  const result = await response.json();
+  
+  if (result.errors) {
+    throw new Error(`Shopify GraphQL errors: ${JSON.stringify(result.errors)}`);
+  }
+
+  return result.data;
+}
+
+/**
+ * Get the Online Store publication ID
+ */
+async function getOnlineStorePublicationId(): Promise<string | null> {
+  try {
+    const query = `
+      query {
+        publications(first: 10) {
+          edges {
+            node {
+              id
+              name
+            }
+          }
+        }
+      }
+    `;
+
+    const data = await shopifyGraphQLRequest<{
+      publications: {
+        edges: Array<{
+          node: {
+            id: string;
+            name: string;
+          };
+        }>;
+      };
+    }>(query);
+
+    // Find Online Store publication
+    const onlineStore = data.publications.edges.find(
+      edge => edge.node.name === 'Online Store'
+    );
+
+    if (onlineStore) {
+      log.info(`Found Online Store publication: ${onlineStore.node.id}`);
+      return onlineStore.node.id;
+    }
+
+    // If not found by name, try to find any publication
+    if (data.publications.edges.length > 0) {
+      const firstPub = data.publications.edges[0].node;
+      log.info(`Using first available publication: ${firstPub.name} (${firstPub.id})`);
+      return firstPub.id;
+    }
+
+    log.warn('No publications found');
+    return null;
+  } catch (error) {
+    log.error('Error getting Online Store publication ID:', error);
+    return null;
+  }
+}
+
+/**
+ * Publish a product to the Online Store sales channel
+ */
+async function publishProductToOnlineStore(productId: number): Promise<boolean> {
+  try {
+    const publicationId = await getOnlineStorePublicationId();
+    
+    if (!publicationId) {
+      log.warn('Cannot publish product: no publication found');
+      return false;
+    }
+
+    const mutation = `
+      mutation publishablePublish($id: ID!, $input: [PublicationInput!]!) {
+        publishablePublish(id: $id, input: $input) {
+          publishable {
+            availablePublicationsCount {
+              count
+            }
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+    const variables = {
+      id: `gid://shopify/Product/${productId}`,
+      input: [{ publicationId }],
+    };
+
+    const data = await shopifyGraphQLRequest<{
+      publishablePublish: {
+        publishable: {
+          availablePublicationsCount: { count: number };
+        } | null;
+        userErrors: Array<{ field: string; message: string }>;
+      };
+    }>(mutation, variables);
+
+    if (data.publishablePublish.userErrors.length > 0) {
+      log.error('Error publishing product:', data.publishablePublish.userErrors);
+      return false;
+    }
+
+    log.info(`Published product ${productId} to Online Store`);
+    return true;
+  } catch (error) {
+    log.error(`Failed to publish product ${productId}:`, error);
+    return false;
+  }
 }
 
 /**
@@ -140,6 +286,12 @@ export async function syncSingleProduct(product: ParsedProduct): Promise<Product
     if (existing) {
       // Update existing product
       await updateProduct(existing.id, shopifyProduct);
+      
+      // Also ensure it's published to Online Store
+      if (product.ecommerce) {
+        await publishProductToOnlineStore(existing.id);
+      }
+      
       log.info(`Updated product: ${product.daneaCode} (Shopify ID: ${existing.id})`);
       return {
         daneaCode: product.daneaCode,
@@ -150,6 +302,12 @@ export async function syncSingleProduct(product: ParsedProduct): Promise<Product
     } else {
       // Create new product
       const created = await createProduct(shopifyProduct);
+      
+      // Publish to Online Store if ecommerce flag is set
+      if (product.ecommerce) {
+        await publishProductToOnlineStore(created.id);
+      }
+      
       log.info(`Created product: ${product.daneaCode} (Shopify ID: ${created.id})`);
       return {
         daneaCode: product.daneaCode,
@@ -311,4 +469,31 @@ export async function getShopifyOrders(status: 'any' | 'open' | 'closed' = 'any'
       price: item.price,
     })),
   }));
+}
+
+/**
+ * Publish all existing products to Online Store
+ * Utility function to fix products that were created before auto-publish was added
+ */
+export async function publishAllProductsToOnlineStore(): Promise<{ published: number; failed: number }> {
+  const products = await getShopifyProducts();
+  let published = 0;
+  let failed = 0;
+
+  log.info(`Publishing ${products.length} products to Online Store...`);
+
+  for (const product of products) {
+    const success = await publishProductToOnlineStore(product.id);
+    if (success) {
+      published++;
+    } else {
+      failed++;
+    }
+    
+    // Rate limiting
+    await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY));
+  }
+
+  log.info(`Published ${published} products, ${failed} failed`);
+  return { published, failed };
 }
