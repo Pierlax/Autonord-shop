@@ -184,28 +184,29 @@ export async function POST(request: NextRequest) {
       }
       
       syncResult = {
-        success: true,
-        totalProducts: parseResult.updatedProducts.length + parseResult.deletedProductCodes.length,
+        total: parseResult.updatedProducts.length + parseResult.deletedProductCodes.length,
         created: results.updated.success,
         updated: 0,
         failed: results.updated.failed + results.deleted.failed,
-        errors: [],
+        skipped: 0,
+        results: [],
+        errors: [] as string[],
       };
       
       log.info('Incremental sync completed', results);
     }
     
     log.info('Sync completed', {
-      success: syncResult.success,
+      total: syncResult.total,
       created: syncResult.created,
       updated: syncResult.updated,
       failed: syncResult.failed,
     });
     
     // Danea expects "OK" response on success
-    if (syncResult.success && syncResult.failed === 0) {
+    if (syncResult.failed === 0) {
       return new NextResponse('OK', { status: 200 });
-    } else if (syncResult.success) {
+    } else if (syncResult.created > 0 || syncResult.updated > 0) {
       // Partial success
       return new NextResponse(`OK (${syncResult.failed} errors)`, { status: 200 });
     } else {
