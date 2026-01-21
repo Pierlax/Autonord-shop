@@ -88,8 +88,8 @@ async function getProductStats(): Promise<{ total: number; processed: number; re
   // Query per contare tutti i prodotti
   const totalQuery = `
     query countAll {
-      products(first: 1) {
-        totalCount
+      productsCount {
+        count
       }
     }
   `;
@@ -97,8 +97,8 @@ async function getProductStats(): Promise<{ total: number; processed: number; re
   // Query per contare prodotti processati
   const processedQuery = `
     query countProcessed {
-      products(first: 1, query: "tag:AI-Enhanced") {
-        totalCount
+      productsCount(query: "tag:AI-Enhanced") {
+        count
       }
     }
   `;
@@ -125,8 +125,8 @@ async function getProductStats(): Promise<{ total: number; processed: number; re
   const totalResult = await totalRes.json();
   const processedResult = await processedRes.json();
 
-  const total = totalResult.data?.products?.totalCount || 0;
-  const processed = processedResult.data?.products?.totalCount || 0;
+  const total = totalResult.data?.productsCount?.count || 0;
+  const processed = processedResult.data?.productsCount?.count || 0;
 
   return {
     total,
