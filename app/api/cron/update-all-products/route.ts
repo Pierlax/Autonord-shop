@@ -125,6 +125,7 @@ export async function POST(request: NextRequest) {
 
     let queued = 0;
     let failed = 0;
+    let firstError: string | null = null;
 
     // Accoda ogni prodotto con un delay progressivo (120 secondi tra uno e l'altro)
     // per dare tempo a Claude di fare le ricerche web
@@ -150,8 +151,12 @@ export async function POST(request: NextRequest) {
           retries: 2,
         });
         queued++;
-      } catch (e) {
-        console.error(`Failed to queue product ${product.title}:`, e);
+      } catch (e: any) {
+        console.error(`Failed to queue product ${product.title}:`, e?.message || e);
+        // Capture first error for debugging
+        if (failed === 0) {
+          firstError = e?.message || String(e);
+        }
         failed++;
       }
     }
@@ -165,6 +170,7 @@ export async function POST(request: NextRequest) {
         totalProducts: products.length,
         queued,
         queueFailed: failed,
+        firstError: firstError,
         delayBetweenProducts: '120 seconds',
         estimatedCompletionMinutes: estimatedMinutes,
       },
