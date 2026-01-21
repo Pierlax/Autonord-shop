@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ArrowRight, CheckCircle, Truck, Shield, Clock, Phone, CreditCard, Award, BookOpen, AlertTriangle, Scale, DollarSign } from 'lucide-react';
-import { getProducts } from '@/lib/shopify';
+import { getProductsAdmin } from '@/lib/shopify/products-admin';
 import { ProductCard } from '@/components/product/product-card';
 import { PromoBanners } from '@/components/ui/promo-banners';
 import { FeaturedCategories } from '@/components/ui/featured-categories';
@@ -9,7 +9,7 @@ import { NewsletterSection } from '@/components/ui/newsletter-section';
 import { TeamTrust } from '@/components/ui/team-trust';
 
 export default async function Home() {
-  const products = await getProducts('BEST_SELLING');
+  const products = await getProductsAdmin();
 
   return (
     <div className="flex flex-col pb-16">

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Search, Package, BookOpen, ArrowRight } from 'lucide-react';
-import { getProducts } from '@/lib/shopify';
+import { getProductsAdmin } from '@/lib/shopify/products-admin';
 import { ProductCard } from '@/components/product/product-card';
 import { getAllPostsAsync } from '@/lib/blog';
 import { BlogCard } from '@/components/blog/blog-card';
@@ -13,7 +13,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const query = searchParams.q?.toLowerCase() || '';
   
   // Search products
-  const allProducts = await getProducts('BEST_SELLING');
+  const allProducts = await getProductsAdmin();
   const matchingProducts = query 
     ? allProducts.filter(product => 
         product.title.toLowerCase().includes(query) ||

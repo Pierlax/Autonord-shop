@@ -1,6 +1,6 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
-import { getProducts } from '@/lib/shopify';
+import { getProductsAdmin, searchProductsAdmin } from '@/lib/shopify/products-admin';
 import { ProductCard } from '@/components/product/product-card';
 import { Filter, ChevronRight, Package } from 'lucide-react';
 
@@ -9,22 +9,24 @@ export const metadata: Metadata = {
   description: 'Sfoglia il nostro catalogo completo di elettroutensili, macchine movimento terra e attrezzature edili.',
 };
 
+// Revalidate every 60 seconds
+export const revalidate = 60;
+
 type Props = {
   searchParams: { [key: string]: string | string[] | undefined };
 };
 
 export default async function ProductsPage({ searchParams }: Props) {
-  const sortKey = typeof searchParams.sort === 'string' ? searchParams.sort : 'RELEVANCE';
   const query = typeof searchParams.q === 'string' ? searchParams.q : undefined;
   const vendor = typeof searchParams.vendor === 'string' ? searchParams.vendor : undefined;
   
   // Build query string for filtering
-  let searchQuery = query;
-  if (vendor) {
-    searchQuery = vendor;
-  }
+  let searchQuery = query || vendor;
   
-  const products = await getProducts(sortKey, false, searchQuery);
+  // Use Admin API for products
+  const products = searchQuery 
+    ? await searchProductsAdmin(searchQuery)
+    : await getProductsAdmin();
 
   return (
     <div className="container px-4 md:px-8 py-6 md:py-8">

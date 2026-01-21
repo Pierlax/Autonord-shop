@@ -3,7 +3,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Check, AlertTriangle, FileText, Truck, Shield, ChevronRight, Package } from 'lucide-react';
-import { getProductByHandle, parseEnrichedData } from '@/lib/shopify';
+import { getProductByHandleAdmin } from '@/lib/shopify/products-admin';
+import { parseEnrichedData } from '@/lib/shopify';
 import { AddToCartButton, StickyMobileCTA } from '@/components/product/add-to-cart';
 import { ProductFAQ } from '@/components/product/product-faq';
 import { FAQAccordion } from '@/components/product/faq-accordion';
@@ -23,7 +24,7 @@ type Props = {
 };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const product = await getProductByHandle(params.handle);
+  const product = await getProductByHandleAdmin(params.handle);
 
   if (!product) {
     return {
@@ -41,7 +42,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function ProductPage({ params }: Props) {
-  const product = await getProductByHandle(params.handle);
+  const product = await getProductByHandleAdmin(params.handle);
 
   if (!product) {
     notFound();
