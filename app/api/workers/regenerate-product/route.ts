@@ -1,10 +1,16 @@
 /**
- * Worker Regenerate Product - TAYA V3
+ * Worker Regenerate Product - TAYA V3.1
  * 
  * Orchestratore che collega:
  * 1. ai-enrichment-v3.ts (la "Ferrari" - RAG + Knowledge Graph + Provenance)
  * 2. ImageDiscoveryAgent (ricerca immagini ufficiali)
- * 3. Shopify Admin API (salvataggio)
+ * 3. TAYA Police (validazione post-generazione)
+ * 4. Shopify Admin API (salvataggio HTML + Metafields)
+ * 
+ * NOVITÀ V3.1:
+ * - Validazione contenuti contro parole vietate (TAYA Police)
+ * - Salvataggio dati strutturati in Metafields Shopify
+ * - Correzione automatica se trovate violazioni
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -15,6 +21,7 @@ import {
 } from '@/lib/shopify/ai-enrichment-v3';
 import { ShopifyProductWebhookPayload } from '@/lib/shopify/webhook-types';
 import { discoverProductImage } from '@/lib/agents/image-discovery-agent';
+import { validateAndCorrect, CleanedContent } from '@/lib/agents/taya-police';
 
 // =============================================================================
 // CONFIG
@@ -22,6 +29,9 @@ import { discoverProductImage } from '@/lib/agents/image-discovery-agent';
 
 const SHOPIFY_STORE = 'autonord-service.myshopify.com';
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN!;
+
+// Metafield namespace
+const METAFIELD_NAMESPACE = 'taya';
 
 // =============================================================================
 // TYPES
@@ -35,6 +45,10 @@ interface WorkerPayload {
   sku: string | null;
   barcode: string | null;
   tags: string[];
+}
+
+interface TayaSpecs {
+  [key: string]: string;
 }
 
 // =============================================================================
@@ -112,32 +126,98 @@ function toWebhookPayload(payload: WorkerPayload): ShopifyProductWebhookPayload 
   };
 }
 
+/**
+ * Estrae le specifiche tecniche in formato JSON
+ */
+function extractSpecs(enrichedData: EnrichedProductDataV3): TayaSpecs {
+  const specs: TayaSpecs = {};
+  
+  // Estrai da provenance facts
+  if (enrichedData.provenance?.facts) {
+    for (const fact of enrichedData.provenance.facts) {
+      if (fact.verificationStatus === 'verified' || fact.verificationStatus === 'cross_verified') {
+        specs[fact.key] = fact.value;
+      }
+    }
+  }
+  
+  return specs;
+}
+
+/**
+ * Genera l'opinione dell'esperto dal contenuto
+ */
+function generateExpertOpinion(
+  cleanedContent: CleanedContent,
+  enrichedData: EnrichedProductDataV3
+): string {
+  const trades = enrichedData.knowledgeGraphContext?.suitableForTrades || [];
+  const tradesText = trades.length > 0 
+    ? `Ideale per: ${trades.join(', ')}.` 
+    : '';
+  
+  const prosText = cleanedContent.pros.slice(0, 2).join('. ');
+  const consText = cleanedContent.cons.length > 0 
+    ? `Da considerare: ${cleanedContent.cons[0]}.` 
+    : '';
+  
+  return `${tradesText} ${prosText}. ${consText}`.trim();
+}
+
 // =============================================================================
-// SHOPIFY API
+// SHOPIFY API - METAFIELDS
 // =============================================================================
 
-async function updateShopifyProduct(
+/**
+ * Aggiorna prodotto con HTML + Metafields strutturati
+ */
+async function updateShopifyProductWithMetafields(
   productId: string,
   enrichedData: EnrichedProductDataV3,
+  cleanedContent: CleanedContent,
   imageUrl: string | null
 ): Promise<{ success: boolean; error?: string }> {
   
   const url = `https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`;
   
-  // Genera HTML dalla struttura V3
-  const descriptionHtml = formatDescriptionAsHtmlV3(enrichedData);
+  // Genera HTML dalla struttura V3 (con contenuto pulito)
+  const enrichedWithCleanContent: EnrichedProductDataV3 = {
+    ...enrichedData,
+    description: cleanedContent.description,
+    pros: cleanedContent.pros,
+    cons: cleanedContent.cons,
+    faqs: cleanedContent.faqs,
+  };
+  const descriptionHtml = formatDescriptionAsHtmlV3(enrichedWithCleanContent);
   
   // Genera titolo SEO
-  const seoTitle = enrichedData.description.substring(0, 60);
-  const seoDescription = enrichedData.description.substring(0, 160);
+  const seoTitle = cleanedContent.description.substring(0, 60);
+  const seoDescription = cleanedContent.description.substring(0, 160);
   
   // Tags
-  const tags = ['AI-Enhanced', 'TAYA-V3'];
+  const tags = ['AI-Enhanced', 'TAYA-V3.1'];
+  
+  // Estrai specs e genera expert opinion
+  const specs = extractSpecs(enrichedData);
+  const expertOpinion = cleanedContent.expertOpinion || generateExpertOpinion(cleanedContent, enrichedData);
 
+  // Mutation con Metafields
   const mutation = `
     mutation productUpdate($input: ProductInput!) {
       productUpdate(input: $input) {
-        product { id title }
+        product { 
+          id 
+          title
+          metafields(first: 10) {
+            edges {
+              node {
+                namespace
+                key
+                value
+              }
+            }
+          }
+        }
         userErrors { field message }
       }
     }
@@ -161,6 +241,50 @@ async function updateShopifyProduct(
               title: seoTitle,
               description: seoDescription,
             },
+            metafields: [
+              {
+                namespace: METAFIELD_NAMESPACE,
+                key: 'pros',
+                type: 'list.single_line_text_field',
+                value: JSON.stringify(cleanedContent.pros),
+              },
+              {
+                namespace: METAFIELD_NAMESPACE,
+                key: 'cons',
+                type: 'list.single_line_text_field',
+                value: JSON.stringify(cleanedContent.cons),
+              },
+              {
+                namespace: METAFIELD_NAMESPACE,
+                key: 'specs',
+                type: 'json',
+                value: JSON.stringify(specs),
+              },
+              {
+                namespace: METAFIELD_NAMESPACE,
+                key: 'expert_opinion',
+                type: 'multi_line_text_field',
+                value: expertOpinion,
+              },
+              {
+                namespace: METAFIELD_NAMESPACE,
+                key: 'faqs',
+                type: 'json',
+                value: JSON.stringify(cleanedContent.faqs),
+              },
+              {
+                namespace: METAFIELD_NAMESPACE,
+                key: 'confidence',
+                type: 'number_integer',
+                value: String(enrichedData.provenance?.overallConfidence || 0),
+              },
+              {
+                namespace: METAFIELD_NAMESPACE,
+                key: 'generated_at',
+                type: 'date_time',
+                value: new Date().toISOString(),
+              },
+            ],
           },
         },
       }),
@@ -168,12 +292,22 @@ async function updateShopifyProduct(
 
     const result = await response.json();
     
+    if (result.errors) {
+      console.error('[Worker] GraphQL errors:', result.errors);
+      return {
+        success: false,
+        error: result.errors[0]?.message || 'GraphQL error',
+      };
+    }
+    
     if (result.data?.productUpdate?.userErrors?.length > 0) {
       return {
         success: false,
         error: result.data.productUpdate.userErrors[0].message,
       };
     }
+
+    console.log('[Worker V3.1] ✅ Product updated with Metafields');
 
     // Aggiungi immagine se trovata
     if (imageUrl) {
@@ -247,25 +381,42 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    console.log(`[Worker V3] 🚀 Processing: ${payload.title}`);
+    console.log(`[Worker V3.1] 🚀 Processing: ${payload.title}`);
     const startTime = Date.now();
 
     // ===========================================
     // STEP 1: Genera contenuto con la "Ferrari" V3
     // ===========================================
-    console.log('[Worker V3] Step 1: Running ai-enrichment-v3 (RAG + KG + Provenance)...');
+    console.log('[Worker V3.1] Step 1: Running ai-enrichment-v3 (RAG + KG + Provenance)...');
     
     const webhookPayload = toWebhookPayload(payload);
     const enrichedData = await generateProductContentV3(webhookPayload);
     
-    console.log(`[Worker V3] Content generated. Confidence: ${enrichedData.provenance.overallConfidence}%`);
-    console.log(`[Worker V3] Sources used: ${enrichedData.sourcesUsed.join(', ')}`);
-    console.log(`[Worker V3] Warnings: ${enrichedData.provenance.warnings.length}`);
+    console.log(`[Worker V3.1] Content generated. Confidence: ${enrichedData.provenance.overallConfidence}%`);
+    console.log(`[Worker V3.1] Sources used: ${enrichedData.sourcesUsed.join(', ')}`);
 
     // ===========================================
-    // STEP 2: Cerca immagine ufficiale
+    // STEP 2: TAYA Police - Validazione contenuti
     // ===========================================
-    console.log('[Worker V3] Step 2: Running ImageDiscoveryAgent...');
+    console.log('[Worker V3.1] Step 2: Running TAYA Police validation...');
+    
+    const validationResult = await validateAndCorrect({
+      description: enrichedData.description,
+      pros: enrichedData.pros,
+      cons: enrichedData.cons,
+      faqs: enrichedData.faqs,
+    });
+    
+    if (validationResult.wasFixed) {
+      console.log(`[Worker V3.1] 🔧 Fixed ${validationResult.violations.length} TAYA violations`);
+    } else {
+      console.log('[Worker V3.1] ✅ Content passed TAYA validation');
+    }
+
+    // ===========================================
+    // STEP 3: Cerca immagine ufficiale
+    // ===========================================
+    console.log('[Worker V3.1] Step 3: Running ImageDiscoveryAgent...');
     
     const imageResult = await discoverProductImage(
       payload.title,
@@ -275,19 +426,20 @@ export async function POST(request: NextRequest) {
     );
     
     if (imageResult.success) {
-      console.log(`[Worker V3] ✅ Image found: ${imageResult.source}`);
+      console.log(`[Worker V3.1] ✅ Image found: ${imageResult.source}`);
     } else {
-      console.log(`[Worker V3] ⚠️ No image: ${imageResult.error}`);
+      console.log(`[Worker V3.1] ⚠️ No image: ${imageResult.error}`);
     }
 
     // ===========================================
-    // STEP 3: Salva su Shopify
+    // STEP 4: Salva su Shopify (HTML + Metafields)
     // ===========================================
-    console.log('[Worker V3] Step 3: Updating Shopify...');
+    console.log('[Worker V3.1] Step 4: Updating Shopify with Metafields...');
     
-    const updateResult = await updateShopifyProduct(
+    const updateResult = await updateShopifyProductWithMetafields(
       payload.productId,
       enrichedData,
+      validationResult.content,
       imageResult.imageUrl
     );
 
@@ -308,7 +460,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       product: payload.title,
-      version: 'V3-TAYA',
+      version: 'V3.1-TAYA',
       metrics: {
         timeMs: totalTime,
         confidence: enrichedData.provenance.overallConfidence,
@@ -316,15 +468,17 @@ export async function POST(request: NextRequest) {
         warningsCount: enrichedData.provenance.warnings.length,
         hasImage: imageResult.success,
         imageSource: imageResult.source,
-        prosCount: enrichedData.pros.length,
-        consCount: enrichedData.cons.length,
-        faqsCount: enrichedData.faqs.length,
+        prosCount: validationResult.content.pros.length,
+        consCount: validationResult.content.cons.length,
+        faqsCount: validationResult.content.faqs.length,
         accessoriesCount: enrichedData.accessories.length,
+        tayaViolationsFixed: validationResult.violations.length,
+        metafieldsCreated: 7,
       },
     });
 
   } catch (error) {
-    console.error('[Worker V3] Fatal error:', error);
+    console.error('[Worker V3.1] Fatal error:', error);
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
