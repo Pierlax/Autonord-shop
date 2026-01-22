@@ -3,9 +3,9 @@
  */
 
 export { 
-  discoverProductImage,
-  type ImageDiscoveryResult,
-} from './image-discovery-agent';
+  findProductImage,
+  type ImageAgentV4Result,
+} from './image-agent-v4';
 
 export {
   validateAndCorrect,

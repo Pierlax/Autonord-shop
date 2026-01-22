@@ -17,7 +17,7 @@ import {
   formatDescriptionAsHtmlV3,
 } from '@/lib/shopify/ai-enrichment-v3';
 import { ShopifyProductWebhookPayload } from '@/lib/shopify/webhook-types';
-import { discoverProductImage } from '@/lib/agents/image-discovery-agent';
+import { findProductImage } from '@/lib/agents/image-agent-v4';
 import { validateAndCorrect, BANNED_PHRASES } from '@/lib/agents/taya-police';
 
 // =============================================================================
@@ -382,12 +382,12 @@ export async function GET(request: NextRequest) {
     });
 
     // =========================================================================
-    // STEP 4: Image Discovery
+    // STEP 4: Image Discovery (V4)
     // =========================================================================
-    console.log('\n🖼️ STEP 4: Running Image Discovery Agent...');
+    console.log('\n🖼️ STEP 4: Running ImageAgent V4...');
     const step4Start = Date.now();
     
-    const imageResult = await discoverProductImage(
+    const imageResult = await findProductImage(
       product.title,
       product.vendor,
       product.variants[0]?.sku || null,
@@ -395,25 +395,32 @@ export async function GET(request: NextRequest) {
     );
     
     if (imageResult.success) {
-      console.log(`   ✅ Image found!`);
+      console.log(`   ✅ Image found via ${imageResult.method}!`);
       console.log(`   🔗 URL: ${imageResult.imageUrl}`);
       console.log(`   📍 Source: ${imageResult.source}`);
-      console.log(`   🔍 Validated: ${imageResult.success ? 'YES' : 'NO'}`);
+      console.log(`   🎯 Confidence: ${imageResult.confidence}`);
+      console.log(`   ⏱️ Time: ${imageResult.totalTimeMs}ms`);
+      if (imageResult.alternativeCodes.length > 0) {
+        console.log(`   🔄 Alt codes: ${imageResult.alternativeCodes.join(', ')}`);
+      }
     } else {
-      console.log(`   ❌ No image found`);
+      console.log(`   ❌ No image found after ${imageResult.searchAttempts} attempts`);
       console.log(`   📝 Error: ${imageResult.error}`);
     }
     
     logs.push({
       step: 4,
-      name: 'Image Discovery',
+      name: 'ImageAgent V4',
       status: imageResult.success ? 'success' : 'warning',
       duration: Date.now() - step4Start,
       details: {
         success: imageResult.success,
         imageUrl: imageResult.imageUrl,
         source: imageResult.source,
-        validated: imageResult.success,
+        method: imageResult.method,
+        confidence: imageResult.confidence,
+        alternativeCodes: imageResult.alternativeCodes,
+        searchAttempts: imageResult.searchAttempts,
         error: imageResult.error,
       },
     });
