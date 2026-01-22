@@ -206,7 +206,7 @@ export async function correctContent(
   const anthropic = new Anthropic();
   
   // Group violations by phrase
-  const uniquePhrases = [...new Set(violations.map(v => v.phrase))];
+  const uniquePhrases = Array.from(new Set(violations.map(v => v.phrase)));
   
   const prompt = `Sei il correttore di bozze del Team Autonord. Hai trovato parole vietate dalla filosofia TAYA nel contenuto.
 
