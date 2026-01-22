@@ -611,27 +611,67 @@ async function validateImage(
   productCode: string | null
 ): Promise<boolean> {
   
-  const prompt = `Analyze this product image.
+  // Determina se il prodotto è un ricambio/accessorio
+  const titleLower = expectedProduct.toLowerCase();
+  const isReplacement = titleLower.includes('ricambio') || titleLower.includes('replacement') || 
+                        titleLower.includes('lame') || titleLower.includes('blade') ||
+                        titleLower.includes('spare') || titleLower.includes('part');
+  const isAccessory = titleLower.includes('adattatore') || titleLower.includes('adapter') ||
+                      titleLower.includes('portabit') || titleLower.includes('holder') ||
+                      titleLower.includes('prolunga') || titleLower.includes('extension') ||
+                      titleLower.includes('filtro') || titleLower.includes('filter');
+  const isPowerTool = titleLower.includes('avvitatore') || titleLower.includes('drill') ||
+                      titleLower.includes('trapano') || titleLower.includes('sega') ||
+                      titleLower.includes('smerigliatrice') || titleLower.includes('grinder') ||
+                      titleLower.includes('aspiratore') || titleLower.includes('vacuum');
+  
+  // Estrai il tipo specifico di prodotto dal titolo
+  let expectedType = 'product';
+  if (titleLower.includes('lame') || titleLower.includes('blade')) expectedType = 'blades/cutting blades';
+  else if (titleLower.includes('filtro') || titleLower.includes('filter')) expectedType = 'filter';
+  else if (titleLower.includes('adattatore') || titleLower.includes('adapter')) expectedType = 'adapter';
+  else if (titleLower.includes('portabit') || titleLower.includes('holder')) expectedType = 'bit holder';
+  else if (titleLower.includes('prolunga') || titleLower.includes('extension')) expectedType = 'extension';
+  else if (titleLower.includes('avvitatore') || titleLower.includes('drill')) expectedType = 'drill/driver';
+  else if (titleLower.includes('batteria') || titleLower.includes('battery')) expectedType = 'battery';
+  
+  const prompt = `Analyze this product image STRICTLY.
 
 EXPECTED PRODUCT: ${expectedProduct}
 BRAND: ${brand}
 PRODUCT CODE: ${productCode || 'N/A'}
+EXPECTED TYPE: ${expectedType}
 
-VALIDATION CRITERIA:
+STRICT VALIDATION RULES:
+
+${isReplacement ? `⚠️ THIS IS A REPLACEMENT PART/BLADE - BE VERY STRICT:
+- The image MUST show ${expectedType}, NOT a complete power tool
+- If the image shows a drill, driver, saw, or any complete tool → REJECT
+- Only accept images showing the actual replacement part (blades, cutting heads, etc.)
+- Small parts like blades should be shown isolated, not attached to a tool
+` : ''}
+${isAccessory ? `⚠️ THIS IS AN ACCESSORY - BE STRICT:
+- The image MUST show ${expectedType}
+- If the image shows a complete power tool instead of the accessory → REJECT
+- Accept: adapters, bit holders, extensions shown alone
+- Reject: drills, drivers, saws (unless the product IS a drill)
+` : ''}
+${isPowerTool ? `✓ THIS IS A POWER TOOL:
+- The image should show a ${expectedType}
+- Accept complete tool images
+` : ''}
+
+GENERAL CRITERIA:
 1. Is this a ${brand} product? (logo, colors, style)
-2. Does it match the expected product type?
-3. Is it a professional product photo (not lifestyle/action shot)?
-4. Is the product clearly visible?
-
-For ACCESSORIES (adapters, bits, holders, blades):
-- Accept if it shows the correct TYPE of accessory
-- Don't require exact model match for small parts
+2. Does the image show EXACTLY a ${expectedType}?
+3. Is it a professional product photo?
 
 Return JSON:
 {
   "valid": true/false,
   "reason": "brief explanation",
-  "productShown": "what the image actually shows"
+  "productShown": "describe what the image actually shows",
+  "expectedVsActual": "expected ${expectedType}, image shows [what]"
 }`;
 
   try {
