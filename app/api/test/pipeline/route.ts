@@ -56,7 +56,8 @@ interface DiagnosticResult {
 
 async function fetchProductFromShopify(
   productId?: string,
-  sku?: string
+  sku?: string,
+  handle?: string
 ): Promise<{ product: ShopifyProductWebhookPayload; raw: Record<string, unknown> } | null> {
   const url = `https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`;
   
@@ -66,6 +67,30 @@ async function fetchProductFromShopify(
     query = `
       query {
         product(id: "${productId}") {
+          id
+          title
+          vendor
+          productType
+          tags
+          descriptionHtml
+          handle
+          status
+          variants(first: 1) {
+            edges {
+              node {
+                sku
+                barcode
+                price
+              }
+            }
+          }
+        }
+      }
+    `;
+  } else if (handle) {
+    query = `
+      query {
+        productByHandle(handle: "${handle}") {
           id
           title
           vendor
@@ -131,6 +156,8 @@ async function fetchProductFromShopify(
   
   const productData = productId 
     ? result.data?.product 
+    : handle
+    ? result.data?.productByHandle
     : result.data?.products?.edges?.[0]?.node;
   
   if (!productData) return null;
@@ -196,11 +223,12 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const productId = searchParams.get('productId');
   const sku = searchParams.get('sku');
+  const handle = searchParams.get('handle');
   
-  if (!productId && !sku) {
+  if (!productId && !sku && !handle) {
     return NextResponse.json({
-      error: 'Missing productId or sku parameter',
-      usage: '/api/test/pipeline?productId=gid://shopify/Product/123 or /api/test/pipeline?sku=4932472062',
+      error: 'Missing productId, sku, or handle parameter',
+      usage: '/api/test/pipeline?productId=gid://shopify/Product/123 or /api/test/pipeline?sku=4932472062 or /api/test/pipeline?handle=product-handle',
     }, { status: 400 });
   }
 
@@ -219,7 +247,7 @@ export async function GET(request: NextRequest) {
     console.log('📥 STEP 1: Fetching product from Shopify...');
     const step1Start = Date.now();
     
-    const shopifyResult = await fetchProductFromShopify(productId || undefined, sku || undefined);
+    const shopifyResult = await fetchProductFromShopify(productId || undefined, sku || undefined, handle || undefined);
     
     if (!shopifyResult) {
       logs.push({
