@@ -1,3 +1,6 @@
+// Vercel Pro: Allow up to 300 seconds for AI pipeline
+export const maxDuration = 300;
+
 /**
  * Pipeline Diagnostic Test - V3 Dry Run
  * 

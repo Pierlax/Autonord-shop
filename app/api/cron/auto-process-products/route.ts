@@ -1,3 +1,6 @@
+// Vercel Pro: Allow up to 300 seconds for AI pipeline
+export const maxDuration = 300;
+
 /**
  * Cron Job per processare automaticamente i prodotti
  * Viene eseguito ogni 15 minuti da Vercel Cron
