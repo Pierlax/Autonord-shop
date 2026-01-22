@@ -59,7 +59,7 @@ export async function queueProductEnrichment(
     const client = getQStashClient();
     
     const result = await client.publishJSON({
-      url: `${baseUrl}/api/workers/enrich-product`,
+      url: `${baseUrl}/api/workers/regenerate-product`,
       body: job,
       retries: 3,
       // Delay between retries (in seconds)

@@ -7,7 +7,7 @@
  * 
  * Flow:
  * 1. Webhook receives product → validates → adds to QStash queue (fast, <1 second)
- * 2. QStash calls /api/workers/enrich-product → processes product (can take 30+ seconds)
+ * 2. QStash calls /api/workers/regenerate-product → processes product (V3.1 with TAYA Police + ImageDiscovery)
  * 3. Worker has automatic retries on failure
  * 
  * Does NOT modify: Title, Price, SKU, EAN (managed by gestionale)
@@ -184,7 +184,7 @@ export async function GET(request: NextRequest) {
         '5. Worker processes product asynchronously',
         '6. Automatic retries on failure',
       ],
-      workerEndpoint: '/api/workers/enrich-product',
+      workerEndpoint: '/api/workers/regenerate-product',
       enrichmentFields: [
         'body_html (AI-generated description)',
         'tags (adds AI-Enhanced)',

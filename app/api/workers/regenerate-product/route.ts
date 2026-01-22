@@ -48,6 +48,11 @@ interface WorkerPayload {
   sku: string | null;
   barcode: string | null;
   tags: string[];
+  // Campi aggiuntivi da EnrichmentJob (per compatibilità con QStash)
+  productGid?: string;
+  price?: string;
+  hasImages?: boolean;
+  receivedAt?: string;
 }
 
 interface TayaSpecs {
