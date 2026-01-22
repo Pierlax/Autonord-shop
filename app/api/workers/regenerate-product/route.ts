@@ -136,7 +136,7 @@ function extractSpecs(enrichedData: EnrichedProductDataV3): TayaSpecs {
   if (enrichedData.provenance?.facts) {
     for (const fact of enrichedData.provenance.facts) {
       if (fact.verificationStatus === 'verified') {
-        specs[fact.key] = fact.value;
+        specs[fact.factKey] = fact.factValue;
       }
     }
   }
