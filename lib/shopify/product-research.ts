@@ -89,20 +89,22 @@ async function extractManufacturerSpecs(
   const anthropic = new Anthropic();
   const brandConfig = getBrandConfig(brand);
   
-  const prompt = `Sei un ricercatore tecnico. Estrai le specifiche tecniche UFFICIALI per:
+  const prompt = `Sei un ricercatore tecnico. CERCA SUL WEB e estrai le specifiche tecniche UFFICIALI per:
 
 Prodotto: ${productName}
 Brand: ${brand}
 Modello: ${model}
-${brandConfig ? `Sito ufficiale: ${brandConfig.officialSite}` : ''}
+${brandConfig ? `Sito ufficiale da consultare: ${brandConfig.officialSite}` : ''}
 
-Cerca le specifiche che un produttore tipicamente fornisce per questo tipo di prodotto.
-Sii PRECISO e usa solo dati realistici per elettroutensili professionali.
+ISTRUZIONI:
+1. USA LA RICERCA WEB per trovare le specifiche sul sito ufficiale del produttore
+2. Cerca anche su siti di distributori autorizzati se necessario
+3. NON inventare dati - cerca fonti reali
 
 IMPORTANTE:
-- Se non sei sicuro di un dato, NON inventarlo
-- Indica "N/D" per dati non disponibili
+- Se non trovi un dato, indica "N/D"
 - Usa le unità di misura standard (Nm, RPM, V, Ah, kg, mm)
+- Indica la fonte da cui hai estratto ogni dato
 
 Rispondi in JSON:
 {
@@ -111,17 +113,23 @@ Rispondi in JSON:
       "field": "Coppia massima",
       "value": "135",
       "unit": "Nm",
-      "confidence": "high|medium|low"
+      "confidence": "high|medium|low",
+      "sourceUrl": "URL della fonte"
     }
   ],
   "productType": "avvitatore|trapano|smerigliatrice|altro",
-  "officialUrl": "URL se trovato"
+  "officialUrl": "URL pagina prodotto ufficiale"
 }`;
 
   try {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2000,
+      max_tokens: 3000,
+      tools: [{
+        type: 'web_search_20250305',
+        name: 'web_search',
+        max_uses: 5,
+      }],
       messages: [{ role: 'user', content: prompt }],
     });
     
@@ -198,24 +206,25 @@ async function extractRetailerSpecs(
 }> {
   const anthropic = new Anthropic();
   
-  const prompt = `Sei un ricercatore tecnico. Cerca le specifiche tecniche per:
+  const prompt = `Sei un ricercatore tecnico. USA LA RICERCA WEB per trovare le specifiche tecniche per:
 
 Prodotto: ${productName}
 SKU: ${sku}
 
 Cerca su retailer italiani affidabili come:
 - Amazon.it
-- Fixami.it
+- Fixami.it  
 - Rotopino.it
 - Toolnation.it
 
-Estrai le specifiche tecniche che trovi, indicando la fonte.
+Estrai le specifiche tecniche che trovi, indicando la fonte e l'URL.
 
 Rispondi in JSON:
 {
   "retailers": [
     {
       "name": "Amazon.it",
+      "url": "URL della pagina",
       "specs": [
         { "field": "Coppia", "value": "135", "unit": "Nm" }
       ]
@@ -226,7 +235,12 @@ Rispondi in JSON:
   try {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2000,
+      max_tokens: 2500,
+      tools: [{
+        type: 'web_search_20250305',
+        name: 'web_search',
+        max_uses: 5,
+      }],
       messages: [{ role: 'user', content: prompt }],
     });
     
@@ -288,7 +302,7 @@ async function analyzeBalancedReviews(
   
   const queries = getBalancedReviewQueries(productName, brand);
   
-  const prompt = `Sei un analista di recensioni. Analizza le opinioni su:
+  const prompt = `Sei un analista di recensioni. USA LA RICERCA WEB per analizzare le opinioni reali su:
 
 Prodotto: ${productName}
 Brand: ${brand}
@@ -303,7 +317,10 @@ Cerca su:
 2. Reddit r/Tools - thread con "problem", "issue", "disappointed"
 3. Forum italiani - discussioni su problemi
 
-IMPORTANTE: Cerca problemi REALI e RICORRENTI, non lamentele isolate.
+IMPORTANTE: 
+- USA LA RICERCA WEB per trovare recensioni reali
+- Cerca problemi REALI e RICORRENTI, non lamentele isolate
+- Cita fonti specifiche con URL
 
 Rispondi in JSON:
 {
@@ -313,14 +330,16 @@ Rispondi in JSON:
     {
       "problem": "descrizione problema",
       "frequency": "comune|raro|isolato",
-      "workaround": "soluzione se esiste"
+      "workaround": "soluzione se esiste",
+      "sourceUrl": "URL fonte"
     }
   ],
   "quotes": [
     {
       "text": "citazione esatta",
       "source": "Amazon 3 stelle",
-      "rating": 3
+      "rating": 3,
+      "url": "URL recensione"
     }
   ],
   "overallSentiment": "positive|negative|mixed"
@@ -329,7 +348,12 @@ Rispondi in JSON:
   try {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2500,
+      max_tokens: 3000,
+      tools: [{
+        type: 'web_search_20250305',
+        name: 'web_search',
+        max_uses: 8,
+      }],
       messages: [{ role: 'user', content: prompt }],
     });
     
@@ -381,7 +405,7 @@ async function findAccessoryRecommendations(
 ): Promise<ProductResearchResult['accessories']> {
   const anthropic = new Anthropic();
   
-  const prompt = `Sei un esperto di elettroutensili. Per questo prodotto:
+  const prompt = `Sei un esperto di elettroutensili. USA LA RICERCA WEB per questo prodotto:
 
 Prodotto: ${productName}
 SKU: ${sku}
@@ -389,15 +413,16 @@ Brand: ${brand}
 
 Identifica gli accessori ESSENZIALI che un professionista dovrebbe considerare.
 
-Analizza cosa vendono i competitor insieme a questo prodotto:
+CERCA SUL WEB cosa vendono i competitor insieme a questo prodotto:
 - Fixami.it
 - Rotopino.it
-- Amazon.it
+- Amazon.it (sezione "Spesso comprati insieme")
 
 REGOLE:
 1. Solo accessori COMPATIBILI e UTILI
 2. Spiega PERCHÉ ogni accessorio è consigliato
 3. Prioritizza accessori che risolvono problemi comuni
+4. Indica la fonte dove hai trovato la raccomandazione
 
 Rispondi in JSON:
 {
@@ -406,7 +431,8 @@ Rispondi in JSON:
       "name": "Nome accessorio",
       "type": "batteria|caricatore|custodia|punta|disco|altro",
       "reason": "Perché è utile",
-      "priority": "essenziale|consigliato|opzionale"
+      "priority": "essenziale|consigliato|opzionale",
+      "sourceUrl": "URL fonte"
     }
   ]
 }`;
@@ -414,7 +440,12 @@ Rispondi in JSON:
   try {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1500,
+      max_tokens: 2000,
+      tools: [{
+        type: 'web_search_20250305',
+        name: 'web_search',
+        max_uses: 5,
+      }],
       messages: [{ role: 'user', content: prompt }],
     });
     

@@ -237,8 +237,8 @@ export async function performComplexReasoning(
     .map(f => `- ${f.question}: ${f.answer} (${f.confidence})`)
     .join('\n');
 
-  const prompt = `Sei Marco, tecnico commerciale con 18 anni di esperienza nel settore elettroutensili.
-Basandoti SOLO sui fatti verificati, fai un ragionamento approfondito.
+  const prompt = `Siete il Team Tecnico di Autonord Service, con oltre 40 anni di esperienza combinata nel settore elettroutensili.
+Basandovi SOLO sui fatti verificati, fate un ragionamento approfondito.
 
 PRODOTTO: ${productData.title}
 BRAND: ${productData.brand}

@@ -294,7 +294,7 @@ export async function regenerateWithFeedback(
 
   const { originalContent, verification, sourceData } = request;
 
-  const prompt = `Sei Marco, tecnico commerciale esperto. Devi CORREGGERE e MIGLIORARE questo contenuto.
+  const prompt = `Siete il Team Tecnico di Autonord Service, esperti del settore. Dovete CORREGGERE e MIGLIORARE questo contenuto.
 
 PRODOTTO: ${sourceData.title}
 BRAND: ${sourceData.brand}
