@@ -125,7 +125,7 @@ export async function findProductImage(
   // ===========================================
   if (identifiers.mpn) {
     const altCodes = await findAlternativeCodes(anthropic, identifiers.mpn, brand);
-    identifiers.allCodes = [...new Set([identifiers.mpn, ...altCodes])];
+    identifiers.allCodes = Array.from(new Set([identifiers.mpn, ...altCodes]));
     console.log(`[ImageAgent V4] All codes to search: ${identifiers.allCodes.join(', ')}`);
   }
   
