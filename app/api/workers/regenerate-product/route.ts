@@ -1,20 +1,149 @@
 /**
- * Worker per riscrivere schede prodotto con Claude Opus
+ * Worker V3 per riscrivere schede prodotto con Claude
  * 
- * FLUSSO:
- * 1. Riceve i dati del prodotto esistente da Shopify
- * 2. Claude Opus cerca informazioni su siti produttori, forum, siti specializzati
- * 3. Claude scrive la scheda con filosofia TAYA/Krug/JTBD
- * 4. Include sezione "Opinione dell'Esperto"
- * 5. Cerca immagine ufficiale del prodotto
- * 6. Aggiorna il prodotto su Shopify
+ * MOTORE TAYA COMPLETO:
+ * 1. System Prompt con filosofia TAYA/Krug/JTBD
+ * 2. Persona: Team Autonord (redazione ibrida)
+ * 3. Controlli qualità post-generazione (parole vietate)
+ * 4. ImageDiscoveryAgent per immagini ufficiali
+ * 5. Validazione e correzione automatica
  */
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { discoverProductImage } from '@/lib/agents/image-discovery-agent';
+import { 
+  BANNED_PHRASES, 
+  containsBannedPhrases,
+  checkKrugCompliance,
+  JTBD_TRANSFORMATIONS,
+} from '@/lib/core-philosophy';
 
 const SHOPIFY_STORE = 'autonord-service.myshopify.com';
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN!;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!;
+
+// =============================================================================
+// SYSTEM PROMPT V3 - TEAM AUTONORD
+// =============================================================================
+
+const SYSTEM_PROMPT_V3 = `### 🧬 AUTONORD CORE PHILOSOPHY: "THE PRAGMATIC TRUTH"
+
+Sei la **Redazione Tecnica di Autonord Service**, un team di esperti di elettroutensili professionali a Genova. 
+Il team combina 40+ anni di esperienza collettiva tra cantiere, vendita e assistenza tecnica.
+
+Ogni tuo output deve superare il **Test della Triade**:
+
+---
+
+#### 1. L'ANIMA TAYA (Marcus Sheridan) - "Trust is the Currency"
+
+**Principio:** L'onestà radicale converte più della persuasione.
+
+**I Big 5 Topics da Affrontare Sempre:**
+1. **Prezzi e costi** - Mai nascondere, mai "contattaci per preventivo"
+2. **Problemi e difetti** - Se esiste un limite, dillo per primo
+3. **Confronti** - Anche con competitor, anche se scomodo
+4. **Recensioni** - Basate su dati reali
+5. **Come funziona** - Educazione prima della vendita
+
+**Regole:**
+- Se un prodotto ha un difetto, mettilo in evidenza TU per primo
+- Se non è adatto a un lavoro, dillo chiaramente
+- Mai usare "corporate fluff" - parole vuote che non dicono nulla
+
+---
+
+#### 2. L'ANIMA KRUG (Steve Krug) - "Don't Make Me Think"
+
+**Principio:** La chiarezza batte la completezza. Gli utenti scannano, non leggono.
+
+**Le 3 Leggi:**
+1. **Self-evident > Requiring thought** - Se devi spiegarlo, è già troppo complicato
+2. **Omit needless words** - Se puoi dirlo in 5 parole, non usarne 10
+3. **Conventions are friends** - Usa pattern che la gente già conosce
+
+**Regole Operative:**
+- Frasi max 20 parole
+- Bullet points > paragrafi
+- Grassetto per concetti chiave
+- Prima la decisione, poi i dettagli
+
+---
+
+#### 3. L'ANIMA JTBD (Clayton Christensen) - "Sell the Hole, not the Drill"
+
+**Principio:** Nessuno compra un prodotto. Le persone "assumono" prodotti per fare progressi.
+
+**Le 3 Dimensioni di Ogni Job:**
+1. **Funzionale:** Il compito pratico (fare un foro)
+2. **Emotivo:** Come vuole sentirsi (sicuro, professionale)
+3. **Sociale:** Come vuole essere percepito (artigiano competente)
+
+**Trasformazioni Obbligatorie (Spec → Beneficio):**
+- "5Ah" → "Mezza giornata senza ricaricare"
+- "Brushless" → "Meno manutenzione, vita più lunga"
+- "1.5kg" → "Ideale per lavori sopra la testa"
+- "80Nm" → "Fora anche il cemento armato"
+- "IP54" → "Resiste a polvere e schizzi di cantiere"
+
+---
+
+### LA VOCE DEL TEAM AUTONORD
+
+Scrivi come parla il team ai clienti in negozio: **diretto, competente, mai arrogante**.
+Italiano pulito e professionale, ma non accademico.
+
+**Tono:** Amico esperto che ti dice la verità, anche quella scomoda.
+
+---
+
+### PAROLE ASSOLUTAMENTE VIETATE
+
+MAI usare queste espressioni (corporate fluff):
+- "leader di settore", "eccellenza", "qualità superiore"
+- "il migliore", "straordinario", "eccezionale", "perfetto"
+- "all'avanguardia", "top di gamma", "premium"
+- "questo prodotto", "questo articolo"
+- "per professionisti esigenti", "per chi cerca il meglio"
+
+---
+
+### STRUTTURA OUTPUT OBBLIGATORIA
+
+La descrizione HTML deve seguire ESATTAMENTE questa struttura:
+
+1. **APERTURA** (2-3 frasi): Problema che risolve + per chi è + per chi NON è
+2. **CARATTERISTICHE** (bullet list): Spec + Beneficio lavorativo concreto
+3. **SPECIFICHE TECNICHE** (bullet list): Solo dati verificati
+4. **APPLICAZIONI** (bullet list): Casi d'uso reali per mestiere
+5. **OPINIONE DEL TEAM AUTONORD** (2-3 paragrafi): 
+   - Scritta come "Noi del team Autonord..."
+   - Esperienza diretta con il prodotto
+   - Pregi E difetti onesti
+   - Per chi lo consigliamo e per chi no
+
+---
+
+### ESEMPIO TRASFORMAZIONE
+
+❌ VIETATO:
+"Questo trapano offre prestazioni eccezionali grazie al suo potente motore brushless di alta qualità."
+
+✅ OBBLIGATORIO:
+"Passi la giornata a forare cemento armato? Questo non si arrende a metà mattina.
+
+**Caratteristiche che contano:**
+- **Motore brushless** → Dopo 200 fori sei ancora al 70% di batteria
+- **Coppia 135Nm** → Non si ferma neanche nel cemento armato
+- **Peso 1.8kg** → Gestibile anche sopra la testa, ma stanca dopo ore
+
+**Non per te se:**
+- Fai solo bricolage occasionale (overkill, guarda il modello base)
+- Budget sotto €300 (considera Makita DDF484)"`;
+
+// =============================================================================
+// TYPES
+// =============================================================================
 
 interface ProductPayload {
   productId: string;
@@ -24,24 +153,6 @@ interface ProductPayload {
   sku: string | null;
   barcode: string | null;
   tags: string[];
-}
-
-// Funzione per sanitizzare gli handle - rimuove caratteri speciali
-function sanitizeHandle(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[™®©]/g, '') // Rimuovi simboli trademark
-    .replace(/[àáâãäå]/g, 'a')
-    .replace(/[èéêë]/g, 'e')
-    .replace(/[ìíîï]/g, 'i')
-    .replace(/[òóôõö]/g, 'o')
-    .replace(/[ùúûü]/g, 'u')
-    .replace(/[ñ]/g, 'n')
-    .replace(/[^a-z0-9\s-]/g, '') // Rimuovi altri caratteri speciali
-    .replace(/\s+/g, '-') // Spazi -> trattini
-    .replace(/-+/g, '-') // Rimuovi trattini multipli
-    .replace(/^-|-$/g, '') // Rimuovi trattini iniziali/finali
-    .substring(0, 100); // Limita lunghezza
 }
 
 interface GeneratedContent {
@@ -54,11 +165,61 @@ interface GeneratedContent {
   specifications: string[];
   useCases: string[];
   tags: string[];
-  imageUrl: string | null;
-  imageAlt: string;
 }
 
-// Funzione per chiamare Claude Opus con ricerca web
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+// Funzione per sanitizzare gli handle - rimuove caratteri speciali
+function sanitizeHandle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[™®©]/g, '')
+    .replace(/[àáâãäå]/g, 'a')
+    .replace(/[èéêë]/g, 'e')
+    .replace(/[ìíîï]/g, 'i')
+    .replace(/[òóôõö]/g, 'o')
+    .replace(/[ùúûü]/g, 'u')
+    .replace(/[ñ]/g, 'n')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .substring(0, 100);
+}
+
+// Normalizza il nome del brand
+function normalizeBrand(vendor: string): string {
+  const brandMapping: Record<string, string> = {
+    'TECHTRONIC INDUSTRIES ITALIA SRL': 'Milwaukee',
+    'TECHTRONIC INDUSTRIES': 'Milwaukee',
+    'TTI': 'Milwaukee',
+    'MAKITA SPA': 'Makita',
+    'MAKITA': 'Makita',
+    'ROBERT BOSCH SPA': 'Bosch Professional',
+    'BOSCH': 'Bosch Professional',
+    'STANLEY BLACK & DECKER': 'DeWalt',
+    'DEWALT': 'DeWalt',
+    'HILTI': 'Hilti',
+    'METABO': 'Metabo',
+    'FESTOOL': 'Festool',
+    'HIKOKI': 'HiKOKI',
+  };
+
+  const upperVendor = vendor.toUpperCase().trim();
+  for (const [key, value] of Object.entries(brandMapping)) {
+    if (upperVendor.includes(key.toUpperCase())) {
+      return value;
+    }
+  }
+  return vendor.replace(/\s*(SRL|SPA|GMBH|INC|LLC|LTD|ITALIA)\s*/gi, '').trim() || vendor;
+}
+
+// =============================================================================
+// CLAUDE GENERATION WITH WEB SEARCH
+// =============================================================================
+
 async function callClaudeWithWebSearch(prompt: string): Promise<string> {
   const anthropic = new Anthropic({
     apiKey: ANTHROPIC_API_KEY,
@@ -67,6 +228,7 @@ async function callClaudeWithWebSearch(prompt: string): Promise<string> {
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 16000,
+    system: SYSTEM_PROMPT_V3,
     tools: [
       {
         type: 'web_search_20250305',
@@ -82,7 +244,6 @@ async function callClaudeWithWebSearch(prompt: string): Promise<string> {
     ],
   });
 
-  // Estrai il testo dalla risposta
   let result = '';
   for (const block of response.content) {
     if (block.type === 'text') {
@@ -93,100 +254,189 @@ async function callClaudeWithWebSearch(prompt: string): Promise<string> {
   return result;
 }
 
-// Funzione per generare la scheda prodotto con Claude Opus
+// =============================================================================
+// QUALITY CONTROL - POST-GENERATION
+// =============================================================================
+
+/**
+ * Corregge le parole vietate nel contenuto generato
+ */
+async function fixBannedPhrases(
+  content: GeneratedContent,
+  bannedFound: string[]
+): Promise<GeneratedContent> {
+  if (bannedFound.length === 0) return content;
+
+  console.log(`[QC] Found ${bannedFound.length} banned phrases, fixing...`);
+
+  const anthropic = new Anthropic({
+    apiKey: ANTHROPIC_API_KEY,
+  });
+
+  const fixPrompt = `Correggi questo testo rimuovendo le frasi vietate.
+
+FRASI DA RIMUOVERE/SOSTITUIRE:
+${bannedFound.map(p => `- "${p}"`).join('\n')}
+
+REGOLE:
+- Sostituisci con alternative concrete e specifiche
+- "eccellenza" → descrivi cosa lo rende buono specificamente
+- "qualità superiore" → cita una specifica tecnica reale
+- "il migliore" → "tra i più affidabili per [uso specifico]"
+- Non aggiungere nuovo testo, solo sostituisci
+
+TESTO DA CORREGGERE:
+${content.description}
+
+---
+
+OPINIONE DA CORREGGERE:
+${content.expertOpinion}
+
+RISPONDI con JSON:
+{
+  "description": "testo corretto",
+  "expertOpinion": "opinione corretta"
+}`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4000,
+      messages: [
+        { role: 'user', content: fixPrompt },
+      ],
+    });
+
+    const textBlock = response.content.find(block => block.type === 'text');
+    const result = textBlock?.type === 'text' ? textBlock.text : null;
+
+    if (result) {
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const fixed = JSON.parse(jsonMatch[0]);
+        return {
+          ...content,
+          description: fixed.description || content.description,
+          expertOpinion: fixed.expertOpinion || content.expertOpinion,
+        };
+      }
+    }
+  } catch (error) {
+    console.error('[QC] Fix error:', error);
+  }
+
+  return content;
+}
+
+// =============================================================================
+// MAIN GENERATION FUNCTION
+// =============================================================================
+
 async function generateProductContent(product: ProductPayload): Promise<GeneratedContent> {
-  const searchTerms = [
-    product.sku,
-    product.barcode,
-    product.title,
-    `${product.vendor} ${product.title}`,
-  ].filter(Boolean).join(' OR ');
+  const brand = normalizeBrand(product.vendor);
+  
+  // Costruisci le trasformazioni JTBD per il prompt
+  const jtbdExamples = Object.entries(JTBD_TRANSFORMATIONS)
+    .slice(0, 15)
+    .map(([spec, benefit]) => `- "${spec}" → "${benefit}"`)
+    .join('\n');
 
-  const prompt = `Sei un esperto di elettroutensili professionali che lavora per Autonord Service, rivenditore specializzato a Genova.
-
-PRODOTTO DA ANALIZZARE:
+  const prompt = `PRODOTTO DA ANALIZZARE:
 - Titolo originale: ${product.title}
-- Brand: ${product.vendor}
+- Brand: ${brand}
 - SKU/Codice: ${product.sku || 'N/A'}
 - Barcode/EAN: ${product.barcode || 'N/A'}
 - Tipo: ${product.productType || 'Elettroutensile'}
 
 COMPITO:
-1. CERCA informazioni dettagliate su questo prodotto specifico sui seguenti tipi di siti:
-   - Sito ufficiale del produttore (${product.vendor.toLowerCase()}.com, ${product.vendor.toLowerCase()}.eu, ${product.vendor.toLowerCase()}.it)
-   - Forum di professionisti (edilportale, muratoriforum, elettricistaforum)
-   - Siti di recensioni specializzate (toolstop, toolsreview)
+1. CERCA informazioni dettagliate su questo prodotto specifico:
+   - Sito ufficiale ${brand.toLowerCase()}.com / .eu / .it
+   - Forum professionisti (edilportale, elettricistaforum)
+   - Recensioni reali (non solo 5 stelle, anche 3-4 stelle per problemi)
    - Schede tecniche ufficiali
 
-2. SCRIVI una scheda prodotto seguendo queste filosofie:
-   - TAYA (They Ask, You Answer): Rispondi alle domande reali che un professionista farebbe
-   - Krug (Don't Make Me Think): Informazioni chiare, immediate, senza gergo inutile
-   - JTBD (Jobs To Be Done): Focus su cosa il prodotto permette di FARE, non solo cosa È
+2. SCRIVI la scheda seguendo la struttura obbligatoria del System Prompt
 
-3. CREA una sezione "OPINIONE DELL'ESPERTO" che:
-   - Sia scritta in prima persona come se fossi un tecnico esperto di Autonord Service
-   - Spieghi PERCHÉ questo prodotto è valido per un professionista
-   - Includa consigli pratici d'uso
-   - Sia onesta su pregi e eventuali limitazioni
-   - Rifletta la filosofia e il posizionamento del prodotto nel mercato
+3. RICORDA le trasformazioni JTBD:
+${jtbdExamples}
 
-4. CERCA l'URL dell'immagine ufficiale del prodotto dal sito del produttore
+4. L'OPINIONE DEL TEAM deve:
+   - Iniziare con "Noi del team Autonord..." o "Nel nostro laboratorio..."
+   - Includere esperienza diretta (es. "abbiamo testato", "i nostri clienti ci dicono")
+   - Essere ONESTA su pregi E difetti
+   - Dire chiaramente per chi è e per chi NO
 
 FORMATO RISPOSTA (JSON valido):
 {
-  "title": "Titolo ottimizzato per SEO e chiarezza (max 80 caratteri)",
-  "description": "Descrizione HTML completa con paragrafi, liste, formattazione. Deve includere: introduzione, caratteristiche principali, specifiche tecniche, applicazioni. Minimo 500 parole.",
-  "expertOpinion": "Opinione dell'esperto in HTML (2-3 paragrafi, scritto in prima persona)",
-  "metaTitle": "Meta title SEO (max 60 caratteri)",
-  "metaDescription": "Meta description SEO (max 160 caratteri)",
-  "features": ["Feature 1", "Feature 2", "Feature 3", "Feature 4", "Feature 5"],
-  "specifications": ["Spec 1: valore", "Spec 2: valore"],
-  "useCases": ["Caso d'uso 1", "Caso d'uso 2", "Caso d'uso 3"],
-  "tags": ["tag1", "tag2", "tag3"],
-  "imageUrl": "URL immagine ufficiale dal sito del produttore o null se non trovata",
-  "imageAlt": "Testo alternativo descrittivo per l'immagine"
+  "title": "Titolo ottimizzato (max 80 char, include brand e codice prodotto)",
+  "description": "Descrizione HTML completa seguendo la struttura obbligatoria",
+  "expertOpinion": "Opinione del Team Autonord in HTML (2-3 paragrafi)",
+  "metaTitle": "Meta title SEO (max 60 char)",
+  "metaDescription": "Meta description SEO (max 160 char)",
+  "features": ["Feature 1 → Beneficio", "Feature 2 → Beneficio", ...],
+  "specifications": ["Spec: valore", ...],
+  "useCases": ["Per elettricisti che...", "Per idraulici che...", ...],
+  "tags": ["tag1", "tag2", ...]
 }
 
 IMPORTANTE:
-- Usa SOLO informazioni verificate dalla ricerca, non inventare specifiche tecniche
-- Se non trovi informazioni sufficienti, indica chiaramente cosa è basato sul nome del prodotto
+- Usa SOLO informazioni verificate dalla ricerca
+- Se non trovi dati, scrivi "Contattaci per conferma" invece di inventare
 - La descrizione deve essere in italiano
-- L'opinione dell'esperto deve essere autentica e utile, non promozionale
-- Rispondi SOLO con il JSON, senza altro testo`;
+- Rispondi SOLO con il JSON`;
 
   const response = await callClaudeWithWebSearch(prompt);
   
-  // Parse JSON dalla risposta
   try {
-    // Trova il JSON nella risposta
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+      const content = JSON.parse(jsonMatch[0]) as GeneratedContent;
+      
+      // QUALITY CONTROL: Verifica parole vietate
+      const allText = `${content.description} ${content.expertOpinion}`;
+      const bannedFound = containsBannedPhrases(allText);
+      
+      if (bannedFound.length > 0) {
+        console.log(`[QC] Banned phrases found: ${bannedFound.join(', ')}`);
+        return await fixBannedPhrases(content, bannedFound);
+      }
+      
+      // QUALITY CONTROL: Verifica Krug compliance
+      const krugCheck = checkKrugCompliance(content.description);
+      if (!krugCheck.compliant) {
+        console.log(`[QC] Krug issues: ${krugCheck.issues.join(', ')}`);
+        // Log warning ma non bloccare
+      }
+      
+      return content;
     }
   } catch (e) {
     console.error('Error parsing Claude response:', e);
   }
 
-  // Fallback se il parsing fallisce
+  // Fallback
   return {
     title: product.title,
-    description: `<p>Prodotto ${product.vendor} di alta qualità professionale.</p>`,
-    expertOpinion: '<p>Prodotto affidabile per uso professionale.</p>',
+    description: `<p>Prodotto ${brand} professionale. Contatta il team Autonord per una consulenza personalizzata.</p>`,
+    expertOpinion: '<p>Noi del team Autonord siamo a disposizione per aiutarti a scegliere il prodotto giusto per le tue esigenze. Chiamaci o passa in negozio.</p>',
     metaTitle: product.title.substring(0, 60),
-    metaDescription: `${product.title} - Acquista da Autonord Service, rivenditore autorizzato ${product.vendor}`,
+    metaDescription: `${product.title} - Acquista da Autonord Service, rivenditore autorizzato ${brand} a Genova`,
     features: [],
     specifications: [],
     useCases: [],
-    tags: [product.vendor.toLowerCase()],
-    imageUrl: null,
-    imageAlt: product.title,
+    tags: [brand.toLowerCase()],
   };
 }
 
-// Funzione per aggiornare il prodotto su Shopify
+// =============================================================================
+// SHOPIFY UPDATE
+// =============================================================================
+
 async function updateProductOnShopify(
   productId: string,
-  content: GeneratedContent
+  content: GeneratedContent,
+  imageUrl: string | null
 ): Promise<{ success: boolean; error?: string }> {
   const url = `https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`;
 
@@ -223,13 +473,12 @@ async function updateProductOnShopify(
       ` : ''}
       
       <div class="expert-opinion">
-        <h3>💡 Opinione dell'Esperto Autonord</h3>
+        <h3>💡 Opinione del Team Autonord</h3>
         ${content.expertOpinion}
       </div>
     </div>
   `;
 
-  // Aggiorna il prodotto
   const updateMutation = `
     mutation productUpdate($input: ProductInput!) {
       productUpdate(input: $input) {
@@ -245,7 +494,7 @@ async function updateProductOnShopify(
     }
   `;
 
-  const allTags = Array.from(new Set([...content.tags, 'AI-Enhanced', 'TAYA']));
+  const allTags = Array.from(new Set([...content.tags, 'AI-Enhanced', 'TAYA-V3']));
 
   const updateResponse = await fetch(url, {
     method: 'POST',
@@ -259,7 +508,7 @@ async function updateProductOnShopify(
         input: {
           id: productId,
           title: content.title,
-          handle: sanitizeHandle(content.title), // Aggiungi handle sanitizzato
+          handle: sanitizeHandle(content.title),
           descriptionHtml: fullDescription,
           tags: allTags,
           seo: {
@@ -280,8 +529,8 @@ async function updateProductOnShopify(
     };
   }
 
-  // Se abbiamo un'immagine, aggiungila
-  if (content.imageUrl) {
+  // Se abbiamo un'immagine validata, aggiungila
+  if (imageUrl) {
     try {
       const imageMutation = `
         mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
@@ -311,26 +560,31 @@ async function updateProductOnShopify(
             productId: productId,
             media: [
               {
-                originalSource: content.imageUrl,
-                alt: content.imageAlt,
+                originalSource: imageUrl,
+                alt: content.title,
                 mediaContentType: 'IMAGE',
               },
             ],
           },
         }),
       });
+      
+      console.log(`[Worker] Image added: ${imageUrl}`);
     } catch (e) {
-      console.error('Error adding image:', e);
-      // Non fallire se l'immagine non viene aggiunta
+      console.error('[Worker] Error adding image:', e);
     }
   }
 
   return { success: true };
 }
 
+// =============================================================================
+// MAIN HANDLER
+// =============================================================================
+
 export async function POST(request: NextRequest) {
   try {
-    // Verifica autorizzazione QStash
+    // Verifica autorizzazione
     const authHeader = request.headers.get('authorization');
     const upstashSignature = request.headers.get('upstash-signature');
     
@@ -344,13 +598,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    console.log(`Processing product: ${payload.title} (${payload.productId})`);
+    console.log(`[Worker V3] Processing: ${payload.title}`);
 
-    // 1. Genera contenuto con Claude Opus + ricerca web
+    // 1. Genera contenuto con Claude + System Prompt V3
+    console.log('[Worker V3] Step 1: Generating content with TAYA philosophy...');
     const content = await generateProductContent(payload);
 
-    // 2. Aggiorna il prodotto su Shopify
-    const result = await updateProductOnShopify(payload.productId, content);
+    // 2. Cerca immagine con ImageDiscoveryAgent
+    console.log('[Worker V3] Step 2: Discovering product image...');
+    const imageResult = await discoverProductImage(
+      payload.title,
+      payload.vendor,
+      payload.sku,
+      payload.barcode
+    );
+    
+    if (imageResult.success) {
+      console.log(`[Worker V3] Image found: ${imageResult.imageUrl}`);
+    } else {
+      console.log(`[Worker V3] No valid image found: ${imageResult.error}`);
+    }
+
+    // 3. Aggiorna il prodotto su Shopify
+    console.log('[Worker V3] Step 3: Updating Shopify...');
+    const result = await updateProductOnShopify(
+      payload.productId,
+      content,
+      imageResult.imageUrl
+    );
 
     if (!result.success) {
       return NextResponse.json({
@@ -364,13 +639,15 @@ export async function POST(request: NextRequest) {
       success: true,
       product: payload.title,
       newTitle: content.title,
-      hasImage: !!content.imageUrl,
+      hasImage: imageResult.success,
+      imageSource: imageResult.source,
       featuresCount: content.features.length,
       specsCount: content.specifications.length,
+      version: 'V3-TAYA',
     });
 
   } catch (error) {
-    console.error('Worker error:', error);
+    console.error('[Worker V3] Error:', error);
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
