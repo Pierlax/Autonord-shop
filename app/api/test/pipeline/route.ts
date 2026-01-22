@@ -367,10 +367,7 @@ export async function GET(request: NextRequest) {
       console.log(`   ✅ Image found!`);
       console.log(`   🔗 URL: ${imageResult.imageUrl}`);
       console.log(`   📍 Source: ${imageResult.source}`);
-      console.log(`   🔍 Vision validation: ${imageResult.visionValidation?.valid ? 'VALID' : 'INVALID'}`);
-      if (imageResult.visionValidation?.reason) {
-        console.log(`      Reason: ${imageResult.visionValidation.reason}`);
-      }
+      console.log(`   🔍 Validated: ${imageResult.success ? 'YES' : 'NO'}`);
     } else {
       console.log(`   ❌ No image found`);
       console.log(`   📝 Error: ${imageResult.error}`);
@@ -385,7 +382,7 @@ export async function GET(request: NextRequest) {
         success: imageResult.success,
         imageUrl: imageResult.imageUrl,
         source: imageResult.source,
-        visionValidation: imageResult.visionValidation,
+        validated: imageResult.success,
         error: imageResult.error,
       },
     });
