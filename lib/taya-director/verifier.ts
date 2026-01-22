@@ -119,7 +119,7 @@ Rispondi in JSON:
 }`;
 
   const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-opus-4-20250514',
     max_tokens: 1500,
     messages: [{ role: 'user', content: prompt }],
   });
@@ -197,7 +197,7 @@ Rispondi in JSON:
 }`;
 
   const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-opus-4-20250514',
     max_tokens: 1500,
     messages: [{ role: 'user', content: prompt }],
   });
@@ -353,7 +353,7 @@ GENERA IL CONTENUTO CORRETTO in JSON:
 }`;
 
   const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-opus-4-20250514',
     max_tokens: 3000,
     messages: [{ role: 'user', content: prompt }],
   });

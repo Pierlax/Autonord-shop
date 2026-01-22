@@ -187,7 +187,7 @@ Rispondi SOLO con JSON:
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-20250514',
       max_tokens: 300,
       messages: [
         { role: 'user', content: `Query: "${query}"${productContext ? `\nContesto: ${productContext.title} (${productContext.vendor})` : ''}` }
@@ -257,7 +257,7 @@ Basati su conoscenze consolidate, evita speculazioni su prodotti specifici.`,
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-20250514',
       max_tokens: 1000,
       messages: [
         { role: 'user', content: query }

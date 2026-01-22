@@ -204,7 +204,7 @@ Se NON trovi l'immagine ESATTA del prodotto ${identifier}, rispondi:
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-20250514',
       max_tokens: 1500,
       tools: [{
         type: 'web_search_20250305',
@@ -302,7 +302,7 @@ Rispondi JSON:
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-20250514',
       max_tokens: 1500,
       tools: [{
         type: 'web_search_20250305',
@@ -406,7 +406,7 @@ Rispondi SOLO con JSON:
 }`;
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-opus-4-20250514',
       max_tokens: 500,
       messages: [{
         role: 'user',

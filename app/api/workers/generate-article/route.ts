@@ -119,7 +119,7 @@ Ricorda:
 - Concludi con consigli pratici e actionable`;
 
   const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-opus-4-20250514',
     max_tokens: 4500,
     messages: [
       { role: 'user', content: userPrompt }

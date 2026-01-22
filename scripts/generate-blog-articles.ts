@@ -237,7 +237,7 @@ Se parli di problemi, includi soluzioni pratiche step-by-step.
 Ricorda: scrivi come se stessi parlando con un artigiano che entra in negozio e ti fa una domanda diretta.`;
 
   const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-opus-4-20250514',
     max_tokens: 4000,
     messages: [
       { role: 'user', content: userPrompt }

@@ -197,7 +197,7 @@ Rispondi in JSON:
 }`;
 
   const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-opus-4-20250514',
     max_tokens: 2000,
     messages: [{ role: 'user', content: prompt }],
   });

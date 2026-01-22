@@ -27,7 +27,7 @@ import {
   BANNED_PHRASES,
 } from '../core-philosophy';
 
-const MODEL = 'claude-sonnet-4-20250514';
+const MODEL = 'claude-opus-4-20250514';
 
 /**
  * Evaluate a single product's content quality

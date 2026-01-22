@@ -19,7 +19,7 @@ import {
   DirectorArticle,
 } from './types';
 
-const MODEL = 'claude-sonnet-4-20250514';
+const MODEL = 'claude-opus-4-20250514';
 
 /**
  * Analyze catalog and existing content to find gaps
