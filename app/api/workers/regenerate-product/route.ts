@@ -2,18 +2,18 @@
 export const maxDuration = 300;
 
 /**
- * Worker Regenerate Product - TAYA V3.1
+ * Worker Regenerate Product - V4
  * 
  * Orchestratore che collega:
- * 1. ai-enrichment-v3.ts (la "Ferrari" - RAG + Knowledge Graph + Provenance)
- * 2. ImageDiscoveryAgent (ricerca immagini ufficiali)
+ * 1. ai-enrichment-v3.ts (RAG + Knowledge Graph + Provenance)
+ * 2. ImageAgent V4 (ricerca immagini UNIFICATA - Cross-Code + Gold Standard + Vision)
  * 3. TAYA Police (validazione post-generazione)
  * 4. Shopify Admin API (salvataggio HTML + Metafields)
  * 
- * NOVITÀ V3.1:
- * - Validazione contenuti contro parole vietate (TAYA Police)
- * - Salvataggio dati strutturati in Metafields Shopify
- * - Correzione automatica se trovate violazioni
+ * NOVITÀ V4:
+ * - ImageAgent V4 unificato (no più Deep Research separato)
+ * - Flusso ottimizzato: meno chiamate API, più veloce
+ * - Cross-Code e Gold Standard integrati in un unico agente
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -23,7 +23,7 @@ import {
   EnrichedProductDataV3,
 } from '@/lib/shopify/ai-enrichment-v3';
 import { ShopifyProductWebhookPayload } from '@/lib/shopify/webhook-types';
-import { discoverProductImage } from '@/lib/agents/image-discovery-agent';
+import { findProductImage, ImageAgentV4Result } from '@/lib/agents/image-agent-v4';
 import { validateAndCorrect, CleanedContent } from '@/lib/agents/taya-police';
 
 // =============================================================================
@@ -422,35 +422,25 @@ export async function POST(request: NextRequest) {
     }
 
     // ===========================================
-    // STEP 3: Cerca immagine ufficiale
+    // STEP 3: Cerca immagine con ImageAgent V4 (unificato)
     // ===========================================
-    console.log('[Worker V3.1] Step 3: Running ImageDiscoveryAgent V3...');
+    console.log('[Worker V4] Step 3: Running ImageAgent V4 (unified)...');
     
-    // Prima controlla se Deep Research ha già trovato un'immagine Gold Standard
-    let imageResult: { success: boolean; imageUrl: string | null; source: string | null; error?: string };
-    
-    if (enrichedData.deepResearch?.goldStandardImage) {
-      console.log('[Worker V3.1] ✨ Using Gold Standard image from Deep Research');
-      imageResult = {
-        success: true,
-        imageUrl: enrichedData.deepResearch.goldStandardImage,
-        source: 'gold_standard_deep_research',
-      };
-    } else {
-      // Fallback a ImageDiscoveryAgent V3
-      const discoveryResult = await discoverProductImage(
-        payload.title,
-        payload.vendor,
-        payload.sku,
-        payload.barcode
-      );
-      imageResult = discoveryResult;
-    }
+    const imageResult = await findProductImage(
+      payload.title,
+      payload.vendor,
+      payload.sku,
+      payload.barcode
+    );
     
     if (imageResult.success) {
-      console.log(`[Worker V3.1] ✅ Image found: ${imageResult.source}`);
+      console.log(`[Worker V4] ✅ Image found via ${imageResult.method}: ${imageResult.source}`);
+      console.log(`[Worker V4] Confidence: ${imageResult.confidence}, Time: ${imageResult.totalTimeMs}ms`);
+      if (imageResult.alternativeCodes.length > 0) {
+        console.log(`[Worker V4] Alternative codes found: ${imageResult.alternativeCodes.join(', ')}`);
+      }
     } else {
-      console.log(`[Worker V3.1] ⚠️ No image: ${imageResult.error || 'Not found'}`);
+      console.log(`[Worker V4] ⚠️ No image after ${imageResult.searchAttempts} attempts: ${imageResult.error}`);
     }
 
     // ===========================================
