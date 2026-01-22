@@ -424,19 +424,33 @@ export async function POST(request: NextRequest) {
     // ===========================================
     // STEP 3: Cerca immagine ufficiale
     // ===========================================
-    console.log('[Worker V3.1] Step 3: Running ImageDiscoveryAgent...');
+    console.log('[Worker V3.1] Step 3: Running ImageDiscoveryAgent V3...');
     
-    const imageResult = await discoverProductImage(
-      payload.title,
-      payload.vendor,
-      payload.sku,
-      payload.barcode
-    );
+    // Prima controlla se Deep Research ha già trovato un'immagine Gold Standard
+    let imageResult: { success: boolean; imageUrl: string | null; source: string | null; error?: string };
+    
+    if (enrichedData.deepResearch?.goldStandardImage) {
+      console.log('[Worker V3.1] ✨ Using Gold Standard image from Deep Research');
+      imageResult = {
+        success: true,
+        imageUrl: enrichedData.deepResearch.goldStandardImage,
+        source: 'gold_standard_deep_research',
+      };
+    } else {
+      // Fallback a ImageDiscoveryAgent V3
+      const discoveryResult = await discoverProductImage(
+        payload.title,
+        payload.vendor,
+        payload.sku,
+        payload.barcode
+      );
+      imageResult = discoveryResult;
+    }
     
     if (imageResult.success) {
       console.log(`[Worker V3.1] ✅ Image found: ${imageResult.source}`);
     } else {
-      console.log(`[Worker V3.1] ⚠️ No image: ${imageResult.error}`);
+      console.log(`[Worker V3.1] ⚠️ No image: ${imageResult.error || 'Not found'}`);
     }
 
     // ===========================================

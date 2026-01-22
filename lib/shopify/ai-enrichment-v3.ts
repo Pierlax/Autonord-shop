@@ -46,6 +46,10 @@ import {
   transformSpecToJobBenefit,
   JTBD_TRANSFORMATIONS,
 } from '../core-philosophy';
+import {
+  conductDeepResearch,
+  DeepResearchResult,
+} from './deep-research';
 
 // =============================================================================
 // CLIENT INITIALIZATION
@@ -185,6 +189,14 @@ export interface EnrichedProductDataV3 extends EnrichedProductData {
     relatedUseCases: string[];
   };
   metrics: ContentGenerationMetrics;
+  // V3.1 - Deep Research "Investigatore Privato"
+  deepResearch?: {
+    pdfFound: boolean;
+    pdfSpecs: { field: string; value: string; unit?: string }[];
+    crossCodes: string[];
+    goldStandardImage: string | null;
+    confidenceBoost: number;
+  };
 }
 
 // =============================================================================
@@ -314,6 +326,7 @@ export async function generateProductContentV3(
   const timings = {
     total: 0,
     research: 0,
+    deepResearch: 0,
     fusion: 0,
     llm: 0,
     verification: 0,
@@ -334,6 +347,81 @@ export async function generateProductContentV3(
     sku
   );
   timings.research = Date.now() - researchStart;
+  
+  // Step 1.5: Deep Research "Investigatore Privato"
+  log.info('[AI-V3] Step 1.5: Deep Research (PDF Hunter + Cross-Code + Gold Standard)...');
+  const deepResearchStart = Date.now();
+  const barcode = product.variants[0]?.barcode || null;
+  
+  // Estrai MPN dal titolo
+  let mpn: string | null = null;
+  const mpnPatterns = [
+    /\b(493\d{7})\b/,
+    /\b(48-\d{2}-\d{4})\b/,
+    /\b(49-\d{2}-\d{4})\b/,
+    /\b(4932\d{6})\b/,
+  ];
+  for (const p of mpnPatterns) {
+    const match = product.title.match(p) || sku?.match(p);
+    if (match) {
+      mpn = match[1];
+      break;
+    }
+  }
+  
+  // Determina categoria prodotto
+  const titleLower = product.title.toLowerCase();
+  let category: string | null = null;
+  const categoryKeywords: Record<string, string[]> = {
+    'portabit': ['portabit', 'bit holder', 'porta inserti', 'prolunga'],
+    'adattatore': ['adattatore', 'adapter', 'riduzione'],
+    'lama': ['lama', 'blade', 'ricambio'],
+    'filtro': ['filtro', 'filter', 'manutenzione'],
+    'avvitatore': ['avvitatore', 'drill', 'trapano', 'impact'],
+    'batteria': ['batteria', 'battery', 'akku'],
+  };
+  for (const [cat, keywords] of Object.entries(categoryKeywords)) {
+    if (keywords.some(kw => titleLower.includes(kw))) {
+      category = cat;
+      break;
+    }
+  }
+  
+  let deepResearchResult: DeepResearchResult | null = null;
+  try {
+    deepResearchResult = await conductDeepResearch(
+      product.title,
+      brand,
+      sku !== 'N/A' ? sku : null,
+      mpn,
+      barcode,
+      category
+    );
+    
+    // Integra specs da PDF nel research se trovati
+    if (deepResearchResult.pdfSpecs.found && deepResearchResult.pdfSpecs.specs.length > 0) {
+      log.info(`[AI-V3] PDF Ground Truth found with ${deepResearchResult.pdfSpecs.specs.length} specs`);
+      for (const pdfSpec of deepResearchResult.pdfSpecs.specs) {
+        // Aggiungi solo se non già presente
+        const exists = research.technicalSpecs.some(
+          s => s.field.toLowerCase() === pdfSpec.field.toLowerCase()
+        );
+        if (!exists) {
+          research.technicalSpecs.push({
+            field: pdfSpec.field,
+            value: pdfSpec.value,
+            unit: pdfSpec.unit,
+            source: 'PDF Ground Truth',
+            priority: 15, // Massima priorità per PDF
+            verified: true,
+          });
+        }
+      }
+    }
+  } catch (e) {
+    log.warn(`[AI-V3] Deep Research failed: ${e}`);
+  }
+  timings.deepResearch = Date.now() - deepResearchStart;
   
   // Step 2: Enrich with Knowledge Graph
   log.info('[AI-V3] Step 2: Enriching with Knowledge Graph...');
@@ -414,6 +502,29 @@ export async function generateProductContentV3(
   log.info(`[AI-V3] Generation complete in ${timings.total}ms`);
   log.info(`[AI-V3] Provenance: ${provenance.overallConfidence}% confidence, ${provenance.warnings.length} warnings`);
   
+  // Prepara dati Deep Research per output
+  const deepResearchOutput = deepResearchResult ? {
+    pdfFound: deepResearchResult.pdfSpecs.found,
+    pdfSpecs: deepResearchResult.pdfSpecs.specs.map(s => ({
+      field: s.field,
+      value: s.value,
+      unit: s.unit,
+    })),
+    crossCodes: deepResearchResult.crossCodes.alternativeCodes.map(c => c.code),
+    goldStandardImage: deepResearchResult.goldStandardImage.found 
+      ? deepResearchResult.goldStandardImage.imageUrl 
+      : null,
+    confidenceBoost: deepResearchResult.confidenceBoost,
+  } : undefined;
+  
+  // Boost confidence se Deep Research ha trovato dati
+  if (deepResearchResult && deepResearchResult.confidenceBoost > 0) {
+    provenance.overallConfidence = Math.min(100, 
+      provenance.overallConfidence + deepResearchResult.confidenceBoost
+    );
+    log.info(`[AI-V3] Confidence boosted by +${deepResearchResult.confidenceBoost}% from Deep Research`);
+  }
+  
   return {
     ...content,
     accessories,
@@ -427,6 +538,7 @@ export async function generateProductContentV3(
     provenance,
     knowledgeGraphContext: kgContext,
     metrics,
+    deepResearch: deepResearchOutput,
   };
 }
 
