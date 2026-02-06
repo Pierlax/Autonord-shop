@@ -312,7 +312,13 @@ async function execute(context: SkillContext): Promise<SkillResult> {
     // STEP 2: RagAdapter — Transform for QA
     // =========================================================================
     log.info('Step 2: Running RagAdapter...');
-    const adaptation: AdaptationResult = adaptRagToQa(ragResult);
+    const adaptation: AdaptationResult = adaptRagToQa(
+      ragResult,
+      payload.title,
+      payload.vendor,
+      payload.sku || '',
+      payload.productType || ''
+    );
 
     // =========================================================================
     // STEP 3: TwoPhaseQA — Fact extraction and reasoning
