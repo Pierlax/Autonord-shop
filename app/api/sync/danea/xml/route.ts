@@ -4,6 +4,9 @@
  * Receives XML files from Danea EasyFatt via HTTP POST (multipart/form-data).
  * Parses products and syncs them to Shopify.
  * 
+ * **V2: After successful sync, automatically queues AI enrichment via QStash.**
+ * This means: Danea upload → Shopify sync → AI enrichment (no waiting for cron).
+ * 
  * Danea sends: Content-type "multipart/form-data" with field "file"
  * Expected response: "OK" on success, error message on failure
  * 
@@ -13,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseDaneaXML, isDaneaXML } from '@/lib/danea/xml-parser';
 import { syncProductsToShopify, syncSingleProduct } from '@/lib/danea/shopify-sync';
+import { queueProductEnrichment, EnrichmentJob } from '@/lib/queue';
 import { loggers } from '@/lib/logger';
 
 const log = loggers.sync;
@@ -89,6 +93,58 @@ async function deleteProductBySku(sku: string): Promise<boolean> {
   }
 }
 
+/**
+ * Queue AI enrichment for a successfully synced product.
+ * Non-blocking: if QStash fails, the sync is still considered successful.
+ */
+async function triggerAIEnrichment(
+  shopifyId: string,
+  daneaCode: string,
+  productTitle: string,
+  vendor: string,
+  productType: string,
+  baseUrl: string
+): Promise<void> {
+  try {
+    const job: EnrichmentJob = {
+      productId: shopifyId,
+      productGid: `gid://shopify/Product/${shopifyId}`,
+      title: productTitle || `Prodotto ${daneaCode}`,
+      vendor: vendor || 'Sconosciuto',
+      sku: daneaCode,
+      price: '0',
+      productType: productType || 'Elettroutensile',
+      tags: ['danea-sync', 'auto-enrich'],
+      hasImages: false,
+      receivedAt: new Date().toISOString(),
+    };
+
+    const result = await queueProductEnrichment(job, baseUrl);
+    
+    if (result.queued) {
+      log.info(`[Danea→AI] Product ${daneaCode} (Shopify: ${shopifyId}) queued for AI enrichment. MessageId: ${result.messageId}`);
+    } else {
+      log.warn(`[Danea→AI] Failed to queue enrichment for ${daneaCode}: ${result.error}`);
+    }
+  } catch (error) {
+    // Non-blocking: log the error but don't fail the sync
+    log.error(`[Danea→AI] Error queuing enrichment for ${daneaCode}:`, error);
+  }
+}
+
+/**
+ * Determine the base URL for QStash callbacks.
+ * Uses VERCEL_URL in production, falls back to request origin.
+ */
+function getBaseUrl(request: NextRequest): string {
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  // Fallback: extract from request
+  const url = new URL(request.url);
+  return `${url.protocol}//${url.host}`;
+}
+
 export async function POST(request: NextRequest) {
   log.info('Danea XML webhook received');
   
@@ -97,6 +153,8 @@ export async function POST(request: NextRequest) {
     log.warn('Unauthorized sync attempt');
     return new NextResponse('Unauthorized', { status: 401 });
   }
+  
+  const baseUrl = getBaseUrl(request);
   
   try {
     let xmlContent: string | null = null;
@@ -145,6 +203,15 @@ export async function POST(request: NextRequest) {
       deletedCount: parseResult.deletedProductCodes.length,
     });
     
+    // Track successfully synced products for AI enrichment
+    const syncedProducts: Array<{
+      shopifyId: string;
+      daneaCode: string;
+      title: string;
+      vendor: string;
+      productType: string;
+    }> = [];
+    
     let syncResult;
     
     if (parseResult.mode === 'full') {
@@ -154,7 +221,20 @@ export async function POST(request: NextRequest) {
         return new NextResponse('OK', { status: 200 });
       }
       
-      syncResult = await syncProductsToShopify(parseResult.products);
+      syncResult = await syncProductsToShopify(parseResult.products, {
+        onProgress: (_current, _total, result) => {
+          if (result.success && result.shopifyId) {
+            const product = parseResult.products.find(p => p.daneaCode === result.daneaCode);
+            syncedProducts.push({
+              shopifyId: result.shopifyId,
+              daneaCode: result.daneaCode,
+              title: product?.title || result.daneaCode,
+              vendor: product?.manufacturer || 'Sconosciuto',
+              productType: product?.category || 'Elettroutensile',
+            });
+          }
+        },
+      });
       
     } else {
       // Incremental sync: update and delete
@@ -168,6 +248,16 @@ export async function POST(request: NextRequest) {
         const result = await syncSingleProduct(product);
         if (result.success) {
           results.updated.success++;
+          // Track for AI enrichment
+          if (result.shopifyId) {
+            syncedProducts.push({
+              shopifyId: result.shopifyId,
+              daneaCode: product.daneaCode,
+              title: product.title || product.daneaCode,
+              vendor: product.manufacturer || 'Sconosciuto',
+              productType: product.category || 'Elettroutensile',
+            });
+          }
         } else {
           results.updated.failed++;
         }
@@ -203,6 +293,32 @@ export async function POST(request: NextRequest) {
       failed: syncResult.failed,
     });
     
+    // =========================================================================
+    // NEW: Trigger AI enrichment for all successfully synced products
+    // =========================================================================
+    if (syncedProducts.length > 0) {
+      log.info(`[Danea→AI] Triggering AI enrichment for ${syncedProducts.length} synced products...`);
+      
+      // Queue enrichment for each product (fire-and-forget, non-blocking)
+      const enrichmentPromises = syncedProducts.map(product =>
+        triggerAIEnrichment(
+          product.shopifyId,
+          product.daneaCode,
+          product.title,
+          product.vendor,
+          product.productType,
+          baseUrl
+        )
+      );
+      
+      // Wait for all queuing to complete (but don't fail if some fail)
+      const enrichResults = await Promise.allSettled(enrichmentPromises);
+      const queued = enrichResults.filter(r => r.status === 'fulfilled').length;
+      const failed = enrichResults.filter(r => r.status === 'rejected').length;
+      
+      log.info(`[Danea→AI] Enrichment queuing complete: ${queued} queued, ${failed} failed`);
+    }
+    
     // Danea expects "OK" response on success
     if (syncResult.failed === 0) {
       return new NextResponse('OK', { status: 200 });
@@ -230,7 +346,8 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     status: 'ok',
     endpoint: 'Danea EasyFatt XML Sync',
-    version: '1.0',
+    version: '2.0',
+    features: ['sync-to-shopify', 'auto-ai-enrichment'],
     supportedModes: ['full', 'incremental'],
     usage: {
       method: 'POST',

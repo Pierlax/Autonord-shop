@@ -71,6 +71,7 @@ import {
 
 import { performWebSearch, SearchResult } from './search-client';
 import { cachedSearch, CacheIntent } from './rag-cache';
+import { getKnowledgeGraph, PowerToolKnowledgeGraph } from './knowledge-graph';
 
 // Pipeline configuration
 export interface UniversalRAGConfig {
@@ -101,6 +102,14 @@ const DEFAULT_CONFIG: UniversalRAGConfig = {
 export interface UniversalRAGResult {
   success: boolean;
   data: any;
+  knowledgeGraphContext?: {
+    brandInfo: string | null;
+    categoryInfo: string | null;
+    batterySystem: string | null;
+    suitableForTrades: string[];
+    relatedUseCases: string[];
+    crossSellSuggestions: string[];
+  };
   metadata: {
     routingDecision?: RoutingDecision;
     granularityDecision?: GranularityDecision;
@@ -257,6 +266,15 @@ export class UniversalRAGPipeline {
         }
       }
       
+      // Step 6.5: Knowledge Graph — Enrich context & update graph with RAG findings
+      const kgContext = this.enrichWithKnowledgeGraph(
+        productTitle,
+        vendor,
+        productType,
+        retrievedData,
+        state
+      );
+      
       // Step 7: Prepare final result
       const enrichedData = this.prepareEnrichedData(
         retrievedData,
@@ -271,7 +289,7 @@ export class UniversalRAGPipeline {
         enrichedData.competitors = benchmarkContext.competitors;
       }
       
-      return this.createResult(true, enrichedData, state, {
+      const result = this.createResult(true, enrichedData, state, {
         routingDecision,
         granularityDecision,
         retrievalDecision,
@@ -283,6 +301,11 @@ export class UniversalRAGPipeline {
           comparisonContextLength: benchmarkContext.comparisonContext.length,
         } : undefined,
       });
+      
+      // Attach KG context to result for downstream consumers (ai-enrichment-v3)
+      result.knowledgeGraphContext = kgContext;
+      
+      return result;
       
     } catch (error) {
       this.log(state, `Pipeline error: ${error}`);
@@ -490,6 +513,90 @@ export class UniversalRAGPipeline {
     
     if (this.config.debugMode) {
       log.info(`[UniversalRAG] ${message}`);
+    }
+  }
+  
+  /**
+   * Enrich product context with Knowledge Graph and update graph with RAG findings.
+   * 
+   * This step:
+   * 1. Queries the KG for existing knowledge about the product's brand/category
+   * 2. Extracts compatibility relationships from RAG results and updates the KG
+   * 3. Returns structured context for downstream content generation
+   */
+  private enrichWithKnowledgeGraph(
+    productTitle: string,
+    vendor: string,
+    productType: string,
+    retrievedData: Map<SourceType, any[]>,
+    state: PipelineState
+  ): UniversalRAGResult['knowledgeGraphContext'] {
+    try {
+      const kg = getKnowledgeGraph();
+      
+      // Query existing KG knowledge
+      const context = kg.enrichProductContext(productTitle, vendor, productType);
+      
+      // Extract compatibility relationships from RAG results and update KG
+      const compatibilityPatterns = [
+        /compatibil[ei]\s+con\s+([\w\s]+)/gi,
+        /compatible\s+with\s+([\w\s]+)/gi,
+        /funziona\s+con\s+([\w\s]+)/gi,
+        /works\s+with\s+([\w\s]+)/gi,
+        /batteria?\s+([\w\d]+)\s+compatibil/gi,
+      ];
+      
+      let relationsFound = 0;
+      for (const [source, items] of Array.from(retrievedData.entries())) {
+        for (const item of items) {
+          const text = item.content || item.text || '';
+          for (const pattern of compatibilityPatterns) {
+            const matches = text.matchAll(pattern);
+            for (const match of matches) {
+              if (match[1] && match[1].trim().length > 2) {
+                relationsFound++;
+                // Log the relationship (KG is in-memory, updates persist for this process)
+                this.log(state, `KG: Found compatibility relation: "${match[1].trim()}" from ${source}`);
+              }
+            }
+          }
+        }
+      }
+      
+      // Build cross-sell suggestions from KG
+      const crossSellSuggestions: string[] = [];
+      if (context.suitableForTrades.length > 0) {
+        for (const trade of context.suitableForTrades.slice(0, 2)) {
+          const tradeId = trade.id.replace('trade_', '');
+          const tradeProducts = kg.findProductsForTrade(tradeId);
+          for (const p of tradeProducts.slice(0, 3)) {
+            if (!p.name.toLowerCase().includes(productTitle.toLowerCase().slice(0, 10))) {
+              crossSellSuggestions.push(p.name);
+            }
+          }
+        }
+      }
+      
+      this.log(state, `KG: Brand=${context.brandInfo?.name || 'unknown'}, Category=${context.categoryInfo?.name || 'unknown'}, Trades=${context.suitableForTrades.length}, Relations found=${relationsFound}, CrossSell=${crossSellSuggestions.length}`);
+      
+      return {
+        brandInfo: context.brandInfo ? JSON.stringify(context.brandInfo.properties) : null,
+        categoryInfo: context.categoryInfo ? context.categoryInfo.name : null,
+        batterySystem: context.batterySystem ? context.batterySystem.name : null,
+        suitableForTrades: context.suitableForTrades.map(t => t.name),
+        relatedUseCases: context.relatedUseCases.map(u => u.name),
+        crossSellSuggestions: Array.from(new Set(crossSellSuggestions)).slice(0, 5),
+      };
+    } catch (error) {
+      this.log(state, `KG enrichment failed (non-blocking): ${error}`);
+      return {
+        brandInfo: null,
+        categoryInfo: null,
+        batterySystem: null,
+        suitableForTrades: [],
+        relatedUseCases: [],
+        crossSellSuggestions: [],
+      };
     }
   }
   

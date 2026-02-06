@@ -22,6 +22,10 @@
     {
       "path": "/api/cron/auto-process-products",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/taya-improver",
+      "schedule": "0 3 * * 0"
     }
   ]
 }
