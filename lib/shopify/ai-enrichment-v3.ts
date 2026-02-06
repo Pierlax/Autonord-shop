@@ -1,17 +1,22 @@
 /**
  * AI Content Generation for Product Enrichment V3
  * 
- * Integrates RAG Enterprise Paper improvements:
- * - Provenance tracking for hallucination control
+ * === FIX ARCHITETTURALE V3 (Feb 2026) ===
+ * 
+ * PRIMA: Questo modulo ignorava i dati RAG/QA e lanciava una ricerca
+ *        autonoma tramite product-research.ts, che chiedeva a Gemini
+ *        di "cercare sul web" senza avere accesso web → ALLUCINAZIONI.
+ * 
+ * ORA:   Riceve i dati REALI da UniversalRAG + TwoPhaseQA come input
+ *        obbligatori e li usa per costruire il prompt. Nessuna ricerca
+ *        autonoma. Il flusso è: RAG → QA → V3 (generazione) → Output.
+ * 
+ * Integra:
  * - Knowledge Graph for hybrid retrieval
+ * - Provenance tracking for hallucination control
  * - Business impact metrics
  * - Enhanced source attribution
- * 
- * Building on V2:
- * - Source hierarchy for technical specs
- * - Balanced review analysis from Amazon/Reddit
- * - Accessory recommendations from competitor analysis
- * - Safety checks for conflicting data
+ * - JTBD + Krug + TAYA philosophy
  */
 
 import { generateTextSafe } from '@/lib/shopify/ai-client';
@@ -19,9 +24,11 @@ import { loggers } from '@/lib/logger';
 
 const log = loggers.shopify;
 import { EnrichedProductData, ShopifyProductWebhookPayload } from './webhook-types';
-import { researchProduct, generateSafetyLog, ProductResearchResult } from './product-research';
+// FIX: Rimosso import di researchProduct e product-research (ricerca autonoma eliminata)
+// import { researchProduct, generateSafetyLog, ProductResearchResult } from './product-research';
 import { getBrandConfig } from './product-sources';
-import { fuseSources, FusionResult, SourceType } from './source-fusion';
+// FIX: Rimosso import di source-fusion (non più necessario, i dati arrivano da RAG)
+// import { fuseSources, FusionResult, SourceType } from './source-fusion';
 import {
   FactProvenanceTracker,
   generateContentProvenance,
@@ -46,7 +53,10 @@ import {
   transformSpecToJobBenefit,
   JTBD_TRANSFORMATIONS,
 } from '../core-philosophy';
-// Deep Research rimosso - ora integrato in ImageAgent V4
+
+// FIX: Import dei tipi RAG e QA (ora input obbligatori)
+import { UniversalRAGResult } from './universal-rag';
+import { TwoPhaseQAResult, AtomicFact } from './two-phase-qa';
 
 // =============================================================================
 // CLIENT INITIALIZATION
@@ -176,7 +186,6 @@ export interface EnrichedProductDataV3 extends EnrichedProductData {
     relatedUseCases: string[];
   };
   metrics: ContentGenerationMetrics;
-  // V3.1 - Deep Research rimosso, ora in ImageAgent V4
 }
 
 // =============================================================================
@@ -200,52 +209,83 @@ function enrichWithKnowledgeGraph(
 }
 
 // =============================================================================
-// PROVENANCE TRACKING
+// PROVENANCE TRACKING (Refactored to use RAG + QA data)
 // =============================================================================
 
-function trackProvenance(
+/**
+ * Builds provenance from RAG evidence and QA verified facts.
+ * No longer depends on the old product-research module.
+ */
+function trackProvenanceFromRAGandQA(
   productId: string,
   productName: string,
-  research: ProductResearchResult,
-  fusionResult: FusionResult
+  ragResult: UniversalRAGResult,
+  qaResult: TwoPhaseQAResult | null,
 ): ContentProvenance {
   const tracker = new FactProvenanceTracker();
 
-  // Register facts from technical specs
-  for (const spec of research.technicalSpecs) {
-    const sourceType = mapSourceToAttribution(spec.source);
-    tracker.registerFact(
-      spec.field,
-      `${spec.value}${spec.unit ? ' ' + spec.unit : ''}`,
-      {
-        name: spec.source,
-        type: sourceType,
-        reliability: spec.priority / 10,
-        extractedAt: new Date(),
+  // Register facts from QA verified facts (highest quality)
+  if (qaResult) {
+    for (const fact of qaResult.simpleQA.rawFacts) {
+      if (fact.answer !== 'NON TROVATO') {
+        const sourceType: SourceAttribution['type'] = fact.confidence === 'high' 
+          ? 'official' 
+          : fact.confidence === 'medium' 
+            ? 'retailer' 
+            : 'generated';
+        
+        const factId = tracker.registerFact(
+          fact.question,
+          fact.answer,
+          {
+            name: fact.source || 'TwoPhaseQA',
+            type: sourceType,
+            reliability: fact.confidence === 'high' ? 0.95 : fact.confidence === 'medium' ? 0.7 : 0.4,
+            extractedAt: new Date(),
+          }
+        );
+
+        if (fact.verified) {
+          tracker.verifyFact(factId, 'qa_verified');
+        }
       }
-    );
+    }
   }
 
-  // Register facts from fusion
-  for (const fact of fusionResult.facts) {
-    const sources: SourceAttribution[] = fact.sources.map(s => ({
-      name: s.source,
-      type: mapSourceTypeToAttribution(s.sourceType),
-      reliability: s.reliability / 100,
-      extractedAt: new Date(),
-    }));
-
-    if (sources.length > 0) {
-      const factId = tracker.registerFact(
-        fact.key,
-        fact.value,
-        sources[0],
-        sources.slice(1)
-      );
-
-      if (fact.confidence >= 80) {
-        tracker.verifyFact(factId, 'multi_source_agreement');
+  // Register facts from RAG evidence
+  if (ragResult.success && ragResult.data?.evidence && Array.isArray(ragResult.data.evidence)) {
+    for (const item of ragResult.data.evidence) {
+      const sourceLabel = item.source || item.sourceType || 'UniversalRAG';
+      const content = item.content || item.text || item.snippet || '';
+      
+      if (content && typeof content === 'string' && content.length > 10) {
+        tracker.registerFact(
+          `RAG Evidence (${sourceLabel})`,
+          content.substring(0, 200),
+          {
+            name: sourceLabel,
+            type: mapRagSourceToAttribution(sourceLabel),
+            reliability: item.confidence ? parseFloat(item.confidence) / 100 : 0.7,
+            extractedAt: new Date(),
+          }
+        );
       }
+    }
+  }
+
+  // Register RAG metadata sources
+  if (ragResult.metadata?.sourcesQueried) {
+    for (const source of ragResult.metadata.sourcesQueried) {
+      tracker.registerFact(
+        `Source queried: ${source}`,
+        'RAG pipeline source',
+        {
+          name: String(source),
+          type: 'official',
+          reliability: 0.8,
+          extractedAt: new Date(),
+        }
+      );
     }
   }
 
@@ -256,15 +296,15 @@ function trackProvenance(
   );
 }
 
-function mapSourceToAttribution(source: string): SourceAttribution['type'] {
+function mapRagSourceToAttribution(source: string): SourceAttribution['type'] {
   const sourceLower = source.toLowerCase();
-  if (sourceLower.includes('official') || sourceLower.includes('ufficiale')) {
+  if (sourceLower.includes('official') || sourceLower.includes('manufacturer')) {
     return 'official';
   }
-  if (sourceLower.includes('manual') || sourceLower.includes('manuale')) {
+  if (sourceLower.includes('manual') || sourceLower.includes('datasheet')) {
     return 'manual';
   }
-  if (sourceLower.includes('amazon') || sourceLower.includes('retailer')) {
+  if (sourceLower.includes('amazon') || sourceLower.includes('retailer') || sourceLower.includes('fixami') || sourceLower.includes('rotopino')) {
     return 'retailer';
   }
   if (sourceLower.includes('review') || sourceLower.includes('recensione')) {
@@ -276,36 +316,96 @@ function mapSourceToAttribution(source: string): SourceAttribution['type'] {
   return 'generated';
 }
 
-function mapSourceTypeToAttribution(sourceType: SourceType): SourceAttribution['type'] {
-  switch (sourceType) {
-    case 'official':
-      return 'official';
-    case 'manual':
-      return 'manual';
-    case 'retailer_major':
-    case 'retailer_niche':
-      return 'retailer';
-    case 'review_pro':
-    case 'user_review':
-      return 'review';
-    case 'forum':
-      return 'forum';
-    default:
-      return 'generated';
+// =============================================================================
+// SAFETY LOG (from RAG + QA data)
+// =============================================================================
+
+/**
+ * Generates a safety log from RAG and QA data.
+ * Replaces the old generateSafetyLog that depended on product-research.
+ */
+function generateSafetyLogFromRAGandQA(
+  productName: string,
+  ragResult: UniversalRAGResult,
+  qaResult: TwoPhaseQAResult | null,
+): string {
+  const lines: string[] = [
+    `=== SAFETY LOG: ${productName} ===`,
+    `Data: ${new Date().toISOString()}`,
+    `Pipeline: UniversalRAG → TwoPhaseQA → V3 Generation`,
+    '',
+  ];
+
+  // RAG quality
+  lines.push('## RAG PIPELINE');
+  lines.push(`- Success: ${ragResult.success}`);
+  lines.push(`- Sources queried: ${ragResult.metadata.sourcesQueried.length}`);
+  lines.push(`- Tokens used: ${ragResult.metadata.tokensUsed}`);
+  if (ragResult.data?.conflicts && Array.isArray(ragResult.data.conflicts)) {
+    lines.push(`- Conflicts detected: ${ragResult.data.conflicts.length}`);
+    for (const conflict of ragResult.data.conflicts) {
+      const desc = typeof conflict === 'string' ? conflict : (conflict.description || JSON.stringify(conflict));
+      lines.push(`  ⚠️ ${desc}`);
+    }
   }
+  lines.push('');
+
+  // QA quality
+  if (qaResult) {
+    const verifiedFacts = qaResult.simpleQA.rawFacts.filter(f => f.verified);
+    const unverifiedFacts = qaResult.simpleQA.rawFacts.filter(f => !f.verified && f.answer !== 'NON TROVATO');
+    
+    lines.push('## TWO-PHASE QA');
+    lines.push(`- Verified facts: ${verifiedFacts.length}`);
+    lines.push(`- Unverified facts: ${unverifiedFacts.length}`);
+    lines.push(`- QA Confidence: ${qaResult.complexQA.recommendation.confidence}`);
+    
+    if (unverifiedFacts.length > 0) {
+      lines.push('');
+      lines.push('### DATI DA VERIFICARE MANUALMENTE');
+      for (const fact of unverifiedFacts) {
+        lines.push(`  - ${fact.question}: ${fact.answer} (confidence: ${fact.confidence})`);
+      }
+    }
+    
+    if (qaResult.complexQA.recommendation.caveats.length > 0) {
+      lines.push('');
+      lines.push('### AVVERTENZE QA');
+      for (const caveat of qaResult.complexQA.recommendation.caveats) {
+        lines.push(`  - ${caveat}`);
+      }
+    }
+  } else {
+    lines.push('## TWO-PHASE QA');
+    lines.push('- ⚠️ QA non disponibile (fallito o non eseguito)');
+  }
+
+  return lines.join('\n');
 }
 
 // =============================================================================
-// MAIN GENERATION FUNCTION V3
+// MAIN GENERATION FUNCTION V3 (REFACTORED)
 // =============================================================================
 
+/**
+ * Generates enriched product content using REAL data from RAG and QA pipelines.
+ * 
+ * FIX ARCHITETTURALE: Questa funzione ora RICHIEDE i dati da UniversalRAG e
+ * TwoPhaseQA come input. Non esegue più alcuna ricerca autonoma.
+ * 
+ * @param product - Basic product data from Shopify webhook
+ * @param ragResult - REAL data from UniversalRAG pipeline (web search results)
+ * @param qaResult - Verified facts from TwoPhaseQA (can be null if QA failed)
+ */
 export async function generateProductContentV3(
-  product: ShopifyProductWebhookPayload
+  product: ShopifyProductWebhookPayload,
+  ragResult: UniversalRAGResult,
+  qaResult: TwoPhaseQAResult | null,
 ): Promise<EnrichedProductDataV3> {
   const startTime = Date.now();
   const timings = {
     total: 0,
-    research: 0,
+    research: 0, // Now tracks RAG data processing time, not autonomous research
     fusion: 0,
     llm: 0,
     verification: 0,
@@ -315,64 +415,73 @@ export async function generateProductContentV3(
   const sku = product.variants[0]?.sku || 'N/A';
   const productId = product.id?.toString() || 'unknown';
   
-  log.info(`[AI-V3] Starting enhanced enrichment for: ${product.title}`);
+  log.info(`[AI-V3] Starting enrichment for: ${product.title} (using RAG+QA data)`);
   
-  // Step 1: Research product from multiple sources
-  log.info('[AI-V3] Step 1: Researching product...');
+  // Step 1: Process RAG + QA data (NO autonomous research!)
+  log.info('[AI-V3] Step 1: Processing RAG + QA data (no autonomous research)...');
   const researchStart = Date.now();
-  const research = await researchProduct(
-    product.title,
-    brand,
-    sku
-  );
-  timings.research = Date.now() - researchStart;
   
-  // Step 2 (Deep Research rimosso - ora in ImageAgent V4): Enrich with Knowledge Graph
+  // Extract structured data from RAG and QA results
+  const ragEvidence = extractRAGEvidence(ragResult);
+  const qaFacts = qaResult ? extractQAFacts(qaResult) : null;
+  
+  timings.research = Date.now() - researchStart;
+  log.info(`[AI-V3] RAG evidence items: ${ragEvidence.snippets.length}, QA verified facts: ${qaFacts?.verifiedSpecs.length || 0}`);
+  
+  // Step 2: Enrich with Knowledge Graph (this is local, no web calls)
   log.info('[AI-V3] Step 2: Enriching with Knowledge Graph...');
   const kgContext = enrichWithKnowledgeGraph(product.title, brand);
   
-  // Step 3: Fuse sources with weighted confidence
-  log.info('[AI-V3] Step 3: Fusing sources...');
+  // Step 3: Track provenance from RAG + QA data
+  log.info('[AI-V3] Step 3: Tracking provenance from RAG + QA...');
   const fusionStart = Date.now();
-  const rawFacts = research.technicalSpecs.map(spec => ({
-    key: spec.field,
-    value: `${spec.value}${spec.unit ? ' ' + spec.unit : ''}`,
-    source: spec.source,
-    sourceType: 'official' as SourceType, // Default to official for specs
-  }));
-  const fusionResult = fuseSources(rawFacts);
+  const provenance = trackProvenanceFromRAGandQA(productId, product.title, ragResult, qaResult);
   timings.fusion = Date.now() - fusionStart;
   
-  // Step 4: Track provenance
-  log.info('[AI-V3] Step 4: Tracking provenance...');
-  const provenance = trackProvenance(productId, product.title, research, fusionResult);
-  
-  // Step 5: Generate safety log
-  const safetyLog = generateSafetyLog(research);
+  // Step 4: Generate safety log
+  const safetyLog = generateSafetyLogFromRAGandQA(product.title, ragResult, qaResult);
   log.info('[AI-V3] Safety log generated');
   
-  // Step 6: Build enhanced prompt with KG context
-  const userPrompt = buildEnhancedPromptV3(product, brand, research, kgContext);
+  // Step 5: Build enhanced prompt with REAL data from RAG + QA + KG
+  const userPrompt = buildEnhancedPromptV3(product, brand, ragEvidence, qaFacts, kgContext);
   
-  // Step 7: Generate content with Claude
-  log.info('[AI-V3] Step 7: Generating content with Claude...');
+  // Step 6: Generate content with LLM
+  log.info('[AI-V3] Step 6: Generating content with LLM (using RAG+QA context)...');
   const llmStart = Date.now();
-  const content = await generateWithClaudeV3(userPrompt, research);
+  const content = await generateWithLLMV3(userPrompt, ragEvidence, qaFacts);
   timings.llm = Date.now() - llmStart;
   
-  // Step 8: Verification (placeholder for now)
+  // Step 7: Verification (placeholder for now)
   const verificationStart = Date.now();
   // TODO: Add verification step
   timings.verification = Date.now() - verificationStart;
   
-  // Step 9: Enrich with accessories
-  const accessories = research.accessories.map(acc => ({
+  // Step 8: Extract accessories from RAG data
+  const accessories = ragEvidence.accessories.map(acc => ({
     name: acc.name,
     reason: acc.reason,
   }));
   
-  // Step 10: Calculate total time and record metrics
+  // Step 9: Calculate total time and record metrics
   timings.total = Date.now() - startTime;
+  
+  // Compute sources used from RAG metadata
+  const sourcesUsed = ragResult.metadata.sourcesQueried.map(s => String(s));
+  
+  // Compute data quality from QA results
+  const manualCheckRequired: string[] = [];
+  if (qaResult) {
+    for (const fact of qaResult.simpleQA.rawFacts) {
+      if (fact.answer !== 'NON TROVATO' && !fact.verified) {
+        manualCheckRequired.push(`${fact.question}: ${fact.answer} (${fact.confidence})`);
+      }
+    }
+  }
+  
+  // Compute conflicts from RAG data
+  const conflictsCount = ragResult.data?.conflicts 
+    ? (Array.isArray(ragResult.data.conflicts) ? ragResult.data.conflicts.length : 0) 
+    : 0;
   
   const metrics = createGenerationMetrics(
     productId,
@@ -380,10 +489,10 @@ export async function generateProductContentV3(
     timings,
     {
       confidence: provenance.overallConfidence,
-      sources: research.sourcesUsed.length,
-      conflicts: research.conflicts.length,
-      resolved: research.conflicts.filter(c => !c.requiresManualCheck).length,
-      manualChecks: research.manualCheckRequired.length,
+      sources: sourcesUsed.length,
+      conflicts: conflictsCount,
+      resolved: 0, // RAG handles conflict resolution internally
+      manualChecks: manualCheckRequired.length,
     },
     {
       descriptionWords: content.description.split(/\s+/).length,
@@ -410,11 +519,11 @@ export async function generateProductContentV3(
     ...content,
     accessories,
     safetyLog,
-    sourcesUsed: research.sourcesUsed.map(s => s.name),
+    sourcesUsed,
     dataQuality: {
-      specsVerified: research.conflicts.filter(c => c.requiresManualCheck).length === 0,
-      conflictsFound: research.conflicts.length,
-      manualCheckRequired: research.manualCheckRequired,
+      specsVerified: manualCheckRequired.length === 0,
+      conflictsFound: conflictsCount,
+      manualCheckRequired,
     },
     provenance,
     knowledgeGraphContext: kgContext,
@@ -423,48 +532,225 @@ export async function generateProductContentV3(
 }
 
 // =============================================================================
-// PROMPT BUILDING V3
+// RAG + QA DATA EXTRACTION HELPERS
+// =============================================================================
+
+interface RAGEvidence {
+  snippets: { text: string; source: string; confidence?: string }[];
+  benchmarkContext: string | null;
+  brandProfile: string | null;
+  competitors: string[];
+  conflicts: string[];
+  accessories: { name: string; reason: string }[];
+}
+
+interface QAFacts {
+  verifiedSpecs: { question: string; answer: string; source: string }[];
+  unverifiedSpecs: { question: string; answer: string; source: string; confidence: string }[];
+  strengths: string[];
+  weaknesses: string[];
+  idealFor: string[];
+  notIdealFor: string[];
+  verdict: string;
+  verdictConfidence: string;
+  caveats: string[];
+}
+
+/**
+ * Extracts structured evidence from the UniversalRAG result.
+ */
+function extractRAGEvidence(ragResult: UniversalRAGResult): RAGEvidence {
+  const evidence: RAGEvidence = {
+    snippets: [],
+    benchmarkContext: null,
+    brandProfile: null,
+    competitors: [],
+    conflicts: [],
+    accessories: [],
+  };
+
+  if (!ragResult.success || !ragResult.data) {
+    return evidence;
+  }
+
+  const data = ragResult.data;
+
+  // Extract evidence snippets
+  if (data.evidence && Array.isArray(data.evidence)) {
+    for (const item of data.evidence) {
+      const text = item.content || item.text || item.snippet || '';
+      const source = item.source || item.sourceType || 'unknown';
+      if (text && typeof text === 'string' && text.length > 5) {
+        evidence.snippets.push({
+          text,
+          source,
+          confidence: item.confidence,
+        });
+      }
+    }
+  }
+
+  // Extract from source-keyed data (fallback)
+  if (evidence.snippets.length === 0 && typeof data === 'object') {
+    for (const [key, value] of Object.entries(data)) {
+      if (['benchmarkContext', 'brandProfile', 'competitors', 'confidence', 'coverage', 'conflicts', 'error'].includes(key)) {
+        continue;
+      }
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const text = typeof item === 'string' ? item : (item?.content || item?.text || item?.snippet || '');
+          if (text && typeof text === 'string' && text.length > 5) {
+            evidence.snippets.push({ text, source: key });
+          }
+        }
+      } else if (typeof value === 'string' && value.length > 20) {
+        evidence.snippets.push({ text: value, source: key });
+      }
+    }
+  }
+
+  // Benchmark context
+  if (data.benchmarkContext && typeof data.benchmarkContext === 'string') {
+    evidence.benchmarkContext = data.benchmarkContext;
+  }
+
+  // Brand profile
+  if (data.brandProfile) {
+    evidence.brandProfile = typeof data.brandProfile === 'string'
+      ? data.brandProfile
+      : JSON.stringify(data.brandProfile);
+  }
+
+  // Competitors
+  if (data.competitors && Array.isArray(data.competitors)) {
+    evidence.competitors = data.competitors.map((c: any) => 
+      typeof c === 'string' ? c : (c.name || c.title || JSON.stringify(c))
+    );
+  }
+
+  // Conflicts
+  if (data.conflicts && Array.isArray(data.conflicts)) {
+    evidence.conflicts = data.conflicts.map((c: any) =>
+      typeof c === 'string' ? c : (c.description || c.field || JSON.stringify(c))
+    );
+  }
+
+  return evidence;
+}
+
+/**
+ * Extracts structured facts from the TwoPhaseQA result.
+ */
+function extractQAFacts(qaResult: TwoPhaseQAResult): QAFacts {
+  const verifiedSpecs: QAFacts['verifiedSpecs'] = [];
+  const unverifiedSpecs: QAFacts['unverifiedSpecs'] = [];
+
+  for (const fact of qaResult.simpleQA.rawFacts) {
+    if (fact.answer === 'NON TROVATO') continue;
+    
+    if (fact.verified) {
+      verifiedSpecs.push({
+        question: fact.question,
+        answer: fact.answer,
+        source: fact.source,
+      });
+    } else {
+      unverifiedSpecs.push({
+        question: fact.question,
+        answer: fact.answer,
+        source: fact.source,
+        confidence: fact.confidence,
+      });
+    }
+  }
+
+  return {
+    verifiedSpecs,
+    unverifiedSpecs,
+    strengths: qaResult.complexQA.comparison.strengths,
+    weaknesses: qaResult.complexQA.comparison.weaknesses,
+    idealFor: qaResult.complexQA.suitability.idealFor,
+    notIdealFor: qaResult.complexQA.suitability.notIdealFor,
+    verdict: qaResult.complexQA.recommendation.verdict,
+    verdictConfidence: qaResult.complexQA.recommendation.confidence,
+    caveats: qaResult.complexQA.recommendation.caveats,
+  };
+}
+
+// =============================================================================
+// PROMPT BUILDING V3 (REFACTORED - Uses RAG + QA data)
 // =============================================================================
 
 function buildEnhancedPromptV3(
   product: ShopifyProductWebhookPayload,
   brand: string,
-  research: ProductResearchResult,
+  ragEvidence: RAGEvidence,
+  qaFacts: QAFacts | null,
   kgContext: EnrichedProductDataV3['knowledgeGraphContext']
 ): string {
   const sku = product.variants[0]?.sku || 'N/A';
   
-  // Format technical specs
-  const specsSection = research.technicalSpecs.length > 0
-    ? `## SPECIFICHE TECNICHE VERIFICATE (da fonti ufficiali)
-${research.technicalSpecs.map(s => `- ${s.field}: ${s.value}${s.unit ? ' ' + s.unit : ''} (fonte: ${s.source})`).join('\n')}`
-    : '## SPECIFICHE TECNICHE\nNon disponibili da fonti verificate.';
-  
-  // Format real-world feedback
-  const feedbackSection = `## FEEDBACK REALE DAGLI UTENTI
+  // === SECTION 1: Verified specs from TwoPhaseQA ===
+  let specsSection: string;
+  if (qaFacts && qaFacts.verifiedSpecs.length > 0) {
+    specsSection = `## SPECIFICHE TECNICHE VERIFICATE (da TwoPhaseQA - fatti atomici verificati)
+${qaFacts.verifiedSpecs.map(s => `- ${s.question}: **${s.answer}** (fonte: ${s.source})`).join('\n')}`;
+  } else {
+    specsSection = '## SPECIFICHE TECNICHE\nNessuna specifica verificata disponibile da TwoPhaseQA.';
+  }
 
-### Punti positivi (da recensioni):
-${research.realWorldFeedback.positives.length > 0 
-  ? research.realWorldFeedback.positives.map(p => `- ${p}`).join('\n')
-  : '- Nessun feedback positivo specifico trovato'}
+  // === SECTION 2: Unverified specs (use with caution) ===
+  let unverifiedSection = '';
+  if (qaFacts && qaFacts.unverifiedSpecs.length > 0) {
+    unverifiedSection = `\n## ⚠️ DATI NON COMPLETAMENTE VERIFICATI (usa con cautela)
+${qaFacts.unverifiedSpecs.map(s => `- ${s.question}: ${s.answer} (confidence: ${s.confidence}, fonte: ${s.source})`).join('\n')}
 
-### Problemi segnalati (da forum/recensioni 3-4 stelle):
-${research.realWorldFeedback.negatives.length > 0
-  ? research.realWorldFeedback.negatives.map(n => `- ${n}`).join('\n')
-  : '- Nessun problema specifico segnalato'}
+IMPORTANTE: Per questi dati, scrivi "contattaci per conferma" invece di presentarli come certi.`;
+  }
 
-### Problemi ricorrenti:
-${research.realWorldFeedback.commonProblems.length > 0
-  ? research.realWorldFeedback.commonProblems.map(p => `- ${p}`).join('\n')
-  : '- Nessun problema ricorrente identificato'}
+  // === SECTION 3: RAG evidence (real web search snippets) ===
+  let ragSection = '';
+  if (ragEvidence.snippets.length > 0) {
+    const topSnippets = ragEvidence.snippets.slice(0, 10); // Max 10 snippets
+    ragSection = `\n## DATI DA RICERCA WEB REALE (UniversalRAG)
+${topSnippets.map(s => `[Fonte: ${s.source}${s.confidence ? ` | Confidence: ${s.confidence}` : ''}]
+${s.text.substring(0, 500)}`).join('\n\n')}`;
+  }
 
-### Citazioni reali:
-${research.realWorldFeedback.quotes.slice(0, 3).map(q => 
-  `> "${q.text}" - ${q.source}${q.rating ? ` (${q.rating}★)` : ''}`
-).join('\n\n')}`;
+  // === SECTION 4: QA reasoning (strengths, weaknesses, verdict) ===
+  let qaReasoningSection = '';
+  if (qaFacts) {
+    qaReasoningSection = `\n## ANALISI RAGIONATA (da TwoPhaseQA)
 
-  // Knowledge Graph context section
-  const kgSection = `## CONTESTO KNOWLEDGE GRAPH
+### Punti di forza (basati su fatti verificati):
+${qaFacts.strengths.length > 0 
+  ? qaFacts.strengths.map(s => `- ${s}`).join('\n')
+  : '- Nessun punto di forza specifico identificato'}
+
+### Punti deboli (basati su fatti verificati):
+${qaFacts.weaknesses.length > 0
+  ? qaFacts.weaknesses.map(w => `- ${w}`).join('\n')
+  : '- Nessun punto debole specifico identificato'}
+
+### Ideale per:
+${qaFacts.idealFor.length > 0 ? qaFacts.idealFor.map(i => `- ${i}`).join('\n') : '- Non specificato'}
+
+### NON ideale per:
+${qaFacts.notIdealFor.length > 0 ? qaFacts.notIdealFor.map(n => `- ${n}`).join('\n') : '- Non specificato'}
+
+### Verdetto esperto: ${qaFacts.verdict} (confidence: ${qaFacts.verdictConfidence})
+${qaFacts.caveats.length > 0 ? `Avvertenze: ${qaFacts.caveats.join('; ')}` : ''}`;
+  }
+
+  // === SECTION 5: Benchmark context ===
+  let benchmarkSection = '';
+  if (ragEvidence.benchmarkContext) {
+    benchmarkSection = `\n## CONTESTO BENCHMARK (Ancora di Verità)
+${ragEvidence.benchmarkContext}`;
+  }
+
+  // === SECTION 6: Knowledge Graph context ===
+  const kgSection = `\n## CONTESTO KNOWLEDGE GRAPH
 
 ### Brand:
 ${kgContext.brandInfo || 'Informazioni brand non disponibili'}
@@ -485,15 +771,18 @@ ${kgContext.relatedUseCases.length > 0
   ? kgContext.relatedUseCases.join(', ')
   : 'Non specificato'}`;
 
-  // Format data conflicts warning
-  const conflictsWarning = research.manualCheckRequired.length > 0
-    ? `## ⚠️ DATI INCERTI - NON USARE
-${research.manualCheckRequired.map(c => `- ${c}`).join('\n')}
+  // === SECTION 7: Conflicts warning ===
+  let conflictsWarning = '';
+  if (ragEvidence.conflicts.length > 0) {
+    conflictsWarning = `\n## ⚠️ CONFLITTI NEI DATI - ATTENZIONE
+${ragEvidence.conflicts.map(c => `- ${c}`).join('\n')}
 
-IMPORTANTE: Per questi dati, scrivi "contattaci per conferma" invece di inventare.`
-    : '';
+IMPORTANTE: Per questi dati in conflitto, scrivi "contattaci per conferma" invece di inventare.`;
+  }
 
   return `Genera contenuti per questo prodotto usando SOLO i dati verificati che ti fornisco.
+Questi dati provengono da ricerca web REALE (UniversalRAG) e verifica fatti (TwoPhaseQA).
+NON inventare dati. Se un'informazione non è presente, non includerla.
 
 **Titolo:** ${product.title}
 **Brand:** ${brand}
@@ -501,20 +790,21 @@ IMPORTANTE: Per questi dati, scrivi "contattaci per conferma" invece di inventar
 **Tipo prodotto:** ${product.product_type || 'Elettroutensile'}
 
 ${specsSection}
-
-${feedbackSection}
-
+${unverifiedSection}
+${ragSection}
+${qaReasoningSection}
+${benchmarkSection}
 ${kgSection}
-
 ${conflictsWarning}
 
 ## ISTRUZIONI
 
-1. Usa le specifiche tecniche SOLO se verificate
-2. Integra il feedback reale nei pro/contro
-3. Se un problema è segnalato da più utenti, mettilo nei CONTRO
-4. Per dati incerti, suggerisci di contattare Autonord
-5. Usa il contesto del Knowledge Graph per arricchire la descrizione (mestieri, casi d'uso)
+1. Usa le specifiche tecniche SOLO se verificate da TwoPhaseQA
+2. Integra i punti di forza/debolezza del QA nei pro/contro
+3. Usa i dati RAG reali per arricchire la descrizione con dettagli concreti
+4. Per dati incerti o non verificati, suggerisci di contattare Autonord
+5. Usa il contesto del Knowledge Graph per i mestieri e casi d'uso
+6. Collega ogni specifica a un beneficio lavorativo concreto (JTBD)
 
 Rispondi SOLO con JSON valido:
 {
@@ -530,12 +820,13 @@ Rispondi SOLO con JSON valido:
 }
 
 // =============================================================================
-// CLAUDE GENERATION V3
+// LLM GENERATION V3 (Refactored)
 // =============================================================================
 
-async function generateWithClaudeV3(
+async function generateWithLLMV3(
   userPrompt: string,
-  research: ProductResearchResult
+  ragEvidence: RAGEvidence,
+  qaFacts: QAFacts | null,
 ): Promise<EnrichedProductData> {
   try {
     const result = await generateTextSafe({
@@ -548,7 +839,7 @@ async function generateWithClaudeV3(
     const content = result.text;
     
     if (!content) {
-      throw new Error('Empty response from Gemini');
+      throw new Error('Empty response from LLM');
     }
 
     const cleanedContent = content
@@ -560,15 +851,15 @@ async function generateWithClaudeV3(
 
     // Validate structure
     if (!parsed.description || !Array.isArray(parsed.pros) || !Array.isArray(parsed.cons) || !Array.isArray(parsed.faqs)) {
-      throw new Error('Invalid response structure from Claude');
+      throw new Error('Invalid response structure from LLM');
     }
 
-    // Enhance cons with real problems if not already included
-    const realProblems = research.realWorldFeedback.commonProblems;
-    if (realProblems.length > 0 && parsed.cons.length < 3) {
-      for (const problem of realProblems) {
-        if (!parsed.cons.some(c => c.toLowerCase().includes(problem.toLowerCase().slice(0, 20)))) {
-          parsed.cons.push(problem);
+    // Enhance cons with QA weaknesses if not already included
+    if (qaFacts && qaFacts.weaknesses.length > 0 && parsed.cons.length < 3) {
+      for (const weakness of qaFacts.weaknesses) {
+        const cleanWeakness = weakness.replace(/^⚠\s*/, '');
+        if (!parsed.cons.some(c => c.toLowerCase().includes(cleanWeakness.toLowerCase().slice(0, 20)))) {
+          parsed.cons.push(cleanWeakness);
           if (parsed.cons.length >= 3) break;
         }
       }
@@ -589,38 +880,67 @@ async function generateWithClaudeV3(
       resolved: false,
     });
     
-    // Return fallback with research data
-    return {
-      description: `${research.productName} di ${research.brand}. Un utensile professionale per chi lavora sul serio. ${research.realWorldFeedback.positives[0] || 'Contattaci per una consulenza personalizzata.'}`,
-      pros: research.realWorldFeedback.positives.length > 0
-        ? research.realWorldFeedback.positives.slice(0, 3)
-        : [
-            'Qualità professionale con garanzia ufficiale italiana',
-            'Assistenza tecnica dedicata presso la nostra sede di Genova',
-            'Possibilità di provarlo prima dell\'acquisto',
-          ],
-      cons: research.realWorldFeedback.negatives.slice(0, 2).length > 0
-        ? research.realWorldFeedback.negatives.slice(0, 2)
-        : [
-            'Contattaci per conoscere i dettagli tecnici specifici',
-            'Verifica la compatibilità con i tuoi accessori esistenti',
-          ],
-      faqs: [
-        {
-          question: 'Posso provarlo prima di acquistarlo?',
-          answer: 'Certamente. Passa in negozio a Lungobisagno d\'Istria 34 e te lo facciamo vedere dal vivo.',
-        },
-        {
-          question: 'Che garanzia ha?',
-          answer: 'Garanzia ufficiale italiana di 2 anni. Per alcuni brand offriamo estensioni a condizioni vantaggiose.',
-        },
-        {
-          question: 'Fate assistenza post-vendita?',
-          answer: 'Sì, abbiamo un laboratorio interno per riparazioni e manutenzione.',
-        },
-      ],
-    };
+    // Return fallback using REAL data from RAG + QA (not hallucinated)
+    return buildFallbackContent(ragEvidence, qaFacts);
   }
+}
+
+/**
+ * Builds fallback content using real RAG + QA data when LLM generation fails.
+ * This replaces the old fallback that used data from the autonomous (hallucinated) research.
+ */
+function buildFallbackContent(
+  ragEvidence: RAGEvidence,
+  qaFacts: QAFacts | null,
+): EnrichedProductData {
+  // Build description from RAG snippets
+  const descriptionParts: string[] = [];
+  if (ragEvidence.snippets.length > 0) {
+    descriptionParts.push(ragEvidence.snippets[0].text.substring(0, 200));
+  }
+  if (qaFacts?.verdict) {
+    descriptionParts.push(qaFacts.verdict);
+  }
+  const description = descriptionParts.length > 0
+    ? descriptionParts.join('. ')
+    : 'Contattaci per una consulenza personalizzata su questo prodotto.';
+
+  // Build pros from QA strengths or RAG data
+  const pros = qaFacts && qaFacts.strengths.length > 0
+    ? qaFacts.strengths.slice(0, 3).map(s => s.replace(/^✓\s*/, ''))
+    : [
+        'Qualità professionale con garanzia ufficiale italiana',
+        'Assistenza tecnica dedicata presso la nostra sede di Genova',
+        'Possibilità di provarlo prima dell\'acquisto',
+      ];
+
+  // Build cons from QA weaknesses
+  const cons = qaFacts && qaFacts.weaknesses.length > 0
+    ? qaFacts.weaknesses.slice(0, 2).map(w => w.replace(/^⚠\s*/, ''))
+    : [
+        'Contattaci per conoscere i dettagli tecnici specifici',
+        'Verifica la compatibilità con i tuoi accessori esistenti',
+      ];
+
+  return {
+    description,
+    pros,
+    cons,
+    faqs: [
+      {
+        question: 'Posso provarlo prima di acquistarlo?',
+        answer: 'Certamente. Passa in negozio a Lungobisagno d\'Istria 34 e te lo facciamo vedere dal vivo.',
+      },
+      {
+        question: 'Che garanzia ha?',
+        answer: 'Garanzia ufficiale italiana di 2 anni. Per alcuni brand offriamo estensioni a condizioni vantaggiose.',
+      },
+      {
+        question: 'Fate assistenza post-vendita?',
+        answer: 'Sì, abbiamo un laboratorio interno per riparazioni e manutenzione.',
+      },
+    ],
+  };
 }
 
 // =============================================================================
@@ -708,3 +1028,4 @@ export function formatDescriptionAsHtmlV3(data: EnrichedProductDataV3): string {
 // =============================================================================
 
 // V3 is now the primary version - V1 (ai-enrichment.ts) has been deprecated
+// FIX ARCHITETTURALE: product-research.ts è ora @deprecated (non più usato da V3)

@@ -1,10 +1,12 @@
 /**
- * Product Enrichment Worker
+ * @deprecated Use /api/workers/regenerate-product instead.
  * 
- * This endpoint is called by QStash to process products asynchronously.
- * It has no timeout concerns because QStash handles retries and the
- * processing happens outside the original webhook request.
+ * This worker uses the OLD V3 pipeline without RAG+QA data flow.
+ * It will NOT compile with the new V3 signature (requires ragResult + qaResult).
+ * Kept for reference only.
  * 
+ * Original description:
+ * Product Enrichment Worker - called by QStash to process products asynchronously.
  * Security: Only accepts requests from QStash (verified via signature)
  */
 
@@ -68,8 +70,21 @@ async function handler(request: NextRequest) {
     // Step 3: Generate AI content
     logger.logStep('ai_generation', { vendor: job.vendor, productType: job.productType });
     
-    // Create minimal product payload for AI generation
-    // We only need title, vendor, product_type, and first variant's sku/price
+    // @deprecated: This worker does NOT run the RAG+QA pipeline.
+    // It passes empty/dummy RAG and null QA data to V3.
+    // Use /api/workers/regenerate-product for the full pipeline.
+    const dummyRagResult = {
+      success: false,
+      data: null,
+      metadata: {
+        executionTimeMs: 0,
+        sourcesQueried: [] as any[],
+        tokensUsed: 0,
+        costSavings: 0,
+      },
+      debugLog: ['deprecated-worker: no RAG pipeline'],
+    };
+    
     const enrichedData = await generateProductContentV3({
       id: parseInt(job.productId),
       title: job.title,
@@ -127,7 +142,7 @@ async function handler(request: NextRequest) {
       published_scope: 'web',
       status: 'active',
       admin_graphql_api_id: '',
-    });
+    }, dummyRagResult as any, null);
     
     // Step 4: Format as HTML
     const formattedHtml = formatDescriptionAsHtmlV3(enrichedData);

@@ -1,6 +1,20 @@
 /**
- * Product Enrichment - Research Module
+ * @deprecated This module is no longer used by the main pipeline (ai-enrichment-v3.ts).
  * 
+ * === DEPRECATION NOTICE (Feb 2026) ===
+ * 
+ * This module performed "autonomous research" by asking Gemini to "search the web",
+ * but Gemini has no web access via generateTextSafe(). This caused hallucinations.
+ * 
+ * The main pipeline now uses:
+ * - UniversalRAG (real web search via SerpAPI/Exa) for data collection
+ * - TwoPhaseQA for fact verification
+ * - ai-enrichment-v3.ts receives RAG+QA data directly (no autonomous research)
+ * 
+ * This file is kept for reference only. Do NOT import from it in new code.
+ * 
+ * Original description:
+ * Product Enrichment - Research Module
  * Extracts data from official sources, reviews, and competitors
  * following the source hierarchy for reliable product information.
  */

@@ -2,15 +2,21 @@
 export const maxDuration = 300;
 
 /**
- * Worker Regenerate Product - V5 (Phase 2: Advanced RAG & Media)
+ * Worker Regenerate Product - V5.1 (Fix Architetturale: Integrità Flusso RAG)
  * 
  * Full orchestration pipeline:
  * 1. UniversalRAG (searches verified info using whitelisted rag-sources.ts)
  * 2. RagAdapter (transforms RAG output → TwoPhaseQA input)
  * 3. TwoPhaseQA (generates specs and pro/con based on facts)
- * 4. ImageAgentV4 (finds image, prioritizing TRUSTED_RETAILERS for quality)
+ * 4. AI Enrichment V3 (content generation using RAG + QA data — NO autonomous research)
  * 5. TAYA Police (post-generation validation)
- * 6. Shopify Admin API (saves HTML + Metafields + Image with ALT text)
+ * 6. ImageAgentV4 (finds image, prioritizing TRUSTED_RETAILERS for quality)
+ * 7. Shopify Admin API (saves HTML + Metafields + Image with ALT text)
+ * 
+ * FIX ARCHITETTURALE (Feb 2026):
+ * - V3 now receives ragResult + qaResult as mandatory inputs
+ * - Removed autonomous research in V3 that caused hallucinations
+ * - Data flow is now: RAG → QA → V3 Generation (using RAG+QA) → TAYA → Shopify
  * 
  * PHASE 1 (Security Hardening):
  * - Centralized env validation from lib/env.ts
@@ -551,11 +557,12 @@ export async function POST(request: NextRequest) {
 
     // ===========================================
     // STEP 4: AI Enrichment V3 — Full content generation
+    // FIX ARCHITETTURALE: V3 ora riceve i dati REALI da RAG + QA
     // ===========================================
-    console.log('[Worker V5] Step 4: Running ai-enrichment-v3 (RAG + KG + Provenance)...');
+    console.log('[Worker V5] Step 4: Running ai-enrichment-v3 (using RAG + QA data)...');
     
     const webhookPayload = toWebhookPayload(payload);
-    const enrichedData = await generateProductContentV3(webhookPayload);
+    const enrichedData = await generateProductContentV3(webhookPayload, ragResult, qaResult);
     
     console.log(`[Worker V5] V3 content generated. Confidence: ${enrichedData.provenance.overallConfidence}%`);
 
@@ -564,7 +571,9 @@ export async function POST(request: NextRequest) {
     // ===========================================
     console.log('[Worker V5] Step 5: Running TAYA Police validation...');
     
-    // Merge QA pros/cons with V3 enrichment (QA takes priority for fact-based items)
+    // FIX ARCHITETTURALE: V3 ora integra già i dati QA nel prompt.
+    // Questo merge aggiuntivo serve come safety net per catturare eventuali
+    // pro/contro QA che il LLM potrebbe aver omesso nella generazione.
     const prosToValidate = qaContent 
       ? [...qaContent.pros, ...enrichedData.pros.filter(p => !qaContent!.pros.some(qp => qp.includes(p.substring(0, 20))))]
       : enrichedData.pros;

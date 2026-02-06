@@ -20,6 +20,17 @@ import { ShopifyProductWebhookPayload } from '@/lib/shopify/webhook-types';
 import { findProductImage } from '@/lib/agents/image-agent-v4';
 import { validateAndCorrect, BANNED_PHRASES } from '@/lib/agents/taya-police';
 
+// FIX ARCHITETTURALE: Import RAG + QA pipeline for V3
+import { 
+  UniversalRAGPipeline, 
+  UniversalRAGResult,
+} from '@/lib/shopify/universal-rag';
+import { adaptRagToQa } from '@/lib/shopify/rag-adapter';
+import { 
+  runTwoPhaseQA, 
+  TwoPhaseQAResult,
+} from '@/lib/shopify/two-phase-qa';
+
 // =============================================================================
 // CONFIG
 // =============================================================================
@@ -293,12 +304,54 @@ export async function GET(request: NextRequest) {
     });
 
     // =========================================================================
-    // STEP 2: AI Enrichment V3 (RAG + KG + Provenance)
+    // STEP 2: UniversalRAG + TwoPhaseQA + AI Enrichment V3
+    // FIX ARCHITETTURALE: V3 now receives RAG + QA data
     // =========================================================================
-    console.log('\n🧠 STEP 2: Running AI Enrichment V3 (RAG + Knowledge Graph + Provenance)...');
+    console.log('\n🧠 STEP 2: Running full pipeline (RAG → QA → V3)...');
     const step2Start = Date.now();
     
-    const enrichedData = await generateProductContentV3(product);
+    // Step 2a: UniversalRAG
+    console.log('   🔍 Running UniversalRAG...');
+    const ragPipeline = new UniversalRAGPipeline({
+      enableSourceRouting: true,
+      enableGranularityAware: true,
+      enableNoRetrievalDetection: true,
+      enableProactiveFusion: true,
+      enableBenchmarkContext: true,
+      maxSources: 5,
+      maxTokenBudget: 6000,
+      timeoutMs: 30000,
+    });
+    
+    const ragResult: UniversalRAGResult = await ragPipeline.enrichProduct(
+      product.title,
+      product.vendor,
+      product.product_type || '',
+      product.variants[0]?.sku || '',
+      'full'
+    );
+    console.log(`   ✅ RAG: success=${ragResult.success}, sources=${ragResult.metadata.sourcesQueried.length}`);
+    
+    // Step 2b: RagAdapter + TwoPhaseQA
+    console.log('   📊 Running TwoPhaseQA...');
+    let qaResult: TwoPhaseQAResult | null = null;
+    try {
+      const adaptation = adaptRagToQa(
+        ragResult,
+        product.title,
+        product.vendor,
+        product.variants[0]?.sku || '',
+        product.product_type || ''
+      );
+      qaResult = await runTwoPhaseQA(adaptation.qaInput);
+      console.log(`   ✅ QA: ${qaResult.simpleQA.rawFacts.filter(f => f.verified).length} verified facts`);
+    } catch (qaError) {
+      console.log(`   ⚠️ QA failed (non-fatal): ${qaError}`);
+    }
+    
+    // Step 2c: AI Enrichment V3 (using RAG + QA data)
+    console.log('   🧠 Running V3 content generation (with RAG+QA data)...');
+    const enrichedData = await generateProductContentV3(product, ragResult, qaResult);
     
     console.log(`   ✅ Content generated`);
     console.log(`   📊 Confidence: ${enrichedData.provenance.overallConfidence}%`);
