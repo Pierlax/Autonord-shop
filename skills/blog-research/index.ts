@@ -25,6 +25,8 @@ import {
 } from '@/lib/blog-researcher';
 import { generateEnhancedArticle, type EnhancedArticleDraft } from '@/lib/blog-researcher';
 import { createDraftArticle } from '@/lib/blog-researcher';
+import type { TopicAnalysis } from '@/lib/blog-researcher/analysis';
+import type { ArticleType } from '@/lib/blog-researcher/article-template';
 
 const log = createLogger('skill:blog-research');
 
@@ -166,18 +168,33 @@ async function executeGenerateArticle(
 
   log.info(`Generating article for topic: "${payload.topic}"`);
 
-  const draft: EnhancedArticleDraft = await generateEnhancedArticle({
+  // Build a TopicAnalysis-compatible object for the API
+  const topicInput: TopicAnalysis = {
     topic: payload.topic,
-    articleType: payload.articleType || 'guide',
-    keywords: payload.keywords || [],
-  });
+    painPoint: '',
+    frequency: 0,
+    avgEngagement: 0,
+    samplePosts: [],
+    articleAngle: payload.topic,
+    targetAudience: 'professionisti edilizia',
+    tayaCategory: 'reviews',
+    emotionalHook: '',
+    searchIntent: payload.topic,
+  };
+
+  const articleType: ArticleType = (payload.articleType as ArticleType) || 'review';
+  const draft: EnhancedArticleDraft = await generateEnhancedArticle(topicInput, articleType);
 
   // Save to Shopify as draft
   const shopifyResult = await createDraftArticle({
     title: draft.title,
-    body_html: draft.bodyHtml,
-    tags: draft.tags?.join(', ') || '',
-    summary_html: draft.summary || '',
+    slug: draft.slug,
+    metaDescription: draft.metaDescription,
+    content: draft.content,
+    excerpt: draft.excerpt,
+    tags: draft.tags || [],
+    category: draft.category,
+    estimatedReadTime: draft.estimatedReadTime,
   });
 
   const durationMs = Date.now() - startMs;
@@ -191,7 +208,7 @@ async function executeGenerateArticle(
     message: `Article "${draft.title}" generated and saved as draft`,
     data: {
       title: draft.title,
-      wordCount: draft.bodyHtml?.split(/\s+/).length ?? 0,
+      wordCount: draft.htmlContent?.split(/\s+/).length ?? 0,
       savedToShopify: !!shopifyResult,
     },
     durationMs,
@@ -220,17 +237,17 @@ async function executeFullPipeline(
     };
   }
 
-  const draft = await generateEnhancedArticle({
-    topic: topTopic.topic,
-    articleType: 'guide',
-    keywords: [],
-  });
+  const draft = await generateEnhancedArticle(topTopic, 'review');
 
   const shopifyResult = await createDraftArticle({
     title: draft.title,
-    body_html: draft.bodyHtml,
-    tags: draft.tags?.join(', ') || '',
-    summary_html: draft.summary || '',
+    slug: draft.slug,
+    metaDescription: draft.metaDescription,
+    content: draft.content,
+    excerpt: draft.excerpt,
+    tags: draft.tags || [],
+    category: draft.category,
+    estimatedReadTime: draft.estimatedReadTime,
   });
 
   const durationMs = Date.now() - startMs;
