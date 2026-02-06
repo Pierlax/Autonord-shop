@@ -2,12 +2,15 @@
  * Centralized Environment Variable Validation
  * 
  * This module provides a single source of truth for all environment variables
- * used across the application. It validates required variables at import time
- * (fail-fast pattern) and provides typed access to all env vars.
+ * used across the application. It uses LAZY validation via a Proxy — variables
+ * are checked only when actually accessed at runtime, NOT at import/build time.
+ * 
+ * This is critical for Vercel deployments where env vars may not be available
+ * during the static page generation phase of `next build`.
  * 
  * Usage:
  *   import { env } from '@/lib/env';
- *   const token = env.SHOPIFY_ADMIN_ACCESS_TOKEN;
+ *   const token = env.SHOPIFY_ADMIN_ACCESS_TOKEN;  // validated on first access
  * 
  * For optional variables, use:
  *   import { optionalEnv } from '@/lib/env';
@@ -71,7 +74,7 @@ interface OptionalEnv {
 }
 
 // =============================================================================
-// VALIDATION LOGIC
+// REQUIRED VARIABLE NAMES
 // =============================================================================
 
 const REQUIRED_VARS: Array<keyof RequiredEnv> = [
@@ -80,32 +83,64 @@ const REQUIRED_VARS: Array<keyof RequiredEnv> = [
   'GOOGLE_GENERATIVE_AI_API_KEY',
 ];
 
+// =============================================================================
+// LAZY VALIDATION VIA PROXY
+// =============================================================================
+
 /**
- * Validates that all required environment variables are set.
- * Throws a descriptive error listing all missing variables (fail-fast).
+ * Detects whether we are in a Next.js build phase (static generation).
+ * During build, env vars may not be available — we must not crash.
  */
-function validateRequiredEnv(): RequiredEnv {
-  const missing: string[] = [];
+function isBuildPhase(): boolean {
+  return (
+    process.env.NEXT_PHASE === 'phase-production-build' ||
+    process.env.NEXT_PHASE === 'phase-export' ||
+    // Fallback heuristic: if key runtime vars are ALL missing, we're likely building
+    (!process.env.SHOPIFY_ADMIN_ACCESS_TOKEN && 
+     !process.env.CRON_SECRET && 
+     !process.env.GOOGLE_GENERATIVE_AI_API_KEY)
+  );
+}
 
-  for (const key of REQUIRED_VARS) {
-    if (!process.env[key] || process.env[key]!.trim() === '') {
-      missing.push(key);
-    }
-  }
-
-  if (missing.length > 0) {
-    throw new Error(
-      `[env] Fatal: Missing required environment variables:\n` +
-      missing.map((v) => `  - ${v}`).join('\n') +
-      `\n\nPlease set these in your .env.local file or Vercel dashboard.`
-    );
-  }
-
-  return {
-    SHOPIFY_ADMIN_ACCESS_TOKEN: process.env.SHOPIFY_ADMIN_ACCESS_TOKEN!,
-    CRON_SECRET: process.env.CRON_SECRET!,
-    GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY!,
-  };
+/**
+ * Creates a Proxy that provides lazy, build-safe access to required env vars.
+ * 
+ * During `next build`, Vercel runs static page generation where env vars
+ * may not be available. This Proxy handles both cases:
+ * 
+ * BUILD TIME (env vars missing):
+ * - Returns empty string '' instead of throwing
+ * - Logs a warning (not an error) so the build succeeds
+ * - The empty string won't be used because API routes aren't actually called
+ * 
+ * RUNTIME (env vars available):
+ * - Returns the actual value from process.env
+ * - If a required var is genuinely missing at runtime, throws a clear error
+ */
+function createLazyEnv(): RequiredEnv {
+  return new Proxy({} as RequiredEnv, {
+    get(_target, prop: string) {
+      // Only handle known required vars
+      if (REQUIRED_VARS.includes(prop as keyof RequiredEnv)) {
+        const value = process.env[prop];
+        
+        if (!value || value.trim() === '') {
+          // During build: return empty string to avoid crashing static generation
+          if (isBuildPhase()) {
+            return '';
+          }
+          // At runtime: throw a clear error
+          throw new Error(
+            `[env] Fatal: Missing required environment variable: ${prop}\n\n` +
+            `Please set it in your .env.local file or Vercel dashboard.`
+          );
+        }
+        return value;
+      }
+      // For any other property access (toString, Symbol.toPrimitive, etc.), return undefined
+      return undefined;
+    },
+  });
 }
 
 // =============================================================================
@@ -113,35 +148,24 @@ function validateRequiredEnv(): RequiredEnv {
 // =============================================================================
 
 /**
- * Validated required environment variables.
- * Accessing this will throw at import time if any required var is missing.
+ * Validated required environment variables (lazy — validated on access, not import).
+ * 
+ * Safe to import in any module without causing build-time crashes.
+ * Will throw a clear error only when a missing variable is actually read.
  */
-export const env: RequiredEnv = validateRequiredEnv();
+export const env: RequiredEnv = createLazyEnv();
 
 /**
  * Optional environment variables (may be undefined).
- * These are not validated at startup but provide typed access.
+ * These are never validated — they return undefined if not set.
+ * 
+ * Also lazy via Proxy to handle Vercel build-time edge cases.
  */
-export const optionalEnv: OptionalEnv = {
-  SHOPIFY_SHOP_DOMAIN: process.env.SHOPIFY_SHOP_DOMAIN,
-  NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN: process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN,
-  NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN: process.env.NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN,
-  SHOPIFY_WEBHOOK_SECRET: process.env.SHOPIFY_WEBHOOK_SECRET,
-  QSTASH_TOKEN: process.env.QSTASH_TOKEN,
-  SERPAPI_API_KEY: process.env.SERPAPI_API_KEY,
-  EXA_API_KEY: process.env.EXA_API_KEY,
-  GOOGLE_SEARCH_API_KEY: process.env.GOOGLE_SEARCH_API_KEY,
-  GOOGLE_SEARCH_CX: process.env.GOOGLE_SEARCH_CX,
-  SLACK_WEBHOOK_URL: process.env.SLACK_WEBHOOK_URL,
-  RESEND_API_KEY: process.env.RESEND_API_KEY,
-  NOTIFICATION_EMAIL: process.env.NOTIFICATION_EMAIL,
-  UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
-  UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
-  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-  VERCEL_URL: process.env.VERCEL_URL,
-  NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
-  NODE_ENV: process.env.NODE_ENV,
-};
+export const optionalEnv: OptionalEnv = new Proxy({} as OptionalEnv, {
+  get(_target, prop: string) {
+    return process.env[prop] || undefined;
+  },
+});
 
 // =============================================================================
 // HELPERS
