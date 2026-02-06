@@ -139,10 +139,10 @@ async function executeDiscoverTopics(
     data: {
       totalResults: searchResults.length,
       topicClusters: grouped.size,
-      topTopics: analysis.topics?.slice(0, 5).map((t: any) => ({
+      topTopics: analysis.allTopics?.slice(0, 5).map((t) => ({
         topic: t.topic,
-        score: t.score,
-        articleCount: t.articleCount,
+        painPoint: t.painPoint,
+        tayaCategory: t.tayaCategory,
       })) ?? [],
     },
     durationMs,
@@ -209,7 +209,7 @@ async function executeFullPipeline(
   const analysis = await analyzeTopics(searchResults);
 
   // Step 2: Pick the top topic and generate an article
-  const topTopic = analysis.topics?.[0];
+  const topTopic = analysis.allTopics?.[0];
   if (!topTopic) {
     return {
       success: true,
