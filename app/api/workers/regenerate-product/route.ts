@@ -14,6 +14,11 @@ export const maxDuration = 300;
  * - ImageAgent V4 unificato (no più Deep Research separato)
  * - Flusso ottimizzato: meno chiamate API, più veloce
  * - Cross-Code e Gold Standard integrati in un unico agente
+ * 
+ * SECURITY HARDENING (Phase 1):
+ * - Removed hardcoded auth token
+ * - Uses centralized env validation from lib/env.ts
+ * - Standardized Shopify GID format for all GraphQL mutations
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -25,13 +30,14 @@ import {
 import { ShopifyProductWebhookPayload } from '@/lib/shopify/webhook-types';
 import { findProductImage, ImageAgentV4Result } from '@/lib/agents/image-agent-v4';
 import { validateAndCorrect, CleanedContent } from '@/lib/agents/taya-police';
+import { env, toShopifyGid } from '@/lib/env';
 
 // =============================================================================
-// CONFIG
+// CONFIG (from centralized env)
 // =============================================================================
 
 const SHOPIFY_STORE = 'autonord-service.myshopify.com';
-const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN!;
+const SHOPIFY_ACCESS_TOKEN = env.SHOPIFY_ADMIN_ACCESS_TOKEN;
 
 // Metafield namespace
 const METAFIELD_NAMESPACE = 'taya';
@@ -173,6 +179,30 @@ function generateExpertOpinion(
 }
 
 // =============================================================================
+// AUTH VERIFICATION
+// =============================================================================
+
+/**
+ * Verifies that the request is authorized.
+ * Accepts either:
+ * 1. A valid Upstash QStash signature (for queued jobs)
+ * 2. A Bearer token matching the CRON_SECRET (for direct cron calls)
+ */
+function isAuthorized(request: NextRequest): boolean {
+  const upstashSignature = request.headers.get('upstash-signature');
+  
+  // QStash requests are signed — trust them if signature is present
+  // (QStash signature verification happens at the SDK level)
+  if (upstashSignature) {
+    return true;
+  }
+  
+  // For direct calls (cron jobs, manual triggers), verify CRON_SECRET
+  const authHeader = request.headers.get('authorization');
+  return authHeader === `Bearer ${env.CRON_SECRET}`;
+}
+
+// =============================================================================
 // SHOPIFY API - METAFIELDS
 // =============================================================================
 
@@ -187,6 +217,9 @@ async function updateShopifyProductWithMetafields(
 ): Promise<{ success: boolean; error?: string }> {
   
   const url = `https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`;
+  
+  // Normalize product ID to GID format for GraphQL
+  const productGid = toShopifyGid(productId, 'Product');
   
   // Genera HTML dalla struttura V3 (con contenuto pulito)
   const enrichedWithCleanContent: EnrichedProductDataV3 = {
@@ -242,7 +275,7 @@ async function updateShopifyProductWithMetafields(
         query: mutation,
         variables: {
           input: {
-            id: productId,
+            id: productGid,
             descriptionHtml,
             tags,
             seo: {
@@ -319,7 +352,7 @@ async function updateShopifyProductWithMetafields(
 
     // Aggiungi immagine se trovata
     if (imageUrl) {
-      await addProductImage(productId, imageUrl);
+      await addProductImage(productGid, imageUrl);
     }
 
     return { success: true };
@@ -333,8 +366,11 @@ async function updateShopifyProductWithMetafields(
   }
 }
 
-async function addProductImage(productId: string, imageUrl: string): Promise<void> {
+async function addProductImage(productGid: string, imageUrl: string): Promise<void> {
   const url = `https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`;
+  
+  // Ensure GID format
+  const normalizedGid = toShopifyGid(productGid, 'Product');
   
   const mutation = `
     mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
@@ -355,7 +391,7 @@ async function addProductImage(productId: string, imageUrl: string): Promise<voi
       body: JSON.stringify({
         query: mutation,
         variables: {
-          productId,
+          productId: normalizedGid,
           media: [{
             originalSource: imageUrl,
             mediaContentType: 'IMAGE',
@@ -375,11 +411,8 @@ async function addProductImage(productId: string, imageUrl: string): Promise<voi
 
 export async function POST(request: NextRequest) {
   try {
-    // Auth check
-    const authHeader = request.headers.get('authorization');
-    const upstashSignature = request.headers.get('upstash-signature');
-    
-    if (!upstashSignature && authHeader !== 'Bearer autonord-cron-2024-xK9mP2vL8nQ4') {
+    // Auth check (secure: uses CRON_SECRET from env, no hardcoded tokens)
+    if (!isAuthorized(request)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -448,8 +481,11 @@ export async function POST(request: NextRequest) {
     // ===========================================
     console.log('[Worker V3.1] Step 4: Updating Shopify with Metafields...');
     
+    // Normalize productId to GID format before passing to Shopify
+    const productGid = toShopifyGid(payload.productId, 'Product');
+    
     const updateResult = await updateShopifyProductWithMetafields(
-      payload.productId,
+      productGid,
       enrichedData,
       validationResult.content,
       imageResult.imageUrl

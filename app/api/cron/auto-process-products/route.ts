@@ -9,14 +9,24 @@ export const maxDuration = 300;
  * Tiene traccia del progresso usando i tag dei prodotti:
  * - Prodotti già processati hanno il tag "AI-Enhanced"
  * - Processa solo prodotti senza questo tag
+ * 
+ * SECURITY HARDENING (Phase 1):
+ * - Removed hardcoded CRON_SECRET fallback
+ * - Uses centralized env validation from lib/env.ts
+ * - Uses VERCEL_URL for dynamic base URL
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { env, optionalEnv } from '@/lib/env';
 
 const SHOPIFY_STORE = 'autonord-service.myshopify.com';
-const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN!;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!;
-const CRON_SECRET = process.env.CRON_SECRET || 'autonord-cron-2024-xK9mP2vL8nQ4';
-const BASE_URL = 'https://autonord-shop.vercel.app';
+const SHOPIFY_ACCESS_TOKEN = env.SHOPIFY_ADMIN_ACCESS_TOKEN;
+
+function getBaseUrl(): string {
+  if (optionalEnv.VERCEL_URL) {
+    return `https://${optionalEnv.VERCEL_URL}`;
+  }
+  return optionalEnv.NEXT_PUBLIC_BASE_URL || 'https://autonord-shop.vercel.app';
+}
 
 // Numero di prodotti da processare per ogni esecuzione del cron
 // 1 prodotto per run perché Claude con ricerca web richiede ~2-3 minuti
@@ -152,11 +162,11 @@ async function processProduct(product: ShopifyProduct): Promise<{ success: boole
   };
 
   try {
-    const response = await fetch(`${BASE_URL}/api/workers/regenerate-product`, {
+    const response = await fetch(`${getBaseUrl()}/api/workers/regenerate-product`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${CRON_SECRET}`,
+        'Authorization': `Bearer ${env.CRON_SECRET}`,
       },
       body: JSON.stringify(payload),
     });
@@ -180,7 +190,7 @@ function sleep(ms: number): Promise<void> {
 export async function GET(request: NextRequest) {
   // Verifica autorizzazione per Vercel Cron
   const authHeader = request.headers.get('authorization');
-  if (authHeader !== `Bearer ${CRON_SECRET}`) {
+  if (authHeader !== `Bearer ${env.CRON_SECRET}`) {
     // Vercel Cron usa CRON_SECRET automaticamente
     const cronSecret = request.headers.get('x-vercel-cron-secret');
     if (!cronSecret) {
@@ -200,9 +210,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  // Verifica autorizzazione
+  // Verifica autorizzazione con CRON_SECRET da env
   const authHeader = request.headers.get('authorization');
-  if (authHeader !== `Bearer ${CRON_SECRET}`) {
+  if (authHeader !== `Bearer ${env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

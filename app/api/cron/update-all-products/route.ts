@@ -1,16 +1,25 @@
 /**
  * Endpoint per aggiornare tutte le schede prodotto esistenti
  * Legge i prodotti da Shopify e accoda l'aggiornamento con QStash
+ * 
+ * SECURITY HARDENING (Phase 1):
+ * - Removed hardcoded CRON_SECRET
+ * - Uses centralized env validation from lib/env.ts
+ * - Uses VERCEL_URL for dynamic base URL
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@upstash/qstash';
+import { env, optionalEnv } from '@/lib/env';
 
 const SHOPIFY_STORE = 'autonord-service.myshopify.com';
-const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN!;
-const QSTASH_TOKEN = process.env.QSTASH_TOKEN!;
+const SHOPIFY_ACCESS_TOKEN = env.SHOPIFY_ADMIN_ACCESS_TOKEN;
 
-const CRON_SECRET = 'autonord-cron-2024-xK9mP2vL8nQ4';
-const BASE_URL = 'https://autonord-shop.vercel.app';
+function getBaseUrl(): string {
+  if (optionalEnv.VERCEL_URL) {
+    return `https://${optionalEnv.VERCEL_URL}`;
+  }
+  return optionalEnv.NEXT_PUBLIC_BASE_URL || 'https://autonord-shop.vercel.app';
+}
 
 interface ShopifyProduct {
   id: string;
@@ -101,9 +110,9 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    // Verifica autorizzazione
+    // Verifica autorizzazione con CRON_SECRET da env
     const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${CRON_SECRET}`) {
+    if (authHeader !== `Bearer ${env.CRON_SECRET}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -118,10 +127,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Inizializza QStash
-    const qstash = new Client({ token: QSTASH_TOKEN });
+    const qstashToken = optionalEnv.QSTASH_TOKEN;
+    if (!qstashToken) {
+      return NextResponse.json({
+        success: false,
+        error: 'QSTASH_TOKEN is not configured',
+      }, { status: 500 });
+    }
+    const qstash = new Client({ token: qstashToken });
     
     // URL del worker
-    const workerUrl = `${BASE_URL}/api/workers/regenerate-product`;
+    const workerUrl = `${getBaseUrl()}/api/workers/regenerate-product`;
 
     let queued = 0;
     let failed = 0;
