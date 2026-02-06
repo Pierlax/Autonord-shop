@@ -9,25 +9,12 @@
  * - Natural Italian with personality
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
 
 const log = loggers.blog;
 import { TopicAnalysis } from './analysis';
 
-// Lazy initialization of Anthropic client
-let anthropicClient: Anthropic | null = null;
-
-function getAnthropicClient(): Anthropic {
-  if (!anthropicClient) {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new Error('ANTHROPIC_API_KEY environment variable is not set');
-    }
-    anthropicClient = new Anthropic({ apiKey });
-  }
-  return anthropicClient;
-}
 
 export interface ArticleDraft {
   title: string;
@@ -176,19 +163,13 @@ export async function generateArticleDraft(topic: TopicAnalysis): Promise<Articl
   const finalPrompt = prompt + styleInstruction + styleExamples[openingStyle];
 
   try {
-    const anthropic = getAnthropicClient();
-    
-    const message = await anthropic.messages.create({
-      model: 'claude-opus-4-1-20250805',
-      max_tokens: 5000,
-      temperature: 0.8, // Higher temperature for more creative writing
-      messages: [
-        { role: 'user', content: finalPrompt },
-      ],
+    const result = await generateTextSafe({
+      system: 'Sei un giornalista tecnico freelance specializzato in elettroutensili professionali. Rispondi sempre in formato JSON valido.',
+      prompt: finalPrompt,
+      maxTokens: 5000,
+      temperature: 0.8,
     });
-
-    const textBlock = message.content.find(block => block.type === 'text');
-    const content = textBlock?.type === 'text' ? textBlock.text : null;
+    const content = result.text;
     
     if (!content) {
       throw new Error('Empty response from Claude');

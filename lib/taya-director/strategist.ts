@@ -8,7 +8,7 @@
  * - Products without AI enrichment
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
 
 const log = loggers.taya;
@@ -18,9 +18,6 @@ import {
   DirectorProduct,
   DirectorArticle,
 } from './types';
-
-const MODEL = 'claude-opus-4-20250514';
-
 /**
  * Analyze catalog and existing content to find gaps
  */
@@ -200,10 +197,6 @@ async function getAISuggestions(
   articles: DirectorArticle[],
   existingGaps: ContentGap[]
 ): Promise<ContentGap[]> {
-  const anthropic = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
-
   // Build catalog summary
   const categories = Array.from(new Set(products.map(p => p.productType).filter(Boolean)));
   const brands = Array.from(new Set(products.map(p => p.vendor).filter(Boolean)));
@@ -243,13 +236,11 @@ ${existingGaps.slice(0, 5).map(g => `- ${g.description}`).join('\n')}
 Suggerisci 2-3 articoli TAYA che mancano e sarebbero utili ai clienti.`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 1000,
-      messages: [{ role: 'user', content: userPrompt }],
-      system: systemPrompt,
+    const response = await generateTextSafe({
+      prompt,
+      maxTokens: 1000,
+      temperature: 0.5,
     });
-
     const textBlock = response.content.find(block => block.type === 'text');
     if (!textBlock || textBlock.type !== 'text') {
       return [];

@@ -8,7 +8,7 @@
  * - Technical spec tables
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
 
 const log = loggers.blog;
@@ -84,9 +84,6 @@ async function searchWhitelistSources(
   
   // For now, we'll use Claude to extract specs from known sources
   // In production, this would scrape or use APIs
-  
-  const anthropic = new Anthropic();
-  
   const prompt = `Sei un ricercatore tecnico. Cerca informazioni su "${productName}" dalle seguenti fonti autorevoli:
 
 FONTI PRIORITARIE:
@@ -117,13 +114,12 @@ Rispondi in JSON:
 IMPORTANTE: Genera dati plausibili e realistici per un elettroutensile professionale.`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-20250514',
-      max_tokens: 2000,
-      messages: [{ role: 'user', content: prompt }],
+    const response = await generateTextSafe({
+      prompt,
+      maxTokens: 2000,
+      temperature: 0.5,
     });
-    
-    const content = response.content[0];
+    const content = response.text;
     if (content.type !== 'text') return { specs, sources };
     
     const jsonMatch = content.text.match(/\{[\s\S]*\}/);
@@ -163,9 +159,6 @@ async function searchComparisonSpecs(
 ): Promise<{ specs: TechnicalSpec[]; sources: ArticleData['sources'] }> {
   const specs: TechnicalSpec[] = [];
   const sources: ArticleData['sources'] = [];
-  
-  const anthropic = new Anthropic();
-  
   const prompt = `Sei un ricercatore tecnico. Confronta "${product1}" vs "${product2}" usando dati da:
 
 FONTI PRIORITARIE:
@@ -196,13 +189,12 @@ Rispondi in JSON:
 }`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-20250514',
-      max_tokens: 2500,
-      messages: [{ role: 'user', content: prompt }],
+    const response = await generateTextSafe({
+      prompt,
+      maxTokens: 2500,
+      temperature: 0.5,
     });
-    
-    const content = response.content[0];
+    const content = response.text;
     if (content.type !== 'text') return { specs, sources };
     
     const jsonMatch = content.text.match(/\{[\s\S]*\}/);
@@ -397,20 +389,13 @@ export async function generateEnhancedArticle(
     .replace('{sources}', sources.map(s => `- ${s.name}: ${s.dataUsed}`).join('\n'));
   
   // 6. Generate with Claude
-  const anthropic = new Anthropic();
-  
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-1-20250805',
-      max_tokens: 6000,
+    const response = await generateTextSafe({
+      prompt,
+      maxTokens: 6000,
       temperature: 0.7,
-      messages: [{ role: 'user', content: prompt }],
     });
-    
-    const content = response.content[0];
-    if (content.type !== 'text') {
-      throw new Error('Unexpected response type');
-    }
+    const content = response.text;
     
     // Parse JSON response
     const jsonMatch = content.text.match(/\{[\s\S]*\}/);

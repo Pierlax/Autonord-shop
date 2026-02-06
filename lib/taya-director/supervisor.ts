@@ -8,7 +8,7 @@
  * - Actionability: Helps customer decide
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
 
 const log = loggers.taya;
@@ -26,9 +26,6 @@ import {
   checkKrugCompliance,
   BANNED_PHRASES,
 } from '../core-philosophy';
-
-const MODEL = 'claude-opus-4-20250514';
-
 /**
  * Evaluate a single product's content quality
  */
@@ -36,10 +33,6 @@ export async function evaluateProductQuality(
   product: DirectorProduct,
   config: DirectorConfig = DEFAULT_CONFIG
 ): Promise<QualityEvaluation> {
-  const anthropic = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
-
   // Build content to evaluate
   const contentToEvaluate = buildContentString(product);
 
@@ -116,15 +109,11 @@ ${product.metafields.aiDescription || '(non presente)'}
 Valuta secondo i principi TAYA e rispondi SOLO con il JSON richiesto.`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 1500,
-      messages: [
-        { role: 'user', content: userPrompt }
-      ],
-      system: systemPrompt,
+    const response = await generateTextSafe({
+      prompt,
+      maxTokens: 1500,
+      temperature: 0.5,
     });
-
     // Extract text response
     const textBlock = response.content.find(block => block.type === 'text');
     if (!textBlock || textBlock.type !== 'text') {

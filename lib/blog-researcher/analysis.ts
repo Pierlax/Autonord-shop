@@ -8,25 +8,12 @@
  * - Strategic topic selection for maximum impact
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
 
 const log = loggers.blog;
 import { SearchResult } from './search';
 
-// Lazy initialization of Anthropic client
-let anthropicClient: Anthropic | null = null;
-
-function getAnthropicClient(): Anthropic {
-  if (!anthropicClient) {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new Error('ANTHROPIC_API_KEY environment variable is not set');
-    }
-    anthropicClient = new Anthropic({ apiKey });
-  }
-  return anthropicClient;
-}
 
 export interface TopicAnalysis {
   topic: string;
@@ -143,19 +130,13 @@ ${r.content ? `> ${r.content.slice(0, 400)}${r.content.length > 400 ? '...' : ''
   const prompt = ANALYSIS_PROMPT.replace('{posts}', postsSummary);
 
   try {
-    const anthropic = getAnthropicClient();
-    
-    const message = await anthropic.messages.create({
-      model: 'claude-opus-4-1-20250805',
-      max_tokens: 2500,
-      temperature: 0.3, // Lower temperature for more consistent analysis
-      messages: [
-        { role: 'user', content: prompt },
-      ],
+    const result = await generateTextSafe({
+      system: 'Sei un content strategist senior specializzato in content marketing B2B per il settore edilizia/elettroutensili. Rispondi sempre in formato JSON valido.',
+      prompt,
+      maxTokens: 2500,
+      temperature: 0.3,
     });
-
-    const textBlock = message.content.find(block => block.type === 'text');
-    const content = textBlock?.type === 'text' ? textBlock.text : null;
+    const content = result.text;
     
     if (!content) {
       throw new Error('Empty response from Claude');

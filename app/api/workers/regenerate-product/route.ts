@@ -25,7 +25,7 @@ export const maxDuration = 300;
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
 
 // Phase 1 imports (security)
 import { env, toShopifyGid } from '@/lib/env';
@@ -488,10 +488,6 @@ export async function POST(request: NextRequest) {
     const startTime = Date.now();
 
     // Initialize Anthropic client for TwoPhaseQA
-    const anthropic = new Anthropic({
-      apiKey: env.ANTHROPIC_API_KEY,
-    });
-
     // ===========================================
     // STEP 1: UniversalRAG — Search verified info
     // ===========================================

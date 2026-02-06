@@ -1,39 +1,21 @@
 /**
  * Autonomous TAYA Developer
  * 
- * Questo script usa Claude Opus 4.1 con i tool nativi (Bash + Text Editor)
+ * Questo script usa Gemini via ai-client.ts con tool nativi (Bash + Text Editor)
  * per scansionare il codice, identificare violazioni delle regole TAYA,
  * e creare automaticamente una Pull Request con le correzioni.
  * 
  * Esecuzione: npx tsx scripts/taya-improver.ts
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
 // Configurazione
-const MODEL = 'claude-opus-4-1-20250805';
 const MAX_TOKENS = 8192;
 const PROJECT_ROOT = process.cwd();
-
-// Inizializza client Anthropic
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
-
-// Tool definitions - using 'as any' to bypass strict type checking for beta tools
-const tools = [
-  {
-    type: 'bash_20250124',
-    name: 'bash',
-  },
-  {
-    type: 'text_editor_20250728',
-    name: 'str_replace_based_edit_tool',
-  },
-] as any;
 
 // Stato della sessione bash (simulato)
 let currentWorkingDir = PROJECT_ROOT;
@@ -43,156 +25,106 @@ let currentWorkingDir = PROJECT_ROOT;
  */
 function executeBashCommand(command: string): string {
   try {
-    console.log(`\n🔧 Executing: ${command}`);
-    const output = execSync(command, {
+    const result = execSync(command, {
       cwd: currentWorkingDir,
       encoding: 'utf-8',
-      maxBuffer: 10 * 1024 * 1024, // 10MB
-      timeout: 60000, // 60 secondi
+      maxBuffer: 1024 * 1024 * 10, // 10MB
+      timeout: 120000, // 2 min
     });
-    return output || '(comando eseguito con successo, nessun output)';
+    return result;
   } catch (error: any) {
-    return `Errore: ${error.message}\nStderr: ${error.stderr || ''}\nStdout: ${error.stdout || ''}`;
+    return `Error: ${error.message}\nStdout: ${error.stdout || ''}\nStderr: ${error.stderr || ''}`;
   }
 }
 
 /**
- * Gestisce le operazioni del text editor
+ * Esegue un'operazione di text editing
  */
-function handleTextEditorCommand(input: any): string {
+function executeTextEdit(input: any): string {
   const { command, path: filePath } = input;
-  const fullPath = path.isAbsolute(filePath) ? filePath : path.join(currentWorkingDir, filePath);
+  const fullPath = path.resolve(currentWorkingDir, filePath);
 
   try {
-    switch (command) {
-      case 'view': {
-        if (fs.statSync(fullPath).isDirectory()) {
-          const files = fs.readdirSync(fullPath);
-          return `Directory contents of ${filePath}:\n${files.join('\n')}`;
-        }
-        const content = fs.readFileSync(fullPath, 'utf-8');
-        const lines = content.split('\n');
-        
-        if (input.view_range) {
-          const [start, end] = input.view_range;
-          const endLine = end === -1 ? lines.length : end;
-          const selectedLines = lines.slice(start - 1, endLine);
-          return selectedLines.map((line, i) => `${start + i}: ${line}`).join('\n');
-        }
-        
-        return lines.map((line, i) => `${i + 1}: ${line}`).join('\n');
-      }
-
-      case 'str_replace': {
-        const content = fs.readFileSync(fullPath, 'utf-8');
-        const { old_str, new_str } = input;
-        
-        if (!content.includes(old_str)) {
-          return `Errore: La stringa da sostituire non è stata trovata nel file.\nCercato: "${old_str.substring(0, 100)}..."`;
-        }
-        
-        const newContent = content.replace(old_str, new_str);
-        fs.writeFileSync(fullPath, newContent, 'utf-8');
-        return `File ${filePath} modificato con successo.`;
-      }
-
-      case 'create': {
-        const { file_text } = input;
-        const dir = path.dirname(fullPath);
-        if (!fs.existsSync(dir)) {
-          fs.mkdirSync(dir, { recursive: true });
-        }
-        fs.writeFileSync(fullPath, file_text, 'utf-8');
-        return `File ${filePath} creato con successo.`;
-      }
-
-      case 'insert': {
-        const content = fs.readFileSync(fullPath, 'utf-8');
-        const lines = content.split('\n');
-        const { insert_line, new_str } = input;
-        lines.splice(insert_line, 0, new_str);
-        fs.writeFileSync(fullPath, lines.join('\n'), 'utf-8');
-        return `Testo inserito alla linea ${insert_line} in ${filePath}.`;
-      }
-
-      default:
-        return `Comando non riconosciuto: ${command}`;
+    if (command === 'view') {
+      const content = fs.readFileSync(fullPath, 'utf-8');
+      const lines = content.split('\n');
+      const start = (input.view_range?.[0] || 1) - 1;
+      const end = input.view_range?.[1] || lines.length;
+      return lines.slice(start, end).map((l: string, i: number) => `${start + i + 1}\t${l}`).join('\n');
     }
+
+    if (command === 'str_replace') {
+      let content = fs.readFileSync(fullPath, 'utf-8');
+      if (!content.includes(input.old_str)) {
+        return `Error: old_str not found in ${filePath}`;
+      }
+      content = content.replace(input.old_str, input.new_str);
+      fs.writeFileSync(fullPath, content);
+      return `Successfully replaced text in ${filePath}`;
+    }
+
+    if (command === 'create') {
+      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+      fs.writeFileSync(fullPath, input.file_text);
+      return `Created ${filePath}`;
+    }
+
+    return `Unknown command: ${command}`;
   } catch (error: any) {
-    return `Errore: ${error.message}`;
+    return `Error: ${error.message}`;
   }
 }
 
 /**
- * Processa una tool call di Claude
+ * Processa una tool call e ritorna il risultato
  */
-function processToolCall(toolName: string, toolInput: any): string {
-  console.log(`\n📦 Tool: ${toolName}`);
-  console.log(`   Input: ${JSON.stringify(toolInput).substring(0, 200)}...`);
-
+function processToolCall(toolName: string, input: any): string {
   if (toolName === 'bash') {
-    if (toolInput.restart) {
-      currentWorkingDir = PROJECT_ROOT;
-      return 'Sessione bash riavviata.';
+    console.log(`\n🔧 Bash: ${input.command}`);
+    // Gestisci cd
+    if (input.command.startsWith('cd ')) {
+      const newDir = input.command.replace('cd ', '').trim();
+      currentWorkingDir = path.resolve(currentWorkingDir, newDir);
+      return `Changed directory to ${currentWorkingDir}`;
     }
-    return executeBashCommand(toolInput.command);
+    return executeBashCommand(input.command);
   }
 
   if (toolName === 'str_replace_based_edit_tool') {
-    return handleTextEditorCommand(toolInput);
+    console.log(`\n📝 Edit: ${input.command} on ${input.path}`);
+    return executeTextEdit(input);
   }
 
-  return `Tool non riconosciuto: ${toolName}`;
+  return `Unknown tool: ${toolName}`;
 }
 
-/**
- * Esegue il loop dell'agent
- */
-async function runAgent(): Promise<void> {
-  console.log('🚀 Avvio Autonomous TAYA Developer');
-  console.log(`📁 Working directory: ${PROJECT_ROOT}`);
-  console.log(`🤖 Model: ${MODEL}`);
-  console.log('─'.repeat(60));
+// =============================================================================
+// MAIN
+// =============================================================================
 
-  // Leggi le regole TAYA
-  const tayaRulesPath = path.join(PROJECT_ROOT, 'TAYA_RULES.md');
-  if (!fs.existsSync(tayaRulesPath)) {
-    console.error('❌ TAYA_RULES.md non trovato nella root del progetto');
-    process.exit(1);
-  }
-  const tayaRules = fs.readFileSync(tayaRulesPath, 'utf-8');
+async function main() {
+  console.log('🚀 TAYA Autonomous Developer');
+  console.log(`📂 Project root: ${PROJECT_ROOT}`);
+  console.log('═'.repeat(60));
 
-  // Prompt iniziale
-  const systemPrompt = `Sei un developer esperto specializzato nella filosofia "They Ask You Answer" (TAYA).
-Il tuo compito è migliorare il codice del sito e-commerce Autonord Service per aderire meglio ai principi TAYA.
+  const userPrompt = `Sei un developer senior che lavora sul progetto Autonord-shop.
+Il progetto segue la filosofia "They Ask, You Answer" (TAYA) di Marcus Sheridan.
 
-REGOLE IMPORTANTI:
-1. Fai UNA SOLA modifica per esecuzione (la più impattante)
-2. Dopo la modifica, esegui "pnpm run build" per verificare che il codice compili
-3. Se il build fallisce, correggi l'errore
-4. Spiega chiaramente quale regola TAYA stavi applicando
+REGOLE TAYA DA VERIFICARE:
+1. Mai usare frasi marketing vuote (vedi BANNED_PHRASES in lib/agents/taya-police.ts)
+2. Mai mentire o esagerare sulle specifiche dei prodotti
+3. Sempre includere pro E contro (mai solo lati positivi)
+4. Sempre rispondere alle domande scomode (prezzi, problemi, confronti)
+5. Mai usare "questo prodotto" o "questo articolo" - nominare sempre il prodotto
+6. Mai usare superlativi vuoti (migliore, eccezionale, straordinario)
+7. Sempre citare dati specifici quando possibile
 
-Hai accesso a:
-- bash: per eseguire comandi shell (git, npm, ecc.)
-- str_replace_based_edit_tool: per leggere e modificare file
-
-Il progetto è un sito Next.js con:
-- /app: pagine e route
-- /components: componenti React
-- /lib: utility e API
-
-Procedi con metodo:
-1. Prima leggi TAYA_RULES.md per capire le regole
-2. Scansiona i file principali (/app/page.tsx, /components/*)
-3. Identifica UNA violazione
-4. Correggi il codice
-5. Verifica con build`;
-
-  const userPrompt = `Ecco le regole TAYA che devi seguire:
-
-${tayaRules}
-
----
+REGOLE CODICE:
+1. TypeScript strict mode
+2. Niente any (usa unknown + type guard)
+3. Niente console.log in produzione (usa il logger)
+4. Gestione errori con try/catch specifici
+5. Variabili d'ambiente validate in lib/env.ts
 
 Ora:
 1. Crea un nuovo branch git con nome univoco (es: taya-improvement-TIMESTAMP)
@@ -204,14 +136,10 @@ Ora:
 
 Inizia ora.`;
 
-  // Messaggi iniziali
-  let messages: Anthropic.MessageParam[] = [
-    { role: 'user', content: userPrompt },
-  ];
-
-  // Loop dell'agent
+  // Loop dell'agent - iterative refinement
   let iterations = 0;
-  const maxIterations = 20; // Limite di sicurezza
+  const maxIterations = 20;
+  let conversationHistory = '';
 
   while (iterations < maxIterations) {
     iterations++;
@@ -220,50 +148,60 @@ Inizia ora.`;
     console.log('═'.repeat(60));
 
     try {
-      const response = await anthropic.messages.create({
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
-        system: systemPrompt,
-        tools: tools,
-        messages: messages,
+      const prompt = iterations === 1 
+        ? userPrompt 
+        : `${userPrompt}\n\n--- CONVERSAZIONE PRECEDENTE ---\n${conversationHistory}\n\nContinua da dove eri rimasto. Se hai finito, rispondi con "TASK_COMPLETE".`;
+
+      const result = await generateTextSafe({
+        system: 'Sei un developer senior che analizza e corregge codice. Rispondi con comandi bash o operazioni di editing. Quando hai finito, scrivi TASK_COMPLETE.',
+        prompt,
+        maxTokens: MAX_TOKENS,
+        temperature: 0.3,
       });
 
-      console.log(`\n🤖 Stop reason: ${response.stop_reason}`);
+      const responseText = result.text;
+      console.log(`\n💬 AI:\n${responseText.substring(0, 2000)}${responseText.length > 2000 ? '...' : ''}`);
 
-      // Processa la risposta
-      let hasToolUse = false;
-      const toolResults: Anthropic.ToolResultBlockParam[] = [];
-
-      for (const block of response.content) {
-        if (block.type === 'text') {
-          console.log(`\n💬 Claude:\n${block.text}`);
-        } else if (block.type === 'tool_use') {
-          hasToolUse = true;
-          const result = processToolCall(block.name, block.input);
-          console.log(`\n📤 Result: ${result.substring(0, 500)}${result.length > 500 ? '...' : ''}`);
-          
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: block.id,
-            content: result,
-          });
-        }
-      }
-
-      // Se non ci sono tool calls, abbiamo finito
-      if (!hasToolUse || response.stop_reason === 'end_turn') {
+      // Check if task is complete
+      if (responseText.includes('TASK_COMPLETE')) {
         console.log('\n✅ Agent ha completato il task');
         break;
       }
 
-      // Aggiungi la risposta dell'assistente e i risultati dei tool
-      messages.push({ role: 'assistant', content: response.content });
-      messages.push({ role: 'user', content: toolResults });
+      // Extract and execute bash commands from the response
+      const bashCommands = responseText.match(/```bash\n([\s\S]*?)```/g);
+      if (bashCommands) {
+        for (const cmdBlock of bashCommands) {
+          const cmd = cmdBlock.replace(/```bash\n/, '').replace(/```/, '').trim();
+          console.log(`\n🔧 Executing: ${cmd}`);
+          const output = executeBashCommand(cmd);
+          console.log(`📤 Output: ${output.substring(0, 500)}`);
+          conversationHistory += `\nCommand: ${cmd}\nOutput: ${output.substring(0, 500)}\n`;
+        }
+      }
+
+      // Extract and execute edit operations
+      const editBlocks = responseText.match(/```edit\n([\s\S]*?)```/g);
+      if (editBlocks) {
+        for (const editBlock of editBlocks) {
+          const editContent = editBlock.replace(/```edit\n/, '').replace(/```/, '').trim();
+          try {
+            const editOp = JSON.parse(editContent);
+            const output = executeTextEdit(editOp);
+            console.log(`📝 Edit result: ${output}`);
+            conversationHistory += `\nEdit: ${JSON.stringify(editOp).substring(0, 200)}\nResult: ${output}\n`;
+          } catch {
+            console.log(`⚠️ Could not parse edit block`);
+          }
+        }
+      }
+
+      conversationHistory += `\nAI Response: ${responseText.substring(0, 500)}\n`;
 
     } catch (error: any) {
       console.error(`\n❌ Errore API: ${error.message}`);
       
-      if (error.status === 429) {
+      if (error.message?.includes('429') || error.message?.includes('rate')) {
         console.log('⏳ Rate limit raggiunto, attendo 60 secondi...');
         await new Promise(resolve => setTimeout(resolve, 60000));
         continue;
@@ -280,5 +218,4 @@ Inizia ora.`;
   console.log('\n🏁 TAYA Developer terminato');
 }
 
-// Esegui
-runAgent().catch(console.error);
+main().catch(console.error);

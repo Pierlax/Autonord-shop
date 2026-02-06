@@ -9,9 +9,11 @@
  * - More precise and verifiable content
  * - Reduced hallucinations
  * - Better structured data extraction
+ * 
+ * AI Engine: Google Gemini via ai-client.ts (rate-limited, auto-retry)
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
 
 const log = loggers.shopify;
@@ -106,8 +108,7 @@ export async function extractAtomicFacts(
     brand: string;
     sku: string;
     sourceData?: string; // Raw data from research
-  },
-  anthropic: Anthropic
+  }
 ): Promise<SimpleQAResult> {
   const startTime = Date.now();
   
@@ -154,25 +155,21 @@ Rispondi in formato JSON:
   ]
 }`;
 
-  const response = await anthropic.messages.create({
-    model: 'claude-opus-4-20250514',
-    max_tokens: 2000,
-    messages: [{ role: 'user', content: prompt }],
+  const result = await generateTextSafe({
+    system: 'Sei un tecnico esperto di elettroutensili professionali. Rispondi sempre in formato JSON valido.',
+    prompt,
+    maxTokens: 2000,
+    temperature: 0.3,
   });
-
-  const content = response.content[0];
-  if (content.type !== 'text') {
-    throw new Error('Unexpected response type from Claude');
-  }
 
   // Parse JSON response
   let parsed: { facts: Array<{ question: string; answer: string; source: string; confidence: string }> };
   try {
-    const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+    const jsonMatch = result.text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON found');
     parsed = JSON.parse(jsonMatch[0]);
   } catch {
-    log.error('Failed to parse Simple QA response:', content.text);
+    log.error('Failed to parse Simple QA response:', result.text);
     parsed = { facts: [] };
   }
 
@@ -226,8 +223,7 @@ export async function performComplexReasoning(
     brand: string;
     category: string;
   },
-  simpleQA: SimpleQAResult,
-  anthropic: Anthropic
+  simpleQA: SimpleQAResult
 ): Promise<ComplexQAResult> {
   const startTime = Date.now();
 
@@ -285,21 +281,17 @@ Rispondi in formato JSON:
   }
 }`;
 
-  const response = await anthropic.messages.create({
-    model: 'claude-opus-4-20250514',
-    max_tokens: 2000,
-    messages: [{ role: 'user', content: prompt }],
+  const result = await generateTextSafe({
+    system: 'Sei un esperto tecnico di elettroutensili professionali. Rispondi sempre in formato JSON valido.',
+    prompt,
+    maxTokens: 2000,
+    temperature: 0.5,
   });
 
-  const content = response.content[0];
-  if (content.type !== 'text') {
-    throw new Error('Unexpected response type from Claude');
-  }
-
   // Parse JSON response
-  let parsed: ComplexQAResult['suitability'] & ComplexQAResult['comparison'] & ComplexQAResult['recommendation'];
+  let parsed: any;
   try {
-    const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+    const jsonMatch = result.text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON found');
     const raw = JSON.parse(jsonMatch[0]);
     parsed = {
@@ -308,7 +300,7 @@ Rispondi in formato JSON:
       ...raw.recommendation,
     };
   } catch {
-    log.error('Failed to parse Complex QA response:', content.text);
+    log.error('Failed to parse Complex QA response:', result.text);
     // Return defaults
     return {
       suitability: {
@@ -362,8 +354,7 @@ export async function runTwoPhaseQA(
     sku: string;
     category: string;
     sourceData?: string;
-  },
-  anthropic: Anthropic
+  }
 ): Promise<TwoPhaseQAResult> {
   const totalStartTime = Date.now();
 
@@ -371,12 +362,12 @@ export async function runTwoPhaseQA(
 
   // Phase 1: Simple QA - Extract atomic facts
   log.info(`[TwoPhaseQA] Phase 1: Extracting atomic facts...`);
-  const simpleQA = await extractAtomicFacts(productData, anthropic);
+  const simpleQA = await extractAtomicFacts(productData);
   log.info(`[TwoPhaseQA] Phase 1 complete: ${simpleQA.rawFacts.filter(f => f.verified).length} verified facts`);
 
   // Phase 2: Complex QA - Relational reasoning
   log.info(`[TwoPhaseQA] Phase 2: Performing complex reasoning...`);
-  const complexQA = await performComplexReasoning(productData, simpleQA, anthropic);
+  const complexQA = await performComplexReasoning(productData, simpleQA);
   log.info(`[TwoPhaseQA] Phase 2 complete: confidence=${complexQA.recommendation.confidence}`);
 
   return {

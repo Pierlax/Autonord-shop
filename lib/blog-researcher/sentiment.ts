@@ -5,7 +5,7 @@
  * problems, and sentiment about products
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
 
 const log = loggers.blog;
@@ -405,8 +405,6 @@ async function analyzePostsWithClaude(
   posts: ForumPost[],
   productName: string
 ): Promise<SentimentResult> {
-  const anthropic = new Anthropic();
-  
   // Prepare posts summary for Claude
   const postsSummary = posts.slice(0, 30).map((post, i) => 
     `[Post ${i + 1}] Source: ${post.source}
@@ -449,21 +447,12 @@ Rispondi in formato JSON:
 }`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-20250514',
-      max_tokens: 2000,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
+    const response = await generateTextSafe({
+      prompt,
+      maxTokens: 2000,
+      temperature: 0.5,
     });
-    
-    const content = response.content[0];
-    if (content.type !== 'text') {
-      throw new Error('Unexpected response type');
-    }
+    const content = response.text;
     
     // Extract JSON from response
     const jsonMatch = content.text.match(/\{[\s\S]*\}/);
@@ -497,8 +486,6 @@ async function extractProblems(
   posts: ForumPost[],
   productName: string
 ): Promise<ProblemReport[]> {
-  const anthropic = new Anthropic();
-  
   const problemPosts = posts.filter(post => {
     const text = `${post.title} ${post.content}`.toLowerCase();
     return (
@@ -540,13 +527,12 @@ Rispondi in JSON:
 }`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-20250514',
-      max_tokens: 1500,
-      messages: [{ role: 'user', content: prompt }],
+    const response = await generateTextSafe({
+      prompt,
+      maxTokens: 1500,
+      temperature: 0.5,
     });
-    
-    const content = response.content[0];
+    const content = response.text;
     if (content.type !== 'text') return [];
     
     const jsonMatch = content.text.match(/\{[\s\S]*\}/);

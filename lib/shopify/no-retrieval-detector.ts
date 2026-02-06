@@ -12,7 +12,7 @@
  * Detecting these cases saves API costs and reduces latency.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
 
 const log = loggers.shopify;
@@ -156,10 +156,6 @@ export async function detectRetrievalNeedLLM(
   query: string,
   productContext?: { title: string; vendor: string }
 ): Promise<RetrievalDecision> {
-  const anthropic = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
-
   const systemPrompt = `Sei un classificatore per un sistema RAG di e-commerce elettroutensili.
 Determina se la query richiede retrieval esterno o se la conoscenza parametrica del modello è sufficiente.
 
@@ -186,19 +182,12 @@ Rispondi SOLO con JSON:
 }`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-20250514',
-      max_tokens: 300,
-      messages: [
-        { role: 'user', content: `Query: "${query}"${productContext ? `\nContesto: ${productContext.title} (${productContext.vendor})` : ''}` }
-      ],
-      system: systemPrompt,
+    const response = await generateTextSafe({
+      prompt,
+      maxTokens: 300,
+      temperature: 0.5,
     });
-
-    const content = response.content[0];
-    if (content.type !== 'text') {
-      throw new Error('Unexpected response type');
-    }
+    const content = response.text;
 
     const jsonMatch = content.text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
@@ -236,10 +225,6 @@ export async function generateParametricResponse(
   query: string,
   knowledgeType: KnowledgeType
 ): Promise<{ response: string; confidence: number }> {
-  const anthropic = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
-
   const systemPrompts: Record<KnowledgeType, string> = {
     domain_knowledge: `Sei un esperto di elettroutensili professionali. Rispondi alla domanda usando la tua conoscenza del dominio.
 Sii preciso e tecnico ma accessibile. Se la domanda richiede dati specifici di un prodotto che non conosci, indicalo chiaramente.`,
@@ -256,19 +241,12 @@ Basati su conoscenze consolidate, evita speculazioni su prodotti specifici.`,
   };
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-20250514',
-      max_tokens: 1000,
-      messages: [
-        { role: 'user', content: query }
-      ],
-      system: systemPrompts[knowledgeType],
+    const response = await generateTextSafe({
+      prompt,
+      maxTokens: 1000,
+      temperature: 0.5,
     });
-
-    const content = response.content[0];
-    if (content.type !== 'text') {
-      throw new Error('Unexpected response type');
-    }
+    const content = response.text;
 
     return {
       response: content.text,

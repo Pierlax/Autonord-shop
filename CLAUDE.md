@@ -29,7 +29,8 @@ pnpm lint
 |----------|----------|-------------|
 | `SHOPIFY_ADMIN_ACCESS_TOKEN` | Yes | Shopify Admin API token |
 | `CRON_SECRET` | Yes | Auth token for cron/worker endpoints |
-| `ANTHROPIC_API_KEY` | Yes | Claude AI API key |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | Yes | Google Gemini API key (primary AI engine) |
+| `ANTHROPIC_API_KEY` | No | ~~Deprecated~~ — Was used for Claude, now replaced by Gemini |
 | `SERPAPI_API_KEY` | No | SerpAPI for web search (preferred) |
 | `EXA_API_KEY` | No | Exa.ai for neural search (fallback) |
 | `GOOGLE_SEARCH_API_KEY` | No | Google Custom Search (fallback) |
@@ -46,8 +47,55 @@ pnpm lint
 2. **Centralized env** — Always import from `@/lib/env` instead of using `process.env` directly. Required vars use `env.VAR_NAME`, optional vars use `optionalEnv.VAR_NAME`.
 3. **No hardcoded secrets** — All tokens, keys, and secrets must come from environment variables.
 4. **Shopify GID format** — Always use `toShopifyGid(id, 'Product')` from `@/lib/env` before passing IDs to GraphQL mutations.
-5. **Logging** — Use `loggers` from `@/lib/logger` instead of `console.log` in library code. `console.log` is acceptable in route handlers.
-6. **Error handling** — Never let errors crash the pipeline silently. Log errors and return graceful fallbacks.
+5. **AI calls via ai-client** — Always use `generateTextSafe()` from `@/lib/shopify/ai-client` for all AI calls. Never import AI SDKs directly.
+6. **Logging** — Use `loggers` from `@/lib/logger` instead of `console.log` in library code. `console.log` is acceptable in route handlers.
+7. **Error handling** — Never let errors crash the pipeline silently. Log errors and return graceful fallbacks.
+
+---
+
+## AI Architecture: Gemini via ai-client.ts
+
+All AI calls are centralized in `lib/shopify/ai-client.ts`. This module provides:
+
+### Models
+
+| Model | Usage | When |
+|-------|-------|------|
+| `gemini-2.0-flash` | Default model | All standard AI tasks |
+| `gemini-2.0-flash` (lite) | Lightweight tasks | `useLiteModel: true` for simple classification/extraction |
+
+### Rate Limiting
+
+The AI client includes built-in rate limiting via `p-throttle`:
+
+- **15 requests per minute** (configurable via `AI_THROTTLE_LIMIT` env var)
+- Automatic retry on 429 errors with exponential backoff (3 retries, 2s/4s/8s)
+- All modules share the same throttled instance — no per-module rate limiting needed
+
+### Usage Pattern
+
+```typescript
+import { generateTextSafe } from '@/lib/shopify/ai-client';
+
+const result = await generateTextSafe({
+  system: 'You are a helpful assistant.',  // Optional system prompt
+  prompt: 'Your prompt here',
+  maxTokens: 2000,
+  temperature: 0.5,
+  useLiteModel: false,  // Optional: use lighter model for simple tasks
+});
+
+const text = result.text;  // The generated text
+```
+
+### Migration from Anthropic
+
+As of Phase 4, all AI calls have been migrated from Anthropic Claude to Google Gemini:
+
+- **Before**: Each module imported `@anthropic-ai/sdk` and created its own client
+- **After**: All modules use `generateTextSafe()` from `ai-client.ts`
+- **No Anthropic SDK imports** should exist in the codebase (except in `node_modules`)
+- The `@anthropic-ai/sdk` package remains in `package.json` but is no longer imported
 
 ---
 
@@ -93,6 +141,7 @@ QStash / Cron Job
 
 | Module | Path | Purpose |
 |--------|------|---------|
+| **ai-client** | `lib/shopify/ai-client.ts` | Centralized Gemini AI client with throttling |
 | **env** | `lib/env.ts` | Centralized env validation (fail-fast) |
 | **rag-sources** | `lib/shopify/rag-sources.ts` | Whitelisted domains (brands, retailers, reviews, manuals) |
 | **search-client** | `lib/shopify/search-client.ts` | Unified web search with auto-fallback |
@@ -103,7 +152,7 @@ QStash / Cron Job
 | **two-phase-qa** | `lib/shopify/two-phase-qa.ts` | CLaRa-inspired fact extraction + reasoning |
 | **ai-enrichment-v3** | `lib/shopify/ai-enrichment-v3.ts` | Full content generation with provenance |
 | **taya-police** | `lib/agents/taya-police.ts` | Content validation (TAYA philosophy) |
-| **image-agent-v4** | `lib/agents/image-agent-v4.ts` | Product image discovery + vision validation |
+| **image-agent-v4** | `lib/agents/image-agent-v4.ts` | Product image discovery via web search |
 | **core-philosophy** | `lib/core-philosophy.ts` | TAYA + Krug + JTBD principles |
 
 ### Search Provider Priority
@@ -150,6 +199,7 @@ Autonord-shop/
 │   ├── core-philosophy.ts     # TAYA/Krug/JTBD principles
 │   ├── shopify/               # Shopify integration modules
 │   │   ├── admin-api.ts       # Shopify Admin API client
+│   │   ├── ai-client.ts       # ★ Centralized Gemini AI client
 │   │   ├── ai-enrichment-v3.ts
 │   │   ├── universal-rag.ts
 │   │   ├── rag-sources.ts
@@ -182,3 +232,5 @@ Before pushing code, verify:
 - [ ] All Shopify IDs use `toShopifyGid()` before GraphQL mutations
 - [ ] Worker/cron endpoints check `isAuthorized()` before processing
 - [ ] Error responses don't leak internal details to the client
+- [ ] All AI calls go through `generateTextSafe()` from `ai-client.ts` — never import AI SDKs directly
+- [ ] No `@anthropic-ai/sdk` imports in new code

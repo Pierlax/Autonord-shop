@@ -5,7 +5,7 @@
  * following the source hierarchy for reliable product information.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
 
 const log = loggers.shopify;
@@ -86,7 +86,6 @@ async function extractManufacturerSpecs(
   specs: ProductResearchResult['technicalSpecs'];
   source: EnrichmentSource;
 }> {
-  const anthropic = new Anthropic();
   const brandConfig = getBrandConfig(brand);
   
   const prompt = `Sei un ricercatore tecnico. CERCA SUL WEB e estrai le specifiche tecniche UFFICIALI per:
@@ -122,21 +121,12 @@ Rispondi in JSON:
 }`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-20250514',
-      max_tokens: 3000,
-      tools: [{
-        type: 'web_search_20250305',
-        name: 'web_search',
-        max_uses: 5,
-      }],
-      messages: [{ role: 'user', content: prompt }],
+    const response = await generateTextSafe({
+      prompt,
+      maxTokens: 3000,
+      temperature: 0.5,
     });
-    
-    const content = response.content[0];
-    if (content.type !== 'text') {
-      throw new Error('Unexpected response type');
-    }
+    const content = response.text;
     
     const jsonMatch = content.text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
@@ -204,8 +194,6 @@ async function extractRetailerSpecs(
   specs: ProductResearchResult['technicalSpecs'];
   sources: EnrichmentSource[];
 }> {
-  const anthropic = new Anthropic();
-  
   const prompt = `Sei un ricercatore tecnico. USA LA RICERCA WEB per trovare le specifiche tecniche per:
 
 Prodotto: ${productName}
@@ -233,18 +221,12 @@ Rispondi in JSON:
 }`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-20250514',
-      max_tokens: 2500,
-      tools: [{
-        type: 'web_search_20250305',
-        name: 'web_search',
-        max_uses: 5,
-      }],
-      messages: [{ role: 'user', content: prompt }],
+    const response = await generateTextSafe({
+      prompt,
+      maxTokens: 2500,
+      temperature: 0.5,
     });
-    
-    const content = response.content[0];
+    const content = response.text;
     if (content.type !== 'text') return { specs: [], sources: [] };
     
     const jsonMatch = content.text.match(/\{[\s\S]*\}/);
@@ -298,8 +280,6 @@ async function analyzeBalancedReviews(
   productName: string,
   brand: string
 ): Promise<ReviewAnalysis> {
-  const anthropic = new Anthropic();
-  
   const queries = getBalancedReviewQueries(productName, brand);
   
   const prompt = `Sei un analista di recensioni. USA LA RICERCA WEB per analizzare le opinioni reali su:
@@ -346,21 +326,12 @@ Rispondi in JSON:
 }`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-20250514',
-      max_tokens: 3000,
-      tools: [{
-        type: 'web_search_20250305',
-        name: 'web_search',
-        max_uses: 8,
-      }],
-      messages: [{ role: 'user', content: prompt }],
+    const response = await generateTextSafe({
+      prompt,
+      maxTokens: 3000,
+      temperature: 0.5,
     });
-    
-    const content = response.content[0];
-    if (content.type !== 'text') {
-      throw new Error('Unexpected response type');
-    }
+    const content = response.text;
     
     const jsonMatch = content.text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
@@ -403,8 +374,6 @@ async function findAccessoryRecommendations(
   sku: string,
   brand: string
 ): Promise<ProductResearchResult['accessories']> {
-  const anthropic = new Anthropic();
-  
   const prompt = `Sei un esperto di elettroutensili. USA LA RICERCA WEB per questo prodotto:
 
 Prodotto: ${productName}
@@ -438,18 +407,12 @@ Rispondi in JSON:
 }`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-20250514',
-      max_tokens: 2000,
-      tools: [{
-        type: 'web_search_20250305',
-        name: 'web_search',
-        max_uses: 5,
-      }],
-      messages: [{ role: 'user', content: prompt }],
+    const response = await generateTextSafe({
+      prompt,
+      maxTokens: 2000,
+      temperature: 0.5,
     });
-    
-    const content = response.content[0];
+    const content = response.text;
     if (content.type !== 'text') return [];
     
     const jsonMatch = content.text.match(/\{[\s\S]*\}/);

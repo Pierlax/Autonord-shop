@@ -9,7 +9,7 @@
  * problem where irrelevant sources add noise to retrieval.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
 
 const log = loggers.shopify;
@@ -141,10 +141,6 @@ export async function llmBasedRoute(
   query: string,
   productContext?: { title: string; vendor: string; productType: string }
 ): Promise<RoutingDecision> {
-  const anthropic = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
-
   const systemPrompt = `Sei un router intelligente per un sistema RAG di e-commerce elettroutensili.
 Il tuo compito è classificare l'intento della query e determinare quali fonti consultare.
 
@@ -181,19 +177,12 @@ Rispondi SOLO con JSON valido:
     : `Query: "${query}"`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-20250514',
-      max_tokens: 500,
-      messages: [
-        { role: 'user', content: userPrompt }
-      ],
-      system: systemPrompt,
+    const response = await generateTextSafe({
+      prompt,
+      maxTokens: 500,
+      temperature: 0.5,
     });
-
-    const content = response.content[0];
-    if (content.type !== 'text') {
-      throw new Error('Unexpected response type');
-    }
+    const content = response.text;
 
     // Extract JSON from response
     const jsonMatch = content.text.match(/\{[\s\S]*\}/);

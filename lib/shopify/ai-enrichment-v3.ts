@@ -14,7 +14,7 @@
  * - Safety checks for conflicting data
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
 
 const log = loggers.shopify;
@@ -52,18 +52,8 @@ import {
 // CLIENT INITIALIZATION
 // =============================================================================
 
-let anthropicClient: Anthropic | null = null;
-
-function getAnthropicClient(): Anthropic {
-  if (!anthropicClient) {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new Error('ANTHROPIC_API_KEY environment variable is not set');
-    }
-    anthropicClient = new Anthropic({ apiKey });
-  }
-  return anthropicClient;
-}
+// AI client is now centralized in lib/shopify/ai-client.ts (Gemini)
+// No per-module initialization needed
 
 // =============================================================================
 // ENHANCED SYSTEM PROMPT V3
@@ -548,25 +538,17 @@ async function generateWithClaudeV3(
   research: ProductResearchResult
 ): Promise<EnrichedProductData> {
   try {
-    const anthropic = getAnthropicClient();
-    
-    const message = await anthropic.messages.create({
-      model: 'claude-opus-4-1-20250805',
-      max_tokens: 2500,
+    const result = await generateTextSafe({
+      system: SYSTEM_PROMPT_V3,
+      prompt: userPrompt,
+      maxTokens: 2500,
       temperature: 0.6,
-      messages: [
-        { 
-          role: 'user', 
-          content: `${SYSTEM_PROMPT_V3}\n\n---\n\n${userPrompt}` 
-        },
-      ],
     });
 
-    const textBlock = message.content.find(block => block.type === 'text');
-    const content = textBlock?.type === 'text' ? textBlock.text : null;
+    const content = result.text;
     
     if (!content) {
-      throw new Error('Empty response from Claude');
+      throw new Error('Empty response from Gemini');
     }
 
     const cleanedContent = content

@@ -12,7 +12,7 @@
  * - Reduced hallucinations
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
 
 const log = loggers.taya;
@@ -77,8 +77,7 @@ export interface SourceData {
 
 export async function checkFactCoverage(
   content: GeneratedContent,
-  sourceData: SourceData,
-  anthropic: Anthropic
+  sourceData: SourceData
 ): Promise<VerificationResult['factCoverage']> {
   
   const prompt = `Sei un verificatore di contenuti. Devi controllare se il contenuto generato copre tutti i fatti importanti.
@@ -118,16 +117,16 @@ Rispondi in JSON:
   "score": 85
 }`;
 
-  const response = await anthropic.messages.create({
-    model: 'claude-opus-4-20250514',
-    max_tokens: 1500,
-    messages: [{ role: 'user', content: prompt }],
-  });
+  const response = await generateTextSafe({
 
-  const text = response.content[0];
-  if (text.type !== 'text') {
-    throw new Error('Unexpected response type');
-  }
+    prompt,
+
+    maxTokens: 1500,
+
+    temperature: 0.5,
+
+  });
+  const text = response.text;
 
   try {
     const jsonMatch = text.text.match(/\{[\s\S]*\}/);
@@ -150,8 +149,7 @@ Rispondi in JSON:
 
 export async function checkFactualConsistency(
   content: GeneratedContent,
-  sourceData: SourceData,
-  anthropic: Anthropic
+  sourceData: SourceData
 ): Promise<VerificationResult['factualConsistency']> {
   
   const prompt = `Sei un fact-checker esperto. Devi verificare che il contenuto generato sia CONSISTENTE con i dati sorgente.
@@ -196,16 +194,16 @@ Rispondi in JSON:
   "score": 90
 }`;
 
-  const response = await anthropic.messages.create({
-    model: 'claude-opus-4-20250514',
-    max_tokens: 1500,
-    messages: [{ role: 'user', content: prompt }],
-  });
+  const response = await generateTextSafe({
 
-  const text = response.content[0];
-  if (text.type !== 'text') {
-    throw new Error('Unexpected response type');
-  }
+    prompt,
+
+    maxTokens: 1500,
+
+    temperature: 0.5,
+
+  });
+  const text = response.text;
 
   try {
     const jsonMatch = text.text.match(/\{[\s\S]*\}/);
@@ -229,7 +227,6 @@ Rispondi in JSON:
 export async function verifyContent(
   content: GeneratedContent,
   sourceData: SourceData,
-  anthropic: Anthropic,
   thresholds = { coverage: 70, consistency: 80, overall: 75 }
 ): Promise<VerificationResult> {
   
@@ -286,8 +283,7 @@ export async function verifyContent(
 // ============================================================================
 
 export async function regenerateWithFeedback(
-  request: RegenerationRequest,
-  anthropic: Anthropic
+  request: RegenerationRequest
 ): Promise<GeneratedContent> {
   
   log.info(`[Verifier] Regenerating content (attempt ${request.attempt}/${request.maxAttempts})`);
@@ -352,16 +348,16 @@ GENERA IL CONTENUTO CORRETTO in JSON:
   "notIdealFor": ["tipo utente 1", "tipo utente 2"]
 }`;
 
-  const response = await anthropic.messages.create({
-    model: 'claude-opus-4-20250514',
-    max_tokens: 3000,
-    messages: [{ role: 'user', content: prompt }],
-  });
+  const response = await generateTextSafe({
 
-  const text = response.content[0];
-  if (text.type !== 'text') {
-    throw new Error('Unexpected response type');
-  }
+    prompt,
+
+    maxTokens: 3000,
+
+    temperature: 0.5,
+
+  });
+  const text = response.text;
 
   try {
     const jsonMatch = text.text.match(/\{[\s\S]*\}/);
@@ -388,7 +384,6 @@ GENERA IL CONTENUTO CORRETTO in JSON:
 export async function verifyAndRegenerateLoop(
   content: GeneratedContent,
   sourceData: SourceData,
-  anthropic: Anthropic,
   maxAttempts = 3
 ): Promise<{
   finalContent: GeneratedContent;

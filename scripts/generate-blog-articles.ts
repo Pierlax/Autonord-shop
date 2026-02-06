@@ -3,11 +3,10 @@
  * Eseguire con: npx tsx scripts/generate-blog-articles.ts
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
 
 const SHOPIFY_STORE = 'autonord-service.myshopify.com';
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN!;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const SERPAPI_API_KEY = process.env.SERPAPI_API_KEY;
 
 interface ArticlePlan {
@@ -220,9 +219,6 @@ async function generateArticleContent(article: ArticlePlan): Promise<string> {
   if (!ANTHROPIC_API_KEY) {
     throw new Error('ANTHROPIC_API_KEY not set');
   }
-  
-  const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-  
   const userPrompt = `Scrivi un articolo completo per il blog di Autonord Service su:
 
 **Titolo:** ${article.title}
@@ -236,16 +232,16 @@ Se parli di problemi, includi soluzioni pratiche step-by-step.
 
 Ricorda: scrivi come se stessi parlando con un artigiano che entra in negozio e ti fa una domanda diretta.`;
 
-  const response = await anthropic.messages.create({
-    model: 'claude-opus-4-20250514',
-    max_tokens: 4000,
-    messages: [
-      { role: 'user', content: userPrompt }
-    ],
-    system: TAYA_SYSTEM_PROMPT
+  const response = await generateTextSafe({
+
+    prompt,
+
+    maxTokens: 4000,
+
+    temperature: 0.5,
+
   });
-  
-  const content = response.content[0];
+  const content = response.text;
   if (content.type === 'text') {
     return content.text;
   }

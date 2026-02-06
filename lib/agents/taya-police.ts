@@ -7,7 +7,7 @@
  * - Ensures content is clean before saving to Shopify
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
 
 // =============================================================================
 // BANNED PHRASES (from core-philosophy)
@@ -203,8 +203,6 @@ export async function correctContent(
   content: ContentToValidate,
   violations: Violation[]
 ): Promise<CleanedContent> {
-  const anthropic = new Anthropic();
-  
   // Group violations by phrase
   const uniquePhrases = Array.from(new Set(violations.map(v => v.phrase)));
   
@@ -255,17 +253,17 @@ Rispondi in JSON con la struttura corretta:
 }`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-20250514',
-      max_tokens: 2000,
-      messages: [{ role: 'user', content: prompt }],
+    const result = await generateTextSafe({
+      system: 'Sei il correttore di bozze del Team Autonord. Correggi il contenuto rimuovendo le parole vietate dalla filosofia TAYA. Rispondi sempre in formato JSON valido.',
+      prompt,
+      maxTokens: 2000,
+      temperature: 0.4,
     });
 
-    const textBlock = response.content.find(block => block.type === 'text');
-    const responseText = textBlock?.type === 'text' ? textBlock.text : null;
+    const responseText = result.text;
     
     if (!responseText) {
-      throw new Error('Empty response from Claude');
+      throw new Error('Empty response from Gemini');
     }
 
     // Parse JSON response
@@ -403,7 +401,7 @@ export async function validateAndCorrect(
     console.log(`  - "${v.phrase}" in ${v.field}`);
   }
   
-  console.log('[TAYA Police] 🔧 Calling Claude for correction...');
+  console.log('[TAYA Police] 🔧 Calling Gemini for correction...');
   const corrected = await correctContent(content, validation.violations);
   
   console.log('[TAYA Police] ✅ Content corrected');

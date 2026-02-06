@@ -12,7 +12,7 @@
  * - Finds content that matches user intent, not just keywords
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
 
 const log = loggers.blog;
@@ -152,8 +152,7 @@ export async function expandQueryWithAI(
     brand?: string;
     category?: string;
     articleType?: 'comparison' | 'problem' | 'review' | 'guide';
-  },
-  anthropic: Anthropic
+  }
 ): Promise<ExpandedQuery> {
   const startTime = Date.now();
 
@@ -196,19 +195,19 @@ Rispondi in JSON:
   ]
 }`;
 
-  const response = await anthropic.messages.create({
-    model: 'claude-opus-4-20250514',
-    max_tokens: 2000,
-    messages: [{ role: 'user', content: prompt }],
-  });
+  const response = await generateTextSafe({
 
-  const text = response.content[0];
-  if (text.type !== 'text') {
-    throw new Error('Unexpected response type');
-  }
+    prompt,
+
+    maxTokens: 2000,
+
+    temperature: 0.5,
+
+  });
+  const text = response.text;
 
   try {
-    const jsonMatch = text.text.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON found');
     const parsed = JSON.parse(jsonMatch[0]);
     
@@ -360,7 +359,7 @@ export async function smartExpandQuery(
     category?: string;
     articleType?: 'comparison' | 'problem' | 'review' | 'guide';
   },
-  anthropic?: Anthropic,
+
   options: {
     includeShadowQueries?: boolean;  // Default: true (TAYA compliance)
     shadowQueryRatio?: number;       // Default: 0.3 (30% of queries are shadow)
@@ -376,15 +375,11 @@ export async function smartExpandQuery(
   let expanded: ExpandedQuery;
   let method: 'ai' | 'template' = 'template';
 
-  if (anthropic) {
-    try {
-      expanded = await expandQueryWithAI(baseQuery, context, anthropic);
-      method = 'ai';
-    } catch (error) {
-      log.error('AI expansion failed, falling back to templates:', error);
-      expanded = expandQueryWithTemplates(baseQuery, context);
-    }
-  } else {
+  try {
+    expanded = await expandQueryWithAI(baseQuery, context);
+    method = 'ai';
+  } catch (error) {
+    log.error('AI expansion failed, falling back to templates:', error);
     expanded = expandQueryWithTemplates(baseQuery, context);
   }
 

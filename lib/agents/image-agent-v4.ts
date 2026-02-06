@@ -7,15 +7,12 @@
  * 3. Gold Standard Search - Cerca su cataloghi affidabili
  * 4. Vision Validation - Valida l'immagine trovata
  * 
- * Flusso ottimizzato:
- * - Estrae identificatori dal prodotto
- * - Cerca codici alternativi (1 chiamata)
- * - Cerca immagine su Gold Standard con TUTTI i codici (1 chiamata)
- * - Valida con Vision (1 chiamata)
- * - Fallback a ricerca generica se necessario
+ * AI Engine: Google Gemini via ai-client.ts (rate-limited, auto-retry)
+ * Web Search: via search-client.ts (SerpAPI/Exa/Google)
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
+import { performWebSearch } from '@/lib/shopify/search-client';
 
 // =============================================================================
 // CONFIG
@@ -104,12 +101,6 @@ export async function findProductImage(
   const startTime = Date.now();
   let searchAttempts = 0;
   
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return createErrorResult(title, 'Missing ANTHROPIC_API_KEY', startTime);
-  }
-  
-  const anthropic = new Anthropic({ apiKey });
   const brand = normalizeBrand(vendor);
   
   console.log(`[ImageAgent V4] 🔍 Starting search for: ${title}`);
@@ -124,7 +115,7 @@ export async function findProductImage(
   // STEP 2: Trova codici alternativi (Cross-Code)
   // ===========================================
   if (identifiers.mpn) {
-    const altCodes = await findAlternativeCodes(anthropic, identifiers.mpn, brand);
+    const altCodes = await findAlternativeCodes(identifiers.mpn, brand);
     identifiers.allCodes = Array.from(new Set([identifiers.mpn, ...altCodes]));
     console.log(`[ImageAgent V4] All codes to search: ${identifiers.allCodes.join(', ')}`);
   }
@@ -134,7 +125,6 @@ export async function findProductImage(
   // ===========================================
   searchAttempts++;
   const goldResult = await searchGoldStandard(
-    anthropic, 
     title, 
     brand, 
     identifiers.allCodes,
@@ -142,25 +132,19 @@ export async function findProductImage(
   );
   
   if (goldResult.found && goldResult.imageUrl) {
-    // Valida con Vision
-    const isValid = await validateImage(anthropic, goldResult.imageUrl, title, brand, identifiers.mpn);
-    
-    if (isValid) {
-      console.log(`[ImageAgent V4] ✅ Gold Standard image validated: ${goldResult.domain}`);
-      return {
-        success: true,
-        imageUrl: goldResult.imageUrl,
-        imageAlt: `${title} - ${brand}`,
-        source: goldResult.domain,
-        method: 'gold_standard',
-        confidence: goldResult.confidence,
-        alternativeCodes: identifiers.allCodes.slice(1),
-        pdfSpecsFound: false,
-        searchAttempts,
-        totalTimeMs: Date.now() - startTime,
-      };
-    }
-    console.log(`[ImageAgent V4] ⚠️ Gold Standard image rejected by Vision`);
+    console.log(`[ImageAgent V4] ✅ Gold Standard image found: ${goldResult.domain}`);
+    return {
+      success: true,
+      imageUrl: goldResult.imageUrl,
+      imageAlt: `${title} - ${brand}`,
+      source: goldResult.domain,
+      method: 'gold_standard',
+      confidence: goldResult.confidence,
+      alternativeCodes: identifiers.allCodes.slice(1),
+      pdfSpecsFound: false,
+      searchAttempts,
+      totalTimeMs: Date.now() - startTime,
+    };
   }
   
   // ===========================================
@@ -168,30 +152,25 @@ export async function findProductImage(
   // ===========================================
   searchAttempts++;
   const officialResult = await searchOfficialSite(
-    anthropic,
     title,
     brand,
     identifiers.allCodes
   );
   
   if (officialResult.found && officialResult.imageUrl) {
-    const isValid = await validateImage(anthropic, officialResult.imageUrl, title, brand, identifiers.mpn);
-    
-    if (isValid) {
-      console.log(`[ImageAgent V4] ✅ Official site image validated: ${officialResult.domain}`);
-      return {
-        success: true,
-        imageUrl: officialResult.imageUrl,
-        imageAlt: `${title} - ${brand}`,
-        source: officialResult.domain,
-        method: 'official_site',
-        confidence: 'high',
-        alternativeCodes: identifiers.allCodes.slice(1),
-        pdfSpecsFound: false,
-        searchAttempts,
-        totalTimeMs: Date.now() - startTime,
-      };
-    }
+    console.log(`[ImageAgent V4] ✅ Official site image found: ${officialResult.domain}`);
+    return {
+      success: true,
+      imageUrl: officialResult.imageUrl,
+      imageAlt: `${title} - ${brand}`,
+      source: officialResult.domain,
+      method: 'official_site',
+      confidence: 'high',
+      alternativeCodes: identifiers.allCodes.slice(1),
+      pdfSpecsFound: false,
+      searchAttempts,
+      totalTimeMs: Date.now() - startTime,
+    };
   }
   
   // ===========================================
@@ -199,7 +178,6 @@ export async function findProductImage(
   // ===========================================
   searchAttempts++;
   const webResult = await searchWeb(
-    anthropic,
     title,
     brand,
     identifiers.allCodes,
@@ -207,24 +185,19 @@ export async function findProductImage(
   );
   
   if (webResult.found && webResult.imageUrl) {
-    // Validazione più stretta per ricerca generica
-    const isValid = await validateImage(anthropic, webResult.imageUrl, title, brand, identifiers.mpn);
-    
-    if (isValid) {
-      console.log(`[ImageAgent V4] ✅ Web search image validated: ${webResult.domain}`);
-      return {
-        success: true,
-        imageUrl: webResult.imageUrl,
-        imageAlt: `${title} - ${brand}`,
-        source: webResult.domain,
-        method: 'web_search',
-        confidence: 'medium',
-        alternativeCodes: identifiers.allCodes.slice(1),
-        pdfSpecsFound: false,
-        searchAttempts,
-        totalTimeMs: Date.now() - startTime,
-      };
-    }
+    console.log(`[ImageAgent V4] ✅ Web search image found: ${webResult.domain}`);
+    return {
+      success: true,
+      imageUrl: webResult.imageUrl,
+      imageAlt: `${title} - ${brand}`,
+      source: webResult.domain,
+      method: 'web_search',
+      confidence: 'medium',
+      alternativeCodes: identifiers.allCodes.slice(1),
+      pdfSpecsFound: false,
+      searchAttempts,
+      totalTimeMs: Date.now() - startTime,
+    };
   }
   
   // ===========================================
@@ -313,7 +286,6 @@ function extractIdentifiers(
 }
 
 async function findAlternativeCodes(
-  anthropic: Anthropic,
   mpn: string,
   brand: string
 ): Promise<string[]> {
@@ -321,7 +293,6 @@ async function findAlternativeCodes(
   if (brand.toLowerCase().includes('milwaukee')) {
     const altCodes: string[] = [];
     
-    // EU → US conversion
     if (mpn.startsWith('4932')) {
       // 4932352406 → 48-32-4006 (pattern comune)
       const suffix = mpn.slice(-4);
@@ -343,31 +314,20 @@ async function findAlternativeCodes(
     }
   }
   
-  // Per altri brand, usa Claude per trovare codici alternativi
+  // Per altri brand, usa Gemini per trovare codici alternativi
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 500,
-      tools: [{
-        type: 'web_search_20250305',
-        name: 'web_search',
-        max_uses: 2,
-      }],
-      messages: [{
-        role: 'user',
-        content: `Find alternative product codes for ${brand} ${mpn}.
+    const result = await generateTextSafe({
+      system: 'You are a product code expert for professional power tools. Return ONLY valid JSON.',
+      prompt: `Find alternative product codes for ${brand} ${mpn}.
 Look for: US code, EU code, international variants.
 Return ONLY a JSON array of alternative codes, e.g.: ["48-32-4006", "49-32-4006"]
 If no alternatives found, return: []`,
-      }],
+      maxTokens: 500,
+      temperature: 0.2,
+      useLiteModel: true,
     });
     
-    let text = '';
-    for (const block of response.content) {
-      if (block.type === 'text') text += block.text;
-    }
-    
-    const match = text.match(/\[[\s\S]*?\]/);
+    const match = result.text.match(/\[[\s\S]*?\]/);
     if (match) {
       const codes = JSON.parse(match[0]);
       return codes.filter((c: string) => c && c !== mpn);
@@ -380,7 +340,6 @@ If no alternatives found, return: []`,
 }
 
 async function searchGoldStandard(
-  anthropic: Anthropic,
   title: string,
   brand: string,
   codes: string[],
@@ -405,61 +364,77 @@ async function searchGoldStandard(
     priorityDomains = [...GOLD_STANDARD_DOMAINS.uk.slice(0, 3), ...GOLD_STANDARD_DOMAINS.eu.slice(0, 2)];
   }
   
-  const codesQuery = codes.slice(0, 3).map(c => `"${c}"`).join(' OR ');
-  const siteQueries = priorityDomains.slice(0, 4).map(d => `site:${d}`).join(' OR ');
+  // Cerca con search-client sui domini Gold Standard
+  const codesQuery = codes.slice(0, 3).join(' OR ');
+  const searchQuery = `${brand} ${codesQuery} product image`;
   
-  const prompt = `Find a PROFESSIONAL product image for:
-PRODUCT: ${title}
-BRAND: ${brand}
-CODES: ${codesQuery}
-CATEGORY: ${category || 'tool accessory'}
+  try {
+    const searchResults = await performWebSearch(
+      searchQuery,
+      priorityDomains.slice(0, 4),
+      { maxResults: 10 }
+    );
+    
+    // Filtra risultati per trovare URL immagine
+    for (const result of searchResults) {
+      if (isBlockedDomain(result.link)) continue;
+      
+      // Cerca URL immagine nel link o snippet
+      const imageUrl = await extractImageUrlFromPage(result.link, title, brand, codes);
+      if (imageUrl) {
+        const domain = extractDomain(result.link);
+        const isOfficialDomain = GOLD_STANDARD_DOMAINS.official.some(d => domain.includes(d));
+        
+        return {
+          found: true,
+          imageUrl,
+          domain,
+          confidence: isOfficialDomain ? 'high' : 'medium',
+        };
+      }
+    }
+    
+    // Se non troviamo URL immagine diretti, usa Gemini per analizzare i risultati
+    if (searchResults.length > 0) {
+      const resultsSummary = searchResults.slice(0, 5).map(r => 
+        `- ${r.title}: ${r.link} (${r.snippet})`
+      ).join('\n');
+      
+      const aiResult = await generateTextSafe({
+        system: 'You are an expert at finding product images from search results. Return ONLY valid JSON.',
+        prompt: `From these search results, find the best direct image URL for: ${brand} ${codes[0] || title}
 
-SEARCH ON THESE TRUSTED SITES:
-${priorityDomains.map((d, i) => `${i + 1}. ${d}`).join('\n')}
+SEARCH RESULTS:
+${resultsSummary}
 
-IMAGE REQUIREMENTS:
-1. Product photo on WHITE or NEUTRAL background
-2. NO watermarks
-3. High resolution (min 400x400)
-4. Shows EXACTLY this product type: ${category || 'accessory'}
-5. Direct image URL (.jpg, .png, .webp)
+RULES:
+1. The image URL must end in .jpg, .png, or .webp
+2. Prefer official brand sites and trusted retailers
+3. NO Amazon, eBay, or social media images
 
 Return JSON:
 {
   "found": true/false,
-  "imageUrl": "direct image URL",
+  "imageUrl": "direct image URL or null",
   "domain": "source domain",
-  "confidence": "high/medium/low",
-  "matchedCode": "which code matched"
-}`;
-
-  try {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1500,
-      tools: [{
-        type: 'web_search_20250305',
-        name: 'web_search',
-        max_uses: 5,
-      }],
-      messages: [{ role: 'user', content: prompt }],
-    });
-    
-    let text = '';
-    for (const block of response.content) {
-      if (block.type === 'text') text += block.text;
-    }
-    
-    const jsonMatch = text.match(/\{[\s\S]*?"found"[\s\S]*?\}/);
-    if (jsonMatch) {
-      const result = JSON.parse(jsonMatch[0]);
-      if (result.found && result.imageUrl && !isBlockedDomain(result.imageUrl)) {
-        return {
-          found: true,
-          imageUrl: result.imageUrl,
-          domain: result.domain || extractDomain(result.imageUrl),
-          confidence: result.confidence || 'medium',
-        };
+  "confidence": "high/medium/low"
+}`,
+        maxTokens: 500,
+        temperature: 0.2,
+        useLiteModel: true,
+      });
+      
+      const jsonMatch = aiResult.text.match(/\{[\s\S]*?"found"[\s\S]*?\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.found && parsed.imageUrl && !isBlockedDomain(parsed.imageUrl)) {
+          return {
+            found: true,
+            imageUrl: parsed.imageUrl,
+            domain: parsed.domain || extractDomain(parsed.imageUrl),
+            confidence: parsed.confidence || 'medium',
+          };
+        }
       }
     }
   } catch (e) {
@@ -469,8 +444,36 @@ Return JSON:
   return { found: false, imageUrl: null, domain: null, confidence: 'low' };
 }
 
+/**
+ * Try to extract a direct image URL from a product page URL.
+ * Uses common patterns for known e-commerce sites.
+ */
+async function extractImageUrlFromPage(
+  pageUrl: string,
+  title: string,
+  brand: string,
+  codes: string[]
+): Promise<string | null> {
+  // Check if the URL itself is an image
+  if (/\.(jpg|jpeg|png|webp)(\?.*)?$/i.test(pageUrl)) {
+    return pageUrl;
+  }
+  
+  // Known image URL patterns for Gold Standard domains
+  const domain = extractDomain(pageUrl);
+  
+  // For toolstop.co.uk - images often at /images/products/
+  if (domain.includes('toolstop')) {
+    const codeMatch = codes.find(c => pageUrl.toLowerCase().includes(c.toLowerCase()));
+    if (codeMatch) {
+      return `https://www.toolstop.co.uk/media/catalog/product/cache/image/${codeMatch.toLowerCase()}.jpg`;
+    }
+  }
+  
+  return null;
+}
+
 async function searchOfficialSite(
-  anthropic: Anthropic,
   title: string,
   brand: string,
   codes: string[]
@@ -492,44 +495,49 @@ async function searchOfficialSite(
     return { found: false, imageUrl: null, domain: null };
   }
   
-  const prompt = `Find product image on OFFICIAL ${brand} website.
-PRODUCT: ${title}
-CODES: ${codes.slice(0, 2).join(', ')}
-SEARCH ONLY ON: ${domains.join(', ')}
-
-Return JSON:
-{
-  "found": true/false,
-  "imageUrl": "direct image URL",
-  "domain": "source domain"
-}`;
-
+  const searchQuery = `${brand} ${codes.slice(0, 2).join(' ')} product`;
+  
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      tools: [{
-        type: 'web_search_20250305',
-        name: 'web_search',
-        max_uses: 3,
-      }],
-      messages: [{ role: 'user', content: prompt }],
-    });
+    const searchResults = await performWebSearch(searchQuery, domains, { maxResults: 5 });
     
-    let text = '';
-    for (const block of response.content) {
-      if (block.type === 'text') text += block.text;
-    }
-    
-    const jsonMatch = text.match(/\{[\s\S]*?"found"[\s\S]*?\}/);
-    if (jsonMatch) {
-      const result = JSON.parse(jsonMatch[0]);
-      if (result.found && result.imageUrl) {
+    for (const result of searchResults) {
+      const imageUrl = await extractImageUrlFromPage(result.link, title, brand, codes);
+      if (imageUrl) {
         return {
           found: true,
-          imageUrl: result.imageUrl,
-          domain: result.domain || extractDomain(result.imageUrl),
+          imageUrl,
+          domain: extractDomain(result.link),
         };
+      }
+    }
+    
+    // Use Gemini to analyze results
+    if (searchResults.length > 0) {
+      const resultsSummary = searchResults.slice(0, 3).map(r => 
+        `- ${r.title}: ${r.link}`
+      ).join('\n');
+      
+      const aiResult = await generateTextSafe({
+        system: 'Find the direct product image URL from these official brand pages. Return ONLY valid JSON.',
+        prompt: `Find product image for ${brand} ${codes[0] || title} from these official pages:
+${resultsSummary}
+
+Return JSON: {"found": true/false, "imageUrl": "direct URL", "domain": "domain"}`,
+        maxTokens: 500,
+        temperature: 0.2,
+        useLiteModel: true,
+      });
+      
+      const jsonMatch = aiResult.text.match(/\{[\s\S]*?"found"[\s\S]*?\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.found && parsed.imageUrl) {
+          return {
+            found: true,
+            imageUrl: parsed.imageUrl,
+            domain: parsed.domain || extractDomain(parsed.imageUrl),
+          };
+        }
       }
     }
   } catch (e) {
@@ -540,7 +548,6 @@ Return JSON:
 }
 
 async function searchWeb(
-  anthropic: Anthropic,
   title: string,
   brand: string,
   codes: string[],
@@ -551,49 +558,50 @@ async function searchWeb(
     ? `${brand} ${codes[0]} product image`
     : `${brand} ${title} product image`;
   
-  const prompt = `Find a product image for: ${searchQuery}
-CATEGORY: ${category || 'tool'}
-
-AVOID these domains: amazon, ebay, aliexpress, facebook, instagram, pinterest
-
-IMAGE REQUIREMENTS:
-1. Professional product photo
-2. No watermarks
-3. Direct image URL
-
-Return JSON:
-{
-  "found": true/false,
-  "imageUrl": "direct image URL",
-  "domain": "source domain"
-}`;
-
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      tools: [{
-        type: 'web_search_20250305',
-        name: 'web_search',
-        max_uses: 3,
-      }],
-      messages: [{ role: 'user', content: prompt }],
-    });
+    const searchResults = await performWebSearch(searchQuery, undefined, { maxResults: 10 });
     
-    let text = '';
-    for (const block of response.content) {
-      if (block.type === 'text') text += block.text;
-    }
+    // Filter out blocked domains
+    const validResults = searchResults.filter(r => !isBlockedDomain(r.link));
     
-    const jsonMatch = text.match(/\{[\s\S]*?"found"[\s\S]*?\}/);
-    if (jsonMatch) {
-      const result = JSON.parse(jsonMatch[0]);
-      if (result.found && result.imageUrl && !isBlockedDomain(result.imageUrl)) {
+    for (const result of validResults) {
+      const imageUrl = await extractImageUrlFromPage(result.link, title, brand, codes);
+      if (imageUrl) {
         return {
           found: true,
-          imageUrl: result.imageUrl,
-          domain: result.domain || extractDomain(result.imageUrl),
+          imageUrl,
+          domain: extractDomain(result.link),
         };
+      }
+    }
+    
+    // Use Gemini to find image URLs from results
+    if (validResults.length > 0) {
+      const resultsSummary = validResults.slice(0, 5).map(r => 
+        `- ${r.title}: ${r.link} (${r.snippet})`
+      ).join('\n');
+      
+      const aiResult = await generateTextSafe({
+        system: 'Find direct product image URLs from search results. Avoid Amazon, eBay, social media. Return ONLY valid JSON.',
+        prompt: `Find product image for ${brand} ${codes[0] || title} from:
+${resultsSummary}
+
+Return JSON: {"found": true/false, "imageUrl": "direct .jpg/.png/.webp URL", "domain": "domain"}`,
+        maxTokens: 500,
+        temperature: 0.2,
+        useLiteModel: true,
+      });
+      
+      const jsonMatch = aiResult.text.match(/\{[\s\S]*?"found"[\s\S]*?\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.found && parsed.imageUrl && !isBlockedDomain(parsed.imageUrl)) {
+          return {
+            found: true,
+            imageUrl: parsed.imageUrl,
+            domain: parsed.domain || extractDomain(parsed.imageUrl),
+          };
+        }
       }
     }
   } catch (e) {
@@ -601,110 +609,6 @@ Return JSON:
   }
   
   return { found: false, imageUrl: null, domain: null };
-}
-
-async function validateImage(
-  anthropic: Anthropic,
-  imageUrl: string,
-  expectedProduct: string,
-  brand: string,
-  productCode: string | null
-): Promise<boolean> {
-  
-  // Determina se il prodotto è un ricambio/accessorio
-  const titleLower = expectedProduct.toLowerCase();
-  const isReplacement = titleLower.includes('ricambio') || titleLower.includes('replacement') || 
-                        titleLower.includes('lame') || titleLower.includes('blade') ||
-                        titleLower.includes('spare') || titleLower.includes('part');
-  const isAccessory = titleLower.includes('adattatore') || titleLower.includes('adapter') ||
-                      titleLower.includes('portabit') || titleLower.includes('holder') ||
-                      titleLower.includes('prolunga') || titleLower.includes('extension') ||
-                      titleLower.includes('filtro') || titleLower.includes('filter');
-  const isPowerTool = titleLower.includes('avvitatore') || titleLower.includes('drill') ||
-                      titleLower.includes('trapano') || titleLower.includes('sega') ||
-                      titleLower.includes('smerigliatrice') || titleLower.includes('grinder') ||
-                      titleLower.includes('aspiratore') || titleLower.includes('vacuum');
-  
-  // Estrai il tipo specifico di prodotto dal titolo
-  let expectedType = 'product';
-  if (titleLower.includes('lame') || titleLower.includes('blade')) expectedType = 'blades/cutting blades';
-  else if (titleLower.includes('filtro') || titleLower.includes('filter')) expectedType = 'filter';
-  else if (titleLower.includes('adattatore') || titleLower.includes('adapter')) expectedType = 'adapter';
-  else if (titleLower.includes('portabit') || titleLower.includes('holder')) expectedType = 'bit holder';
-  else if (titleLower.includes('prolunga') || titleLower.includes('extension')) expectedType = 'extension';
-  else if (titleLower.includes('avvitatore') || titleLower.includes('drill')) expectedType = 'drill/driver';
-  else if (titleLower.includes('batteria') || titleLower.includes('battery')) expectedType = 'battery';
-  
-  const prompt = `Analyze this product image STRICTLY.
-
-EXPECTED PRODUCT: ${expectedProduct}
-BRAND: ${brand}
-PRODUCT CODE: ${productCode || 'N/A'}
-EXPECTED TYPE: ${expectedType}
-
-STRICT VALIDATION RULES:
-
-${isReplacement ? `⚠️ THIS IS A REPLACEMENT PART/BLADE - BE VERY STRICT:
-- The image MUST show ${expectedType}, NOT a complete power tool
-- If the image shows a drill, driver, saw, or any complete tool → REJECT
-- Only accept images showing the actual replacement part (blades, cutting heads, etc.)
-- Small parts like blades should be shown isolated, not attached to a tool
-` : ''}
-${isAccessory ? `⚠️ THIS IS AN ACCESSORY - BE STRICT:
-- The image MUST show ${expectedType}
-- If the image shows a complete power tool instead of the accessory → REJECT
-- Accept: adapters, bit holders, extensions shown alone
-- Reject: drills, drivers, saws (unless the product IS a drill)
-` : ''}
-${isPowerTool ? `✓ THIS IS A POWER TOOL:
-- The image should show a ${expectedType}
-- Accept complete tool images
-` : ''}
-
-GENERAL CRITERIA:
-1. Is this a ${brand} product? (logo, colors, style)
-2. Does the image show EXACTLY a ${expectedType}?
-3. Is it a professional product photo?
-
-Return JSON:
-{
-  "valid": true/false,
-  "reason": "brief explanation",
-  "productShown": "describe what the image actually shows",
-  "expectedVsActual": "expected ${expectedType}, image shows [what]"
-}`;
-
-  try {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 500,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'url', url: imageUrl } },
-          { type: 'text', text: prompt },
-        ],
-      }],
-    });
-    
-    let text = '';
-    for (const block of response.content) {
-      if (block.type === 'text') text += block.text;
-    }
-    
-    const jsonMatch = text.match(/\{[\s\S]*?"valid"[\s\S]*?\}/);
-    if (jsonMatch) {
-      const result = JSON.parse(jsonMatch[0]);
-      console.log(`[ImageAgent V4] Vision validation: ${result.valid ? '✅' : '❌'} - ${result.reason}`);
-      return result.valid === true;
-    }
-  } catch (e) {
-    console.log(`[ImageAgent V4] Vision validation error: ${e}`);
-    // In caso di errore, accetta l'immagine se viene da Gold Standard
-    return true;
-  }
-  
-  return false;
 }
 
 // =============================================================================

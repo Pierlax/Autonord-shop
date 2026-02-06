@@ -13,7 +13,7 @@
  * and adjusts retrieval and context window usage accordingly.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
 
 const log = loggers.shopify;
@@ -138,10 +138,6 @@ export async function detectGranularityLLM(
   query: string,
   productContext?: { title: string; vendor: string }
 ): Promise<GranularityDecision> {
-  const anthropic = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
-
   const systemPrompt = `Sei un sistema di classificazione per un RAG di e-commerce elettroutensili.
 Determina il livello di granularità ottimale per rispondere alla query.
 
@@ -167,19 +163,12 @@ Rispondi SOLO con JSON:
 }`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-20250514',
-      max_tokens: 300,
-      messages: [
-        { role: 'user', content: `Query: "${query}"${productContext ? `\nProdotto: ${productContext.title} (${productContext.vendor})` : ''}` }
-      ],
-      system: systemPrompt,
+    const response = await generateTextSafe({
+      prompt,
+      maxTokens: 300,
+      temperature: 0.5,
     });
-
-    const content = response.content[0];
-    if (content.type !== 'text') {
-      throw new Error('Unexpected response type');
-    }
+    const content = response.text;
 
     const jsonMatch = content.text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {

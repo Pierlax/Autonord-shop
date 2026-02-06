@@ -4,11 +4,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import { generateTextSafe } from '@/lib/shopify/ai-client';
 
 const SHOPIFY_STORE = 'autonord-service.myshopify.com';
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN!;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!;
 const SERPAPI_API_KEY = process.env.SERPAPI_API_KEY;
 
 interface ArticlePayload {
@@ -103,8 +102,6 @@ async function searchForImage(query: string): Promise<string | null> {
 }
 
 async function generateArticleContent(article: ArticlePayload): Promise<string> {
-  const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-  
   const userPrompt = `Scrivi un articolo completo e approfondito per il blog di Autonord Service su:
 
 **Titolo:** ${article.title}
@@ -118,16 +115,16 @@ Ricorda:
 - Sii onesto sui difetti e limiti dei prodotti
 - Concludi con consigli pratici e actionable`;
 
-  const response = await anthropic.messages.create({
-    model: 'claude-opus-4-20250514',
-    max_tokens: 4500,
-    messages: [
-      { role: 'user', content: userPrompt }
-    ],
-    system: TAYA_SYSTEM_PROMPT
+  const response = await generateTextSafe({
+
+    prompt,
+
+    maxTokens: 4500,
+
+    temperature: 0.5,
+
   });
-  
-  const content = response.content[0];
+  const content = response.text;
   if (content.type === 'text') {
     return content.text;
   }

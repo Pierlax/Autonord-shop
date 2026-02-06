@@ -23,8 +23,8 @@ interface RequiredEnv {
   SHOPIFY_ADMIN_ACCESS_TOKEN: string;
   /** Secret used to authenticate cron jobs and internal API calls */
   CRON_SECRET: string;
-  /** Anthropic API key for Claude AI enrichment */
-  ANTHROPIC_API_KEY: string;
+  /** Google Generative AI API key for Gemini (primary AI engine) */
+  GOOGLE_GENERATIVE_AI_API_KEY: string;
 }
 
 // =============================================================================
@@ -60,6 +60,8 @@ interface OptionalEnv {
   UPSTASH_REDIS_REST_URL?: string;
   /** Upstash Redis REST token for RAG cache */
   UPSTASH_REDIS_REST_TOKEN?: string;
+  /** Anthropic API key for Claude AI (legacy fallback) */
+  ANTHROPIC_API_KEY?: string;
   /** Vercel deployment URL (auto-set by Vercel) */
   VERCEL_URL?: string;
   /** Base URL for the application */
@@ -75,7 +77,7 @@ interface OptionalEnv {
 const REQUIRED_VARS: Array<keyof RequiredEnv> = [
   'SHOPIFY_ADMIN_ACCESS_TOKEN',
   'CRON_SECRET',
-  'ANTHROPIC_API_KEY',
+  'GOOGLE_GENERATIVE_AI_API_KEY',
 ];
 
 /**
@@ -102,7 +104,7 @@ function validateRequiredEnv(): RequiredEnv {
   return {
     SHOPIFY_ADMIN_ACCESS_TOKEN: process.env.SHOPIFY_ADMIN_ACCESS_TOKEN!,
     CRON_SECRET: process.env.CRON_SECRET!,
-    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY!,
+    GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY!,
   };
 }
 
@@ -135,6 +137,7 @@ export const optionalEnv: OptionalEnv = {
   NOTIFICATION_EMAIL: process.env.NOTIFICATION_EMAIL,
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
   VERCEL_URL: process.env.VERCEL_URL,
   NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
   NODE_ENV: process.env.NODE_ENV,
