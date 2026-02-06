@@ -326,7 +326,7 @@ async function execute(context: SkillContext): Promise<SkillResult> {
     let qaResult: TwoPhaseQAResult | null = null;
     let qaContent: { pros: string[]; cons: string[]; specs: Record<string, string>; verdict: string } | null = null;
 
-    if (adaptation.qaInput.sourceData.length > 100) {
+    if ((adaptation.qaInput?.sourceData?.length ?? 0) > 100) {
       log.info('Step 3: Running TwoPhaseQA...');
       try {
         qaResult = await runTwoPhaseQA(adaptation.qaInput);
