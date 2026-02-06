@@ -29,7 +29,7 @@ import { UniversalRAGPipeline, type UniversalRAGResult } from '@/lib/shopify/uni
 import { adaptRagToQa, type AdaptationResult } from '@/lib/shopify/rag-adapter';
 import { runTwoPhaseQA, twoPhaseQAToProductContent, type TwoPhaseQAResult } from '@/lib/shopify/two-phase-qa';
 import { generateProductContentV3, formatDescriptionAsHtmlV3, type EnrichedProductDataV3 } from '@/lib/shopify/ai-enrichment-v3';
-import { type ShopifyProductWebhookPayload } from '@/lib/shopify/webhook-types';
+import { type ShopifyProductWebhookPayload, type ShopifyVariant } from '@/lib/shopify/webhook-types';
 import { validateAndCorrect } from '@/lib/agents/taya-police';
 import { findProductImage, type ImageAgentV4Result } from '@/lib/agents/image-agent-v4';
 import { env, toShopifyGid } from '@/lib/env';
@@ -107,16 +107,53 @@ function sanitizeHandle(title: string): string {
 }
 
 function toWebhookPayload(payload: ProductEnrichmentPayload): ShopifyProductWebhookPayload {
+  const variants: ShopifyVariant[] = payload.sku ? [{
+    id: 0,
+    product_id: parseInt(payload.productId.replace(/\D/g, '')) || 0,
+    title: 'Default',
+    price: payload.price || '0.00',
+    sku: payload.sku,
+    position: 1,
+    inventory_policy: 'deny',
+    compare_at_price: null,
+    fulfillment_service: 'manual',
+    inventory_management: null,
+    option1: null,
+    option2: null,
+    option3: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    taxable: true,
+    barcode: payload.barcode || null,
+    grams: 0,
+    weight: 0,
+    weight_unit: 'kg',
+    inventory_item_id: 0,
+    inventory_quantity: 0,
+    old_inventory_quantity: 0,
+    requires_shipping: true,
+    admin_graphql_api_id: '',
+  }] : [];
+
   return {
     id: parseInt(payload.productId.replace(/\D/g, '')) || 0,
     title: payload.title,
     body_html: null,
     vendor: payload.vendor,
     product_type: payload.productType || '',
-    tags: payload.tags?.join(', ') || '',
+    created_at: new Date().toISOString(),
     handle: sanitizeHandle(payload.title),
-    variants: payload.sku ? [{ id: 0, sku: payload.sku, barcode: payload.barcode || null, price: payload.price || '0.00', title: 'Default' }] : [],
+    updated_at: new Date().toISOString(),
+    published_at: null,
+    template_suffix: null,
+    published_scope: 'web',
+    tags: payload.tags?.join(', ') || '',
+    status: 'active',
+    admin_graphql_api_id: '',
+    variants,
+    options: [],
     images: [],
+    image: null,
   };
 }
 
