@@ -2,26 +2,47 @@
 export const maxDuration = 300;
 
 /**
- * Worker Regenerate Product - V4
+ * Worker Regenerate Product - V5 (Phase 2: Advanced RAG & Media)
  * 
- * Orchestratore che collega:
- * 1. ai-enrichment-v3.ts (RAG + Knowledge Graph + Provenance)
- * 2. ImageAgent V4 (ricerca immagini UNIFICATA - Cross-Code + Gold Standard + Vision)
- * 3. TAYA Police (validazione post-generazione)
- * 4. Shopify Admin API (salvataggio HTML + Metafields)
+ * Full orchestration pipeline:
+ * 1. UniversalRAG (searches verified info using whitelisted rag-sources.ts)
+ * 2. RagAdapter (transforms RAG output → TwoPhaseQA input)
+ * 3. TwoPhaseQA (generates specs and pro/con based on facts)
+ * 4. ImageAgentV4 (finds image, prioritizing TRUSTED_RETAILERS for quality)
+ * 5. TAYA Police (post-generation validation)
+ * 6. Shopify Admin API (saves HTML + Metafields + Image with ALT text)
  * 
- * NOVITÀ V4:
- * - ImageAgent V4 unificato (no più Deep Research separato)
- * - Flusso ottimizzato: meno chiamate API, più veloce
- * - Cross-Code e Gold Standard integrati in un unico agente
+ * PHASE 1 (Security Hardening):
+ * - Centralized env validation from lib/env.ts
+ * - No hardcoded tokens
+ * - Standardized Shopify GID format
  * 
- * SECURITY HARDENING (Phase 1):
- * - Removed hardcoded auth token
- * - Uses centralized env validation from lib/env.ts
- * - Standardized Shopify GID format for all GraphQL mutations
+ * PHASE 2 (Advanced RAG & Media):
+ * - UniversalRAG with whitelisted sector-specific sources
+ * - RagAdapter bridges RAG output to TwoPhaseQA
+ * - TwoPhaseQA for fact-based specs and reasoning
+ * - Image ALT text for SEO
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import Anthropic from '@anthropic-ai/sdk';
+
+// Phase 1 imports (security)
+import { env, toShopifyGid } from '@/lib/env';
+
+// Phase 2 imports (RAG pipeline)
+import { 
+  UniversalRAGPipeline, 
+  UniversalRAGResult,
+} from '@/lib/shopify/universal-rag';
+import { adaptRagToQa, AdaptationResult } from '@/lib/shopify/rag-adapter';
+import { 
+  runTwoPhaseQA, 
+  twoPhaseQAToProductContent,
+  TwoPhaseQAResult,
+} from '@/lib/shopify/two-phase-qa';
+
+// Existing imports (enrichment, image, validation)
 import { 
   generateProductContentV3, 
   formatDescriptionAsHtmlV3,
@@ -30,7 +51,6 @@ import {
 import { ShopifyProductWebhookPayload } from '@/lib/shopify/webhook-types';
 import { findProductImage, ImageAgentV4Result } from '@/lib/agents/image-agent-v4';
 import { validateAndCorrect, CleanedContent } from '@/lib/agents/taya-police';
-import { env, toShopifyGid } from '@/lib/env';
 
 // =============================================================================
 // CONFIG (from centralized env)
@@ -141,9 +161,9 @@ function toWebhookPayload(payload: WorkerPayload): ShopifyProductWebhookPayload 
 }
 
 /**
- * Estrae le specifiche tecniche in formato JSON
+ * Estrae le specifiche tecniche in formato JSON da enrichedData V3
  */
-function extractSpecs(enrichedData: EnrichedProductDataV3): TayaSpecs {
+function extractSpecsFromV3(enrichedData: EnrichedProductDataV3): TayaSpecs {
   const specs: TayaSpecs = {};
   
   // Estrai da provenance facts
@@ -159,16 +179,30 @@ function extractSpecs(enrichedData: EnrichedProductDataV3): TayaSpecs {
 }
 
 /**
- * Genera l'opinione dell'esperto dal contenuto
+ * Merges specs from TwoPhaseQA with specs from V3 enrichment.
+ * QA specs take priority (they are fact-checked).
+ */
+function mergeSpecs(qaSpecs: Record<string, string>, v3Specs: TayaSpecs): TayaSpecs {
+  return { ...v3Specs, ...qaSpecs };
+}
+
+/**
+ * Genera l'opinione dell'esperto combinando QA reasoning e V3 data
  */
 function generateExpertOpinion(
   cleanedContent: CleanedContent,
-  enrichedData: EnrichedProductDataV3
+  enrichedData: EnrichedProductDataV3,
+  qaVerdict?: string
 ): string {
   const trades = enrichedData.knowledgeGraphContext?.suitableForTrades || [];
   const tradesText = trades.length > 0 
     ? `Ideale per: ${trades.join(', ')}.` 
     : '';
+  
+  // Use QA verdict if available (it's fact-based)
+  if (qaVerdict) {
+    return `${tradesText} ${qaVerdict}`.trim();
+  }
   
   const prosText = cleanedContent.pros.slice(0, 2).join('. ');
   const consText = cleanedContent.cons.length > 0 
@@ -192,7 +226,6 @@ function isAuthorized(request: NextRequest): boolean {
   const upstashSignature = request.headers.get('upstash-signature');
   
   // QStash requests are signed — trust them if signature is present
-  // (QStash signature verification happens at the SDK level)
   if (upstashSignature) {
     return true;
   }
@@ -213,7 +246,9 @@ async function updateShopifyProductWithMetafields(
   productId: string,
   enrichedData: EnrichedProductDataV3,
   cleanedContent: CleanedContent,
-  imageUrl: string | null
+  imageResult: ImageAgentV4Result,
+  qaSpecs?: Record<string, string>,
+  qaVerdict?: string
 ): Promise<{ success: boolean; error?: string }> {
   
   const url = `https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`;
@@ -236,11 +271,15 @@ async function updateShopifyProductWithMetafields(
   const seoDescription = cleanedContent.description.substring(0, 160);
   
   // Tags
-  const tags = ['AI-Enhanced', 'TAYA-V3.1'];
+  const tags = ['AI-Enhanced', 'TAYA-V5'];
   
-  // Estrai specs e genera expert opinion
-  const specs = extractSpecs(enrichedData);
-  const expertOpinion = cleanedContent.expertOpinion || generateExpertOpinion(cleanedContent, enrichedData);
+  // Merge specs from QA (fact-checked) and V3 (provenance-tracked)
+  const v3Specs = extractSpecsFromV3(enrichedData);
+  const specs = qaSpecs ? mergeSpecs(qaSpecs, v3Specs) : v3Specs;
+  
+  // Expert opinion (prefer QA verdict)
+  const expertOpinion = cleanedContent.expertOpinion || 
+    generateExpertOpinion(cleanedContent, enrichedData, qaVerdict);
 
   // Mutation con Metafields
   const mutation = `
@@ -348,11 +387,11 @@ async function updateShopifyProductWithMetafields(
       };
     }
 
-    console.log('[Worker V3.1] ✅ Product updated with Metafields');
+    console.log('[Worker V5] Product updated with Metafields');
 
-    // Aggiungi immagine se trovata
-    if (imageUrl) {
-      await addProductImage(productGid, imageUrl);
+    // Aggiungi immagine se trovata (con ALT text SEO)
+    if (imageResult.success && imageResult.imageUrl) {
+      await addProductImage(productGid, imageResult.imageUrl, imageResult.imageAlt);
     }
 
     return { success: true };
@@ -366,23 +405,39 @@ async function updateShopifyProductWithMetafields(
   }
 }
 
-async function addProductImage(productGid: string, imageUrl: string): Promise<void> {
+/**
+ * Adds a product image with SEO ALT text.
+ * Uses imageResult.imageAlt from ImageAgentV4, with product title as fallback.
+ */
+async function addProductImage(
+  productGid: string, 
+  imageUrl: string,
+  imageAlt?: string
+): Promise<void> {
   const url = `https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`;
   
   // Ensure GID format
   const normalizedGid = toShopifyGid(productGid, 'Product');
   
+  // ALT text for SEO: use imageAlt from ImageAgent, fallback to empty string
+  const alt = imageAlt || '';
+  
   const mutation = `
     mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
       productCreateMedia(productId: $productId, media: $media) {
-        media { ... on MediaImage { id } }
+        media { 
+          ... on MediaImage { 
+            id
+            alt
+          } 
+        }
         mediaUserErrors { field message }
       }
     }
   `;
 
   try {
-    await fetch(url, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -394,12 +449,19 @@ async function addProductImage(productGid: string, imageUrl: string): Promise<vo
           productId: normalizedGid,
           media: [{
             originalSource: imageUrl,
+            alt,
             mediaContentType: 'IMAGE',
           }],
         },
       }),
     });
-    console.log(`[Worker] Image added: ${imageUrl}`);
+    
+    const result = await response.json();
+    if (result.data?.productCreateMedia?.mediaUserErrors?.length > 0) {
+      console.error('[Worker] Image media errors:', result.data.productCreateMedia.mediaUserErrors);
+    } else {
+      console.log(`[Worker V5] Image added with ALT="${alt}": ${imageUrl}`);
+    }
   } catch (error) {
     console.error('[Worker] Image add error:', error);
   }
@@ -422,44 +484,118 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    console.log(`[Worker V3.1] 🚀 Processing: ${payload.title}`);
+    console.log(`[Worker V5] Processing: ${payload.title}`);
     const startTime = Date.now();
 
+    // Initialize Anthropic client for TwoPhaseQA
+    const anthropic = new Anthropic({
+      apiKey: env.ANTHROPIC_API_KEY,
+    });
+
     // ===========================================
-    // STEP 1: Genera contenuto con la "Ferrari" V3
+    // STEP 1: UniversalRAG — Search verified info
     // ===========================================
-    console.log('[Worker V3.1] Step 1: Running ai-enrichment-v3 (RAG + KG + Provenance)...');
+    console.log('[Worker V5] Step 1: Running UniversalRAG with whitelisted sources...');
+    
+    const ragPipeline = new UniversalRAGPipeline({
+      enableSourceRouting: true,
+      enableGranularityAware: true,
+      enableNoRetrievalDetection: true,
+      enableProactiveFusion: true,
+      enableBenchmarkContext: true,
+      maxSources: 5,
+      maxTokenBudget: 6000,
+      timeoutMs: 30000,
+    });
+    
+    const ragResult: UniversalRAGResult = await ragPipeline.enrichProduct(
+      payload.title,
+      payload.vendor,
+      payload.productType || '',
+      payload.sku || '',
+      'full'
+    );
+    
+    console.log(`[Worker V5] RAG completed: success=${ragResult.success}, sources=${ragResult.metadata.sourcesQueried.length}`);
+
+    // ===========================================
+    // STEP 2: RagAdapter — Prepare data for QA
+    // ===========================================
+    console.log('[Worker V5] Step 2: Adapting RAG output for TwoPhaseQA...');
+    
+    const adaptation: AdaptationResult = adaptRagToQa(
+      ragResult,
+      payload.title,
+      payload.vendor,
+      payload.sku || '',
+      payload.productType || ''
+    );
+    
+    console.log(`[Worker V5] Adaptation: evidence=${adaptation.metadata.evidenceCount}, sources=${adaptation.metadata.contributingSources.join(',')}`);
+    if (adaptation.metadata.warnings.length > 0) {
+      console.log(`[Worker V5] Adapter warnings: ${adaptation.metadata.warnings.join('; ')}`);
+    }
+
+    // ===========================================
+    // STEP 3: TwoPhaseQA — Fact-based specs & reasoning
+    // ===========================================
+    console.log('[Worker V5] Step 3: Running TwoPhaseQA (Simple QA + Complex QA)...');
+    
+    let qaResult: TwoPhaseQAResult | null = null;
+    let qaContent: ReturnType<typeof twoPhaseQAToProductContent> | null = null;
+    
+    try {
+      qaResult = await runTwoPhaseQA(adaptation.qaInput, anthropic);
+      qaContent = twoPhaseQAToProductContent(qaResult);
+      
+      console.log(`[Worker V5] QA completed: ${qaResult.simpleQA.rawFacts.filter(f => f.verified).length} verified facts, confidence=${qaResult.complexQA.recommendation.confidence}`);
+    } catch (qaError) {
+      console.error('[Worker V5] TwoPhaseQA failed (non-fatal, continuing with V3 enrichment):', qaError);
+    }
+
+    // ===========================================
+    // STEP 4: AI Enrichment V3 — Full content generation
+    // ===========================================
+    console.log('[Worker V5] Step 4: Running ai-enrichment-v3 (RAG + KG + Provenance)...');
     
     const webhookPayload = toWebhookPayload(payload);
     const enrichedData = await generateProductContentV3(webhookPayload);
     
-    console.log(`[Worker V3.1] Content generated. Confidence: ${enrichedData.provenance.overallConfidence}%`);
-    console.log(`[Worker V3.1] Sources used: ${enrichedData.sourcesUsed.join(', ')}`);
+    console.log(`[Worker V5] V3 content generated. Confidence: ${enrichedData.provenance.overallConfidence}%`);
 
     // ===========================================
-    // STEP 2: TAYA Police - Validazione contenuti
+    // STEP 5: TAYA Police — Content validation
     // ===========================================
-    console.log('[Worker V3.1] Step 2: Running TAYA Police validation...');
+    console.log('[Worker V5] Step 5: Running TAYA Police validation...');
+    
+    // Merge QA pros/cons with V3 enrichment (QA takes priority for fact-based items)
+    const prosToValidate = qaContent 
+      ? [...qaContent.pros, ...enrichedData.pros.filter(p => !qaContent!.pros.some(qp => qp.includes(p.substring(0, 20))))]
+      : enrichedData.pros;
+    
+    const consToValidate = qaContent
+      ? [...qaContent.cons, ...enrichedData.cons.filter(c => !qaContent!.cons.some(qc => qc.includes(c.substring(0, 20))))]
+      : enrichedData.cons;
     
     const validationResult = await validateAndCorrect({
       description: enrichedData.description,
-      pros: enrichedData.pros,
-      cons: enrichedData.cons,
+      pros: prosToValidate,
+      cons: consToValidate,
       faqs: enrichedData.faqs,
     });
     
     if (validationResult.wasFixed) {
-      console.log(`[Worker V3.1] 🔧 Fixed ${validationResult.violations.length} TAYA violations`);
+      console.log(`[Worker V5] Fixed ${validationResult.violations.length} TAYA violations`);
     } else {
-      console.log('[Worker V3.1] ✅ Content passed TAYA validation');
+      console.log('[Worker V5] Content passed TAYA validation');
     }
 
     // ===========================================
-    // STEP 3: Cerca immagine con ImageAgent V4 (unificato)
+    // STEP 6: ImageAgent V4 — Find product image
     // ===========================================
-    console.log('[Worker V4] Step 3: Running ImageAgent V4 (unified)...');
+    console.log('[Worker V5] Step 6: Running ImageAgent V4 (unified)...');
     
-    const imageResult = await findProductImage(
+    const imageResult: ImageAgentV4Result = await findProductImage(
       payload.title,
       payload.vendor,
       payload.sku,
@@ -467,19 +603,16 @@ export async function POST(request: NextRequest) {
     );
     
     if (imageResult.success) {
-      console.log(`[Worker V4] ✅ Image found via ${imageResult.method}: ${imageResult.source}`);
-      console.log(`[Worker V4] Confidence: ${imageResult.confidence}, Time: ${imageResult.totalTimeMs}ms`);
-      if (imageResult.alternativeCodes.length > 0) {
-        console.log(`[Worker V4] Alternative codes found: ${imageResult.alternativeCodes.join(', ')}`);
-      }
+      console.log(`[Worker V5] Image found via ${imageResult.method}: ${imageResult.source}`);
+      console.log(`[Worker V5] Image ALT: "${imageResult.imageAlt}"`);
     } else {
-      console.log(`[Worker V4] ⚠️ No image after ${imageResult.searchAttempts} attempts: ${imageResult.error}`);
+      console.log(`[Worker V5] No image after ${imageResult.searchAttempts} attempts: ${imageResult.error}`);
     }
 
     // ===========================================
-    // STEP 4: Salva su Shopify (HTML + Metafields)
+    // STEP 7: Save to Shopify (HTML + Metafields + Image with ALT)
     // ===========================================
-    console.log('[Worker V3.1] Step 4: Updating Shopify with Metafields...');
+    console.log('[Worker V5] Step 7: Updating Shopify with Metafields + Image ALT...');
     
     // Normalize productId to GID format before passing to Shopify
     const productGid = toShopifyGid(payload.productId, 'Product');
@@ -488,7 +621,9 @@ export async function POST(request: NextRequest) {
       productGid,
       enrichedData,
       validationResult.content,
-      imageResult.imageUrl
+      imageResult,
+      qaContent?.specs,
+      qaContent?.verdict
     );
 
     const totalTime = Date.now() - startTime;
@@ -508,14 +643,32 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       product: payload.title,
-      version: 'V3.1-TAYA',
+      version: 'V5-RAG-QA',
       metrics: {
         timeMs: totalTime,
-        confidence: enrichedData.provenance.overallConfidence,
-        sourcesCount: enrichedData.sourcesUsed.length,
-        warningsCount: enrichedData.provenance.warnings.length,
+        // RAG metrics
+        ragSuccess: ragResult.success,
+        ragSourcesQueried: ragResult.metadata.sourcesQueried.length,
+        ragTokensUsed: ragResult.metadata.tokensUsed,
+        ragCostSavings: ragResult.metadata.costSavings,
+        // Adapter metrics
+        adapterEvidenceCount: adaptation.metadata.evidenceCount,
+        adapterSourceDataLength: adaptation.metadata.sourceDataLength,
+        adapterHasBenchmark: adaptation.metadata.hasBenchmarkContext,
+        // QA metrics
+        qaVerifiedFacts: qaResult?.simpleQA.rawFacts.filter(f => f.verified).length || 0,
+        qaConfidence: qaResult?.complexQA.recommendation.confidence || 'none',
+        qaTimeMs: qaResult?.totalTime || 0,
+        // V3 enrichment metrics
+        v3Confidence: enrichedData.provenance.overallConfidence,
+        v3SourcesCount: enrichedData.sourcesUsed.length,
+        v3WarningsCount: enrichedData.provenance.warnings.length,
+        // Image metrics
         hasImage: imageResult.success,
         imageSource: imageResult.source,
+        imageMethod: imageResult.method,
+        imageAlt: imageResult.imageAlt,
+        // Content metrics
         prosCount: validationResult.content.pros.length,
         consCount: validationResult.content.cons.length,
         faqsCount: validationResult.content.faqs.length,
@@ -526,7 +679,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[Worker V3.1] Fatal error:', error);
+    console.error('[Worker V5] Fatal error:', error);
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
