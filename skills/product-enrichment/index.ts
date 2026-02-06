@@ -343,7 +343,7 @@ async function execute(context: SkillContext): Promise<SkillResult> {
     // =========================================================================
     log.info('Step 4: Generating V3 content...');
     const webhookPayload = toWebhookPayload(payload);
-    const enrichedData = await generateProductContentV3(webhookPayload);
+    const enrichedData = await generateProductContentV3(webhookPayload, ragResult, qaResult);
 
     // =========================================================================
     // STEP 5: TAYA Police — Content validation

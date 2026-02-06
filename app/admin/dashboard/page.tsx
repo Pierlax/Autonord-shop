@@ -1,9 +1,13 @@
 /**
- * Admin Dashboard — AI Control Plane
+ * Admin Dashboard — Autonord AI Control Plane
  * 
- * Visual interface for monitoring and controlling all AI skills.
- * Provides real-time visibility into skill health, execution logs,
- * and manual trigger capabilities.
+ * Sezioni:
+ * 1. Stato Servizi (Shopify, Gemini, Redis, QStash)
+ * 2. Statistiche Prodotti (arricchiti, pendenti, tasso)
+ * 3. Pipeline Info (versione, flusso)
+ * 4. Test Arricchimento (inserisci ID prodotto → lancia worker)
+ * 5. Skills Overview (dal gateway)
+ * 6. Log Recenti
  */
 
 'use client';
@@ -14,392 +18,316 @@ import { useState, useEffect, useCallback } from 'react';
 // TYPES
 // =============================================================================
 
-interface SkillMetadata {
+interface ServiceStatus {
   name: string;
-  description: string;
+  status: 'connected' | 'error' | 'not_configured';
+  latencyMs?: number;
+  details?: string;
+}
+
+interface ProductStats {
+  totalProducts: number;
+  enrichedProducts: number;
+  pendingProducts: number;
+  enrichmentRate: string;
+}
+
+interface PipelineInfo {
   version: string;
-  author: string;
-  tags: string[];
-  triggers: string[];
-  maxDurationSeconds: number;
+  flow: string;
+  description: string;
 }
 
-interface SkillHealth {
-  state: 'healthy' | 'degraded' | 'unhealthy' | 'unknown';
-  lastExecutedAt?: string;
-  lastResult?: string;
-  totalExecutions: number;
-  totalErrors: number;
-  averageDurationMs: number;
-}
-
-interface ExecutionLog {
-  executionId: string;
-  skillName: string;
-  context: {
-    executionId: string;
-    triggeredBy: string;
-    requestedAt: string;
-    productId?: string;
-  };
-  result: {
-    success: boolean;
-    status: string;
-    message: string;
-    durationMs: number;
-    error?: string;
-  };
-  startedAt: string;
-  completedAt: string;
-}
-
-interface LogEntry {
+interface AdminDashboardData {
   timestamp: string;
-  level: string;
-  service: string;
-  message: string;
-  data?: Record<string, unknown>;
+  services: ServiceStatus[];
+  productStats: ProductStats;
+  pipeline: PipelineInfo;
 }
 
-interface DashboardData {
-  skills: SkillMetadata[];
-  health: Record<string, SkillHealth>;
-  executionStats: {
-    total: number;
-    bySkill: Record<string, { total: number; success: number; failed: number }>;
-    recentErrors: ExecutionLog[];
+interface TestResult {
+  success: boolean;
+  product?: {
+    id: string;
+    title: string;
+    vendor: string;
+    tags: string[];
+    handle: string;
   };
-  recentExecutions: ExecutionLog[];
-  recentLogs: LogEntry[];
-  logStats: {
-    totalEntries: number;
-    byLevel: Record<string, number>;
-    byService: Record<string, number>;
-  };
+  workerResponse?: Record<string, unknown>;
+  message?: string;
+  error?: string;
 }
 
 // =============================================================================
-// COMPONENTS
+// AUTH COMPONENT
 // =============================================================================
 
-function HealthBadge({ state }: { state: string }) {
-  const colors: Record<string, string> = {
-    healthy: 'bg-green-100 text-green-800 border-green-200',
-    degraded: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-    unhealthy: 'bg-red-100 text-red-800 border-red-200',
-    unknown: 'bg-gray-100 text-gray-800 border-gray-200',
-  };
-  const icons: Record<string, string> = {
-    healthy: '●',
-    degraded: '◐',
-    unhealthy: '○',
-    unknown: '?',
-  };
+function AuthGate({ children }: { children: (secret: string) => React.ReactNode }) {
+  const [secret, setSecret] = useState('');
+  const [inputSecret, setInputSecret] = useState('');
+  const [authenticated, setAuthenticated] = useState(false);
+
+  // Check if secret is in URL or localStorage
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlSecret = params.get('secret');
+    const storedSecret = localStorage.getItem('admin_secret');
+    
+    if (urlSecret) {
+      setSecret(urlSecret);
+      localStorage.setItem('admin_secret', urlSecret);
+      setAuthenticated(true);
+    } else if (storedSecret) {
+      setSecret(storedSecret);
+      setAuthenticated(true);
+    }
+  }, []);
+
+  if (authenticated) {
+    return <>{children(secret)}</>;
+  }
+
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${colors[state] || colors.unknown}`}>
-      {icons[state] || '?'} {state}
-    </span>
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-md w-full shadow-2xl">
+        <div className="text-center mb-6">
+          <div className="text-4xl mb-3">🔐</div>
+          <h1 className="text-2xl font-bold text-white">Autonord Admin</h1>
+          <p className="text-gray-400 text-sm mt-1">Inserisci la chiave di accesso</p>
+        </div>
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          setSecret(inputSecret);
+          localStorage.setItem('admin_secret', inputSecret);
+          setAuthenticated(true);
+        }}>
+          <input
+            type="password"
+            value={inputSecret}
+            onChange={(e) => setInputSecret(e.target.value)}
+            placeholder="CRON_SECRET o ADMIN_SECRET"
+            className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-4"
+          />
+          <button
+            type="submit"
+            className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+          >
+            Accedi
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    success: 'bg-green-100 text-green-700',
-    partial: 'bg-yellow-100 text-yellow-700',
-    failed: 'bg-red-100 text-red-700',
-    skipped: 'bg-gray-100 text-gray-700',
-  };
-  return (
-    <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[status] || 'bg-gray-100 text-gray-700'}`}>
-      {status}
-    </span>
-  );
-}
+// =============================================================================
+// SERVICE STATUS CARD
+// =============================================================================
 
-function SkillCard({
-  skill,
-  health,
-  stats,
-  onTrigger,
-}: {
-  skill: SkillMetadata;
-  health?: SkillHealth;
-  stats?: { total: number; success: number; failed: number };
-  onTrigger: (name: string) => void;
-}) {
+function ServiceCard({ service }: { service: ServiceStatus }) {
+  const statusConfig = {
+    connected: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', dot: 'bg-emerald-500', text: 'text-emerald-400', label: 'Connesso' },
+    error: { bg: 'bg-red-500/10', border: 'border-red-500/30', dot: 'bg-red-500', text: 'text-red-400', label: 'Errore' },
+    not_configured: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/30', dot: 'bg-yellow-500', text: 'text-yellow-400', label: 'Non configurato' },
+  };
+  const config = statusConfig[service.status];
+
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-5 hover:shadow-md transition-shadow">
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900">{skill.name}</h3>
-          <p className="text-sm text-gray-500">v{skill.version}</p>
-        </div>
-        <HealthBadge state={health?.state || 'unknown'} />
-      </div>
-      <p className="text-sm text-gray-600 mb-4 line-clamp-2">{skill.description}</p>
-      <div className="flex flex-wrap gap-1 mb-4">
-        {skill.tags.map((tag) => (
-          <span key={tag} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">
-            {tag}
-          </span>
-        ))}
-      </div>
-      <div className="grid grid-cols-3 gap-2 text-center mb-4">
-        <div className="bg-gray-50 rounded p-2">
-          <div className="text-lg font-bold text-gray-900">{stats?.total || 0}</div>
-          <div className="text-xs text-gray-500">Runs</div>
-        </div>
-        <div className="bg-green-50 rounded p-2">
-          <div className="text-lg font-bold text-green-700">{stats?.success || 0}</div>
-          <div className="text-xs text-gray-500">Success</div>
-        </div>
-        <div className="bg-red-50 rounded p-2">
-          <div className="text-lg font-bold text-red-700">{stats?.failed || 0}</div>
-          <div className="text-xs text-gray-500">Failed</div>
+    <div className={`${config.bg} border ${config.border} rounded-xl p-4`}>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-white font-semibold text-sm">{service.name}</h3>
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${config.dot} animate-pulse`} />
+          <span className={`text-xs font-medium ${config.text}`}>{config.label}</span>
         </div>
       </div>
       <div className="flex items-center justify-between">
-        <div className="text-xs text-gray-400">
-          {health?.lastExecutedAt
-            ? `Last: ${new Date(health.lastExecutedAt).toLocaleString('it-IT')}`
-            : 'Never executed'}
-        </div>
+        <span className="text-gray-400 text-xs truncate max-w-[200px]">{service.details || '—'}</span>
+        {service.latencyMs !== undefined && (
+          <span className="text-gray-500 text-xs">{service.latencyMs}ms</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// STAT CARD
+// =============================================================================
+
+function StatCard({ label, value, sublabel, color }: { label: string; value: string | number; sublabel?: string; color: string }) {
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <div className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">{label}</div>
+      <div className={`text-3xl font-bold ${color}`}>{value}</div>
+      {sublabel && <div className="text-gray-500 text-xs mt-1">{sublabel}</div>}
+    </div>
+  );
+}
+
+// =============================================================================
+// TEST ENRICHMENT PANEL
+// =============================================================================
+
+function TestEnrichmentPanel({ secret }: { secret: string }) {
+  const [productId, setProductId] = useState('');
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState<TestResult | null>(null);
+
+  const runTest = async () => {
+    if (!productId.trim()) return;
+    setTesting(true);
+    setResult(null);
+
+    try {
+      const res = await fetch(`/api/admin/dashboard?secret=${secret}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: productId.trim() }),
+      });
+      const data = await res.json();
+      setResult(data);
+    } catch (err) {
+      setResult({ success: false, error: err instanceof Error ? err.message : 'Errore sconosciuto' });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+      <h2 className="text-lg font-bold text-white mb-1">🧪 Test Arricchimento</h2>
+      <p className="text-gray-400 text-sm mb-4">Inserisci un ID prodotto Shopify per lanciare il worker di arricchimento manualmente.</p>
+      
+      <div className="flex gap-3 mb-4">
+        <input
+          type="text"
+          value={productId}
+          onChange={(e) => setProductId(e.target.value)}
+          placeholder="ID prodotto (es. 10139106738518 o gid://shopify/Product/...)"
+          className="flex-1 px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          onKeyDown={(e) => e.key === 'Enter' && runTest()}
+        />
         <button
-          onClick={() => onTrigger(skill.name)}
-          className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 transition-colors"
+          onClick={runTest}
+          disabled={testing || !productId.trim()}
+          className="px-6 py-2.5 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
         >
-          Trigger
+          {testing ? (
+            <span className="flex items-center gap-2">
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              In corso...
+            </span>
+          ) : 'Lancia Test'}
         </button>
       </div>
-    </div>
-  );
-}
 
-function ExecutionTable({ executions }: { executions: ExecutionLog[] }) {
-  if (executions.length === 0) {
-    return <p className="text-gray-500 text-sm py-4 text-center">No executions yet</p>;
-  }
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-200">
-            <th className="text-left py-2 px-3 font-medium text-gray-600">Skill</th>
-            <th className="text-left py-2 px-3 font-medium text-gray-600">Status</th>
-            <th className="text-left py-2 px-3 font-medium text-gray-600">Trigger</th>
-            <th className="text-left py-2 px-3 font-medium text-gray-600">Duration</th>
-            <th className="text-left py-2 px-3 font-medium text-gray-600">Time</th>
-            <th className="text-left py-2 px-3 font-medium text-gray-600">Message</th>
-          </tr>
-        </thead>
-        <tbody>
-          {executions.map((exec) => (
-            <tr key={exec.executionId} className="border-b border-gray-100 hover:bg-gray-50">
-              <td className="py-2 px-3 font-medium">{exec.skillName}</td>
-              <td className="py-2 px-3"><StatusBadge status={exec.result.status} /></td>
-              <td className="py-2 px-3 text-gray-500">{exec.context.triggeredBy}</td>
-              <td className="py-2 px-3 text-gray-500">{(exec.result.durationMs / 1000).toFixed(1)}s</td>
-              <td className="py-2 px-3 text-gray-400 text-xs">{new Date(exec.startedAt).toLocaleString('it-IT')}</td>
-              <td className="py-2 px-3 text-gray-600 truncate max-w-xs">{exec.result.message}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function LogViewer({ logs }: { logs: LogEntry[] }) {
-  const levelColors: Record<string, string> = {
-    debug: 'text-cyan-600',
-    info: 'text-green-600',
-    warn: 'text-yellow-600',
-    error: 'text-red-600',
-  };
-
-  if (logs.length === 0) {
-    return <p className="text-gray-500 text-sm py-4 text-center">No logs yet</p>;
-  }
-
-  return (
-    <div className="bg-gray-900 rounded-lg p-4 overflow-x-auto max-h-96 overflow-y-auto font-mono text-xs">
-      {logs.map((entry, i) => (
-        <div key={i} className="flex gap-2 py-0.5 hover:bg-gray-800 px-1 rounded">
-          <span className="text-gray-500 shrink-0">
-            {new Date(entry.timestamp).toLocaleTimeString('it-IT')}
-          </span>
-          <span className={`shrink-0 font-bold ${levelColors[entry.level] || 'text-gray-400'}`}>
-            [{entry.level.toUpperCase()}]
-          </span>
-          <span className="text-blue-400 shrink-0">[{entry.service}]</span>
-          <span className="text-gray-300">{entry.message}</span>
+      {result && (
+        <div className={`rounded-lg p-4 ${result.success ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-red-500/10 border border-red-500/30'}`}>
+          {result.success ? (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-emerald-400 font-medium">✓ Arricchimento avviato</span>
+              </div>
+              {result.product && (
+                <div className="text-sm text-gray-300 space-y-1">
+                  <div><span className="text-gray-500">Prodotto:</span> {result.product.title}</div>
+                  <div><span className="text-gray-500">Vendor:</span> {result.product.vendor}</div>
+                  <div><span className="text-gray-500">Tags:</span> {result.product.tags?.join(', ') || 'nessuno'}</div>
+                  <div><span className="text-gray-500">Handle:</span> {result.product.handle}</div>
+                </div>
+              )}
+              {result.workerResponse && (
+                <details className="mt-3">
+                  <summary className="text-gray-400 text-xs cursor-pointer hover:text-gray-300">Risposta worker (JSON)</summary>
+                  <pre className="mt-2 text-xs text-gray-400 bg-gray-900 rounded p-3 overflow-x-auto max-h-64 overflow-y-auto">
+                    {JSON.stringify(result.workerResponse, null, 2)}
+                  </pre>
+                </details>
+              )}
+            </div>
+          ) : (
+            <div className="text-red-400 text-sm">
+              <span className="font-medium">✗ Errore:</span> {result.error || result.message || 'Errore sconosciuto'}
+            </div>
+          )}
         </div>
-      ))}
+      )}
     </div>
   );
 }
 
 // =============================================================================
-// TRIGGER MODAL
-// =============================================================================
-
-function TriggerModal({
-  skillName,
-  onClose,
-  onSubmit,
-}: {
-  skillName: string;
-  onClose: () => void;
-  onSubmit: (skillName: string, payload: string, isAsync: boolean) => void;
-}) {
-  const [payload, setPayload] = useState('{}');
-  const [isAsync, setIsAsync] = useState(true);
-
-  const defaultPayloads: Record<string, string> = {
-    'product-enrichment': JSON.stringify({
-      productId: '',
-      title: '',
-      vendor: '',
-      productType: '',
-      sku: null,
-      barcode: null,
-      tags: [],
-    }, null, 2),
-    'blog-research': JSON.stringify({
-      action: 'discover-topics',
-    }, null, 2),
-    'content-validation': JSON.stringify({
-      description: '',
-      pros: [],
-      cons: [],
-      faqs: [],
-    }, null, 2),
-    'image-search': JSON.stringify({
-      title: '',
-      vendor: '',
-      sku: null,
-      barcode: null,
-    }, null, 2),
-  };
-
-  useEffect(() => {
-    if (defaultPayloads[skillName]) {
-      setPayload(defaultPayloads[skillName]);
-    }
-  }, [skillName]);
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
-        <h3 className="text-lg font-bold mb-4">Trigger: {skillName}</h3>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Payload (JSON)</label>
-        <textarea
-          value={payload}
-          onChange={(e) => setPayload(e.target.value)}
-          className="w-full h-48 font-mono text-sm border border-gray-300 rounded-lg p-3 mb-4 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-        />
-        <div className="flex items-center gap-2 mb-4">
-          <input
-            type="checkbox"
-            id="async"
-            checked={isAsync}
-            onChange={(e) => setIsAsync(e.target.checked)}
-            className="rounded"
-          />
-          <label htmlFor="async" className="text-sm text-gray-600">
-            Execute asynchronously (via QStash)
-          </label>
-        </div>
-        <div className="flex gap-3 justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => onSubmit(skillName, payload, isAsync)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-          >
-            Execute
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// =============================================================================
-// MAIN PAGE
+// MAIN DASHBOARD
 // =============================================================================
 
 export default function AdminDashboard() {
-  const [data, setData] = useState<DashboardData | null>(null);
+  const renderDashboard = useCallback((secret: string) => {
+    return <DashboardContent secret={secret} />;
+  }, []);
+
+  return <AuthGate>{renderDashboard}</AuthGate>;
+}
+
+function DashboardContent({ secret }: { secret: string }) {
+  const [data, setData] = useState<AdminDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [triggerSkillName, setTriggerSkillName] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'skills' | 'executions' | 'logs'>('skills');
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
-  const fetchDashboard = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     try {
-      const res = await fetch('/api/gateway/dashboard', {
-        headers: {
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_CRON_SECRET || 'dev'}`,
-        },
-      });
+      const res = await fetch(`/api/admin/dashboard?secret=${secret}`);
+      if (res.status === 401) {
+        localStorage.removeItem('admin_secret');
+        window.location.reload();
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setData(json);
       setError(null);
+      setLastRefresh(new Date());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load dashboard');
+      setError(err instanceof Error ? err.message : 'Errore di connessione');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [secret]);
 
   useEffect(() => {
-    fetchDashboard();
-    const interval = setInterval(fetchDashboard, 10000); // Refresh every 10s
+    fetchData();
+    const interval = setInterval(fetchData, 30000); // Refresh every 30s
     return () => clearInterval(interval);
-  }, [fetchDashboard]);
-
-  const handleTrigger = async (skillName: string, payload: string, isAsync: boolean) => {
-    try {
-      const parsedPayload = JSON.parse(payload);
-      const res = await fetch('/api/gateway/dashboard', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_CRON_SECRET || 'dev'}`,
-        },
-        body: JSON.stringify({ skillName, payload: parsedPayload, async: isAsync }),
-      });
-      const result = await res.json();
-      alert(result.success !== false ? `Skill triggered successfully!` : `Error: ${result.error || result.message}`);
-      setTriggerSkillName(null);
-      fetchDashboard();
-    } catch (err) {
-      alert(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    }
-  };
+  }, [fetchData]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-500">Loading dashboard...</div>
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <div className="flex items-center gap-3 text-gray-400">
+          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          Caricamento dashboard...
+        </div>
       </div>
     );
   }
 
-  if (error) {
+  if (error && !data) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
-          <h2 className="text-red-800 font-bold mb-2">Dashboard Error</h2>
-          <p className="text-red-600 text-sm">{error}</p>
-          <button onClick={fetchDashboard} className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">
-            Retry
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6 max-w-md text-center">
+          <div className="text-3xl mb-3">⚠️</div>
+          <h2 className="text-red-400 font-bold mb-2">Errore Dashboard</h2>
+          <p className="text-red-300 text-sm mb-4">{error}</p>
+          <button onClick={fetchData} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm">
+            Riprova
           </button>
         </div>
       </div>
@@ -408,102 +336,207 @@ export default function AdminDashboard() {
 
   if (!data) return null;
 
+  const connectedCount = data.services.filter(s => s.status === 'connected').length;
+  const totalServices = data.services.length;
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-950 text-white">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
+      <header className="bg-gray-900/50 border-b border-gray-800 px-6 py-4 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Autonord AI Control Plane</h1>
-            <p className="text-sm text-gray-500">Skill management and monitoring dashboard</p>
+            <h1 className="text-xl font-bold text-white flex items-center gap-2">
+              ⚡ Autonord AI Control Plane
+            </h1>
+            <p className="text-gray-500 text-xs mt-0.5">
+              Pipeline {data.pipeline.version} — {data.pipeline.flow}
+            </p>
           </div>
           <div className="flex items-center gap-4">
-            <div className="text-right">
-              <div className="text-sm font-medium text-gray-700">{data.skills.length} Skills</div>
-              <div className="text-xs text-gray-400">{data.executionStats.total} Total Executions</div>
-            </div>
+            {lastRefresh && (
+              <span className="text-gray-600 text-xs">
+                Aggiornato: {lastRefresh.toLocaleTimeString('it-IT')}
+              </span>
+            )}
             <button
-              onClick={fetchDashboard}
-              className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
-              title="Refresh"
+              onClick={fetchData}
+              className="p-2 text-gray-500 hover:text-white rounded-lg hover:bg-gray-800 transition-colors"
+              title="Aggiorna"
             >
               ↻
+            </button>
+            <button
+              onClick={() => { localStorage.removeItem('admin_secret'); window.location.reload(); }}
+              className="p-2 text-gray-500 hover:text-red-400 rounded-lg hover:bg-gray-800 transition-colors text-xs"
+              title="Logout"
+            >
+              🚪
             </button>
           </div>
         </div>
       </header>
 
-      {/* Tabs */}
-      <div className="max-w-7xl mx-auto px-6 pt-6">
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit mb-6">
-          {(['skills', 'executions', 'logs'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeTab === tab ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {tab === 'skills' ? 'Skills' : tab === 'executions' ? 'Executions' : 'Logs'}
-            </button>
-          ))}
-        </div>
-
-        {/* Skills Tab */}
-        {activeTab === 'skills' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {data.skills.map((skill) => (
-              <SkillCard
-                key={skill.name}
-                skill={skill}
-                health={data.health[skill.name]}
-                stats={data.executionStats.bySkill[skill.name]}
-                onTrigger={setTriggerSkillName}
-              />
+      <main className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+        {/* Section 1: Service Status */}
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+              Stato Servizi ({connectedCount}/{totalServices} connessi)
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {data.services.map((service) => (
+              <ServiceCard key={service.name} service={service} />
             ))}
           </div>
-        )}
+        </section>
 
-        {/* Executions Tab */}
-        {activeTab === 'executions' && (
-          <div className="bg-white border border-gray-200 rounded-lg">
-            <div className="px-5 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold">Recent Executions</h2>
-            </div>
-            <ExecutionTable executions={data.recentExecutions} />
+        {/* Section 2: Product Stats */}
+        <section>
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">
+            Statistiche Prodotti
+          </h2>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard 
+              label="Totale Prodotti" 
+              value={data.productStats.totalProducts} 
+              color="text-white" 
+            />
+            <StatCard 
+              label="Arricchiti" 
+              value={data.productStats.enrichedProducts} 
+              sublabel={`${data.productStats.enrichmentRate} del catalogo`}
+              color="text-emerald-400" 
+            />
+            <StatCard 
+              label="In Attesa" 
+              value={data.productStats.pendingProducts} 
+              sublabel="Da processare con il nuovo pipeline"
+              color="text-amber-400" 
+            />
+            <StatCard 
+              label="Tasso Arricchimento" 
+              value={data.productStats.enrichmentRate} 
+              sublabel="Prodotti con tag TAYA"
+              color="text-blue-400" 
+            />
           </div>
-        )}
+        </section>
 
-        {/* Logs Tab */}
-        {activeTab === 'logs' && (
-          <div>
-            <div className="flex gap-4 mb-4">
-              <div className="bg-white border border-gray-200 rounded-lg p-4 flex-1">
-                <div className="text-2xl font-bold">{data.logStats.totalEntries}</div>
-                <div className="text-sm text-gray-500">Total Log Entries</div>
-              </div>
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                <div className="text-2xl font-bold text-red-700">{data.logStats.byLevel.error || 0}</div>
-                <div className="text-sm text-red-500">Errors</div>
-              </div>
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <div className="text-2xl font-bold text-yellow-700">{data.logStats.byLevel.warn || 0}</div>
-                <div className="text-sm text-yellow-500">Warnings</div>
-              </div>
+        {/* Section 3: Pipeline Info */}
+        <section>
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Pipeline Attiva</h2>
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              {data.pipeline.flow.split(' → ').map((step, i, arr) => (
+                <span key={i} className="flex items-center gap-2">
+                  <span className="px-3 py-1.5 bg-blue-500/10 border border-blue-500/30 rounded-lg text-blue-400 text-sm font-medium">
+                    {step}
+                  </span>
+                  {i < arr.length - 1 && <span className="text-gray-600">→</span>}
+                </span>
+              ))}
             </div>
-            <LogViewer logs={data.recentLogs} />
+            <p className="text-gray-500 text-sm">{data.pipeline.description}</p>
           </div>
-        )}
-      </div>
+        </section>
 
-      {/* Trigger Modal */}
-      {triggerSkillName && (
-        <TriggerModal
-          skillName={triggerSkillName}
-          onClose={() => setTriggerSkillName(null)}
-          onSubmit={handleTrigger}
-        />
-      )}
+        {/* Section 4: Test Enrichment */}
+        <section>
+          <TestEnrichmentPanel secret={secret} />
+        </section>
+
+        {/* Section 5: Quick Actions */}
+        <section>
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">
+            Azioni Rapide
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <QuickActionButton
+              label="Reset Tutti i Prodotti"
+              description="Rimuovi tag TAYA per forzare la rigenerazione"
+              icon="🔄"
+              endpoint="/api/admin/reset-products?all=true"
+              method="POST"
+              secret={secret}
+              confirmMessage="Sei sicuro? Questo rimuoverà i tag da TUTTI i prodotti e forzerà la rigenerazione."
+            />
+            <QuickActionButton
+              label="Avvia Cron Manuale"
+              description="Processa i prodotti pendenti ora"
+              icon="⚡"
+              endpoint="/api/cron/auto-process-products"
+              method="GET"
+              secret={secret}
+            />
+            <QuickActionButton
+              label="Statistiche Tag"
+              description="Vedi tutti i tag di tutti i prodotti"
+              icon="🏷️"
+              endpoint="/api/debug/all-tags"
+              method="GET"
+              secret={secret}
+            />
+          </div>
+        </section>
+      </main>
     </div>
+  );
+}
+
+// =============================================================================
+// QUICK ACTION BUTTON
+// =============================================================================
+
+function QuickActionButton({ 
+  label, description, icon, endpoint, method, secret, confirmMessage 
+}: { 
+  label: string; 
+  description: string; 
+  icon: string; 
+  endpoint: string; 
+  method: string; 
+  secret: string;
+  confirmMessage?: string;
+}) {
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  const execute = async () => {
+    if (confirmMessage && !window.confirm(confirmMessage)) return;
+    setRunning(true);
+    setResult(null);
+
+    try {
+      const url = endpoint.includes('?') 
+        ? `${endpoint}&secret=${secret}` 
+        : `${endpoint}?secret=${secret}`;
+      
+      const res = await fetch(url, { method });
+      const data = await res.json();
+      setResult(data.success !== false ? '✓ Completato' : `✗ ${data.error || 'Errore'}`);
+    } catch (err) {
+      setResult(`✗ ${err instanceof Error ? err.message : 'Errore'}`);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={execute}
+      disabled={running}
+      className="bg-gray-900 border border-gray-800 rounded-xl p-4 text-left hover:border-gray-700 transition-colors disabled:opacity-50 group"
+    >
+      <div className="flex items-start gap-3">
+        <span className="text-2xl">{icon}</span>
+        <div className="flex-1 min-w-0">
+          <div className="text-white font-medium text-sm group-hover:text-blue-400 transition-colors">{label}</div>
+          <div className="text-gray-500 text-xs mt-0.5">{description}</div>
+          {running && <div className="text-blue-400 text-xs mt-2 animate-pulse">In esecuzione...</div>}
+          {result && <div className={`text-xs mt-2 ${result.startsWith('✓') ? 'text-emerald-400' : 'text-red-400'}`}>{result}</div>}
+        </div>
+      </div>
+    </button>
   );
 }
