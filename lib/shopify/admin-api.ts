@@ -128,10 +128,11 @@ async function createOrUpdateMetafield(
 }
 
 /**
- * Check if product is already enriched (has AI-Enhanced tag)
+ * Check if product is already enriched (has AI-Enhanced or 'scheda arricchita' tag)
  */
 export function isProductAlreadyEnriched(tags: string): boolean {
-  return tags.toLowerCase().includes('ai-enhanced');
+  const tagsLower = tags.toLowerCase();
+  return tagsLower.includes('ai-enhanced') || tagsLower.includes('scheda arricchita');
 }
 
 /**

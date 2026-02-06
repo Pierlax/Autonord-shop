@@ -52,10 +52,10 @@ interface ShopifyProduct {
 async function getUnprocessedProducts(limit: number): Promise<ShopifyProduct[]> {
   const url = `https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`;
   
-  // Query per ottenere prodotti che NON hanno il tag AI-Enhanced
+  // Query per ottenere prodotti che NON hanno il tag AI-Enhanced e NON hanno 'scheda arricchita'
   const query = `
     query getUnprocessedProducts {
-      products(first: ${limit}, query: "NOT tag:AI-Enhanced") {
+      products(first: ${limit}, query: "NOT tag:AI-Enhanced AND NOT tag:'scheda arricchita'") {
         edges {
           node {
             id
@@ -108,10 +108,10 @@ async function getProductStats(): Promise<{ total: number; processed: number; re
     }
   `;
   
-  // Query per contare prodotti processati
+  // Query per contare prodotti processati (AI-Enhanced o scheda arricchita)
   const processedQuery = `
     query countProcessed {
-      productsCount(query: "tag:AI-Enhanced") {
+      productsCount(query: "tag:AI-Enhanced OR tag:'scheda arricchita'") {
         count
       }
     }

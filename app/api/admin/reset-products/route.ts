@@ -27,10 +27,16 @@ const TAGS_TO_REMOVE = [
   'TAYA-V3',
   'TAYA-V3.1',
   'TAYA-V5',
+  'scheda arricchita',
+  'Scheda Arricchita',
+  'Scheda arricchita',
 ];
 
 function shouldRemoveTag(tag: string): boolean {
-  return TAGS_TO_REMOVE.includes(tag) || tag.startsWith('AI-');
+  const tagLower = tag.toLowerCase().trim();
+  return TAGS_TO_REMOVE.some(t => t.toLowerCase() === tagLower) 
+    || tag.startsWith('AI-')
+    || tagLower.includes('scheda arricchita');
 }
 
 async function shopifyAdminQuery(query: string, variables?: Record<string, unknown>) {
@@ -68,9 +74,10 @@ interface ProductNode {
 }
 
 async function getAIEnhancedProducts(limit: number): Promise<ProductNode[]> {
+  // Fetch products with AI-Enhanced OR 'scheda arricchita' tag
   const query = `
     query GetAIEnhancedProducts($first: Int!, $after: String) {
-      products(first: $first, after: $after, query: "tag:AI-Enhanced") {
+      products(first: $first, after: $after, query: "tag:AI-Enhanced OR tag:'scheda arricchita'") {
         edges {
           node {
             id
@@ -122,7 +129,7 @@ async function getAIEnhancedProducts(limit: number): Promise<ProductNode[]> {
 async function countAIEnhancedProducts(): Promise<number> {
   const query = `
     query CountAIEnhanced {
-      productsCount(query: "tag:AI-Enhanced") {
+      productsCount(query: "tag:AI-Enhanced OR tag:'scheda arricchita'") {
         count
       }
     }

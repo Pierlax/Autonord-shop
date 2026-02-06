@@ -46,10 +46,10 @@ async function getUnenrichedProducts(limit: number = 50): Promise<any[]> {
 
   const data = await response.json();
   
-  // Filter to products without AI-Enhanced tag
+  // Filter to products without AI-Enhanced or 'scheda arricchita' tag
   const unenrichedProducts = data.products.filter((product: any) => {
     const tags = product.tags ? product.tags.toLowerCase() : '';
-    return !tags.includes('ai-enhanced');
+    return !tags.includes('ai-enhanced') && !tags.includes('scheda arricchita');
   });
 
   // Filter to products created more than 5 minutes ago
