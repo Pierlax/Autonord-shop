@@ -195,7 +195,7 @@ Rispondi in JSON:
   ]
 }`;
 
-  const response = await generateTextSafe({
+  const result = await generateTextSafe({
 
     prompt,
 
@@ -204,7 +204,7 @@ Rispondi in JSON:
     temperature: 0.5,
 
   });
-  const text = response.text;
+  const text = result.text;
 
   try {
     const jsonMatch = text.match(/\{[\s\S]*\}/);

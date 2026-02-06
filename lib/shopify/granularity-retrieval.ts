@@ -162,15 +162,21 @@ Rispondi SOLO con JSON:
   "confidence": 0.0-1.0
 }`;
 
+  const userPrompt = `Query: "${query}"
+${productContext ? `Prodotto: ${productContext.vendor} ${productContext.title}` : ''}
+
+Determina il livello di granularità ottimale.`;
+
   try {
-    const response = await generateTextSafe({
-      prompt,
+    const result = await generateTextSafe({
+      system: systemPrompt,
+      prompt: userPrompt,
       maxTokens: 300,
       temperature: 0.5,
     });
-    const content = response.text;
+    const content = result.text;
 
-    const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error('No JSON found');
     }

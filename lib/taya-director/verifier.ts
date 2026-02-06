@@ -117,7 +117,7 @@ Rispondi in JSON:
   "score": 85
 }`;
 
-  const response = await generateTextSafe({
+  const result = await generateTextSafe({
 
     prompt,
 
@@ -126,10 +126,10 @@ Rispondi in JSON:
     temperature: 0.5,
 
   });
-  const text = response.text;
+  const text = result.text;
 
   try {
-    const jsonMatch = text.text.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON found');
     const parsed = JSON.parse(jsonMatch[0]);
     return {
@@ -194,7 +194,7 @@ Rispondi in JSON:
   "score": 90
 }`;
 
-  const response = await generateTextSafe({
+  const result = await generateTextSafe({
 
     prompt,
 
@@ -203,10 +203,10 @@ Rispondi in JSON:
     temperature: 0.5,
 
   });
-  const text = response.text;
+  const text = result.text;
 
   try {
-    const jsonMatch = text.text.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON found');
     const parsed = JSON.parse(jsonMatch[0]);
     return {
@@ -234,8 +234,8 @@ export async function verifyContent(
 
   // Run both checks in parallel
   const [factCoverage, factualConsistency] = await Promise.all([
-    checkFactCoverage(content, sourceData, anthropic),
-    checkFactualConsistency(content, sourceData, anthropic),
+    checkFactCoverage(content, sourceData),
+    checkFactualConsistency(content, sourceData),
   ]);
 
   // Calculate overall score (weighted)
@@ -348,7 +348,7 @@ GENERA IL CONTENUTO CORRETTO in JSON:
   "notIdealFor": ["tipo utente 1", "tipo utente 2"]
 }`;
 
-  const response = await generateTextSafe({
+  const result = await generateTextSafe({
 
     prompt,
 
@@ -357,10 +357,10 @@ GENERA IL CONTENUTO CORRETTO in JSON:
     temperature: 0.5,
 
   });
-  const text = response.text;
+  const text = result.text;
 
   try {
-    const jsonMatch = text.text.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON found');
     const parsed = JSON.parse(jsonMatch[0]);
     return {
@@ -400,7 +400,7 @@ export async function verifyAndRegenerateLoop(
     attempts++;
     
     // Verify current content
-    verification = await verifyContent(currentContent, sourceData, anthropic);
+    verification = await verifyContent(currentContent, sourceData);
 
     if (verification.passed) {
       log.info(`[Verifier] Content passed verification on attempt ${attempts}`);
@@ -424,7 +424,7 @@ export async function verifyAndRegenerateLoop(
       sourceData,
       attempt: attempts + 1,
       maxAttempts,
-    }, anthropic);
+    });
   }
 
   // Return last attempt even if not perfect

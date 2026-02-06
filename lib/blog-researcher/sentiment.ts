@@ -447,15 +447,15 @@ Rispondi in formato JSON:
 }`;
 
   try {
-    const response = await generateTextSafe({
+    const result = await generateTextSafe({
       prompt,
       maxTokens: 2000,
       temperature: 0.5,
     });
-    const content = response.text;
+    const content = result.text;
     
     // Extract JSON from response
-    const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error('No JSON found in response');
     }
@@ -527,19 +527,17 @@ Rispondi in JSON:
 }`;
 
   try {
-    const response = await generateTextSafe({
+    const result = await generateTextSafe({
       prompt,
       maxTokens: 1500,
       temperature: 0.5,
     });
-    const content = response.text;
-    if (content.type !== 'text') return [];
-    
-    const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+    const content = result.text;
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return [];
     
-    const result = JSON.parse(jsonMatch[0]);
-    return result.problems || [];
+    const parsed = JSON.parse(jsonMatch[0]);
+    return parsed.problems || [];
     
   } catch (error) {
     log.error('[Sentiment] Problem extraction error:', error);

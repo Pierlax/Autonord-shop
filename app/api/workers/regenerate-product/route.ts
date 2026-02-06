@@ -541,7 +541,7 @@ export async function POST(request: NextRequest) {
     let qaContent: ReturnType<typeof twoPhaseQAToProductContent> | null = null;
     
     try {
-      qaResult = await runTwoPhaseQA(adaptation.qaInput, anthropic);
+      qaResult = await runTwoPhaseQA(adaptation.qaInput);
       qaContent = twoPhaseQAToProductContent(qaResult);
       
       console.log(`[Worker V5] QA completed: ${qaResult.simpleQA.rawFacts.filter(f => f.verified).length} verified facts, confidence=${qaResult.complexQA.recommendation.confidence}`);

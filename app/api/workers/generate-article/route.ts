@@ -115,20 +115,17 @@ Ricorda:
 - Sii onesto sui difetti e limiti dei prodotti
 - Concludi con consigli pratici e actionable`;
 
-  const response = await generateTextSafe({
-
-    prompt,
-
+  const result = await generateTextSafe({
+    system: TAYA_SYSTEM_PROMPT,
+    prompt: userPrompt,
     maxTokens: 4500,
-
     temperature: 0.5,
-
   });
-  const content = response.text;
-  if (content.type === 'text') {
-    return content.text;
+
+  if (!result.text) {
+    throw new Error('Empty response from Gemini');
   }
-  throw new Error('Unexpected response type from Claude');
+  return result.text;
 }
 
 async function createArticle(

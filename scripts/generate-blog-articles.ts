@@ -216,9 +216,6 @@ async function searchForImage(query: string): Promise<string | null> {
 }
 
 async function generateArticleContent(article: ArticlePlan): Promise<string> {
-  if (!ANTHROPIC_API_KEY) {
-    throw new Error('ANTHROPIC_API_KEY not set');
-  }
   const userPrompt = `Scrivi un articolo completo per il blog di Autonord Service su:
 
 **Titolo:** ${article.title}
@@ -232,20 +229,17 @@ Se parli di problemi, includi soluzioni pratiche step-by-step.
 
 Ricorda: scrivi come se stessi parlando con un artigiano che entra in negozio e ti fa una domanda diretta.`;
 
-  const response = await generateTextSafe({
-
-    prompt,
-
+  const result = await generateTextSafe({
+    system: TAYA_SYSTEM_PROMPT,
+    prompt: userPrompt,
     maxTokens: 4000,
-
     temperature: 0.5,
-
   });
-  const content = response.text;
-  if (content.type === 'text') {
-    return content.text;
+
+  if (!result.text) {
+    throw new Error('Empty response from Gemini');
   }
-  throw new Error('Unexpected response type');
+  return result.text;
 }
 
 async function getBlogId(): Promise<string> {

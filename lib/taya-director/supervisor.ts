@@ -109,19 +109,19 @@ ${product.metafields.aiDescription || '(non presente)'}
 Valuta secondo i principi TAYA e rispondi SOLO con il JSON richiesto.`;
 
   try {
-    const response = await generateTextSafe({
-      prompt,
+    const result = await generateTextSafe({
+      system: systemPrompt,
+      prompt: userPrompt,
       maxTokens: 1500,
       temperature: 0.5,
     });
-    // Extract text response
-    const textBlock = response.content.find(block => block.type === 'text');
-    if (!textBlock || textBlock.type !== 'text') {
-      throw new Error('No text response from Claude');
+    const text = result.text;
+    if (!text) {
+      throw new Error('No text response from Gemini');
     }
 
     // Parse JSON from response
-    const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error('No JSON found in response');
     }

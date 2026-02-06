@@ -181,15 +181,21 @@ Rispondi SOLO con JSON:
   "reasoning": "Breve spiegazione"
 }`;
 
+  const userPrompt = `Query: "${query}"
+${productContext ? `Prodotto: ${productContext.vendor} ${productContext.title}` : ''}
+
+Determina se serve retrieval esterno.`;
+
   try {
-    const response = await generateTextSafe({
-      prompt,
+    const result = await generateTextSafe({
+      system: systemPrompt,
+      prompt: userPrompt,
       maxTokens: 300,
       temperature: 0.5,
     });
-    const content = response.text;
+    const content = result.text;
 
-    const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error('No JSON found');
     }
@@ -241,15 +247,16 @@ Basati su conoscenze consolidate, evita speculazioni su prodotti specifici.`,
   };
 
   try {
-    const response = await generateTextSafe({
-      prompt,
+    const result = await generateTextSafe({
+      system: systemPrompts[knowledgeType],
+      prompt: query,
       maxTokens: 1000,
       temperature: 0.5,
     });
-    const content = response.text;
+    const content = result.text;
 
     return {
-      response: content.text,
+      response: content,
       confidence: knowledgeType === 'domain_knowledge' ? 0.85 : 0.7,
     };
   } catch (error) {

@@ -236,18 +236,19 @@ ${existingGaps.slice(0, 5).map(g => `- ${g.description}`).join('\n')}
 Suggerisci 2-3 articoli TAYA che mancano e sarebbero utili ai clienti.`;
 
   try {
-    const response = await generateTextSafe({
-      prompt,
+    const result = await generateTextSafe({
+      system: systemPrompt,
+      prompt: userPrompt,
       maxTokens: 1000,
       temperature: 0.5,
     });
-    const textBlock = response.content.find(block => block.type === 'text');
-    if (!textBlock || textBlock.type !== 'text') {
+    const text = result.text;
+    if (!text) {
       return [];
     }
 
     // Parse JSON array from response
-    const jsonMatch = textBlock.text.match(/\[[\s\S]*\]/);
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
       return [];
     }

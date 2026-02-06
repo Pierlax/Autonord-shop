@@ -177,15 +177,16 @@ Rispondi SOLO con JSON valido:
     : `Query: "${query}"`;
 
   try {
-    const response = await generateTextSafe({
-      prompt,
+    const result = await generateTextSafe({
+      system: systemPrompt,
+      prompt: userPrompt,
       maxTokens: 500,
       temperature: 0.5,
     });
-    const content = response.text;
+    const content = result.text;
 
     // Extract JSON from response
-    const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error('No JSON found in response');
     }

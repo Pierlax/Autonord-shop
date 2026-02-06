@@ -21,7 +21,7 @@
  */
 
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { generateText, generateObject, type CoreMessage } from 'ai';
+import { generateText, generateObject, type ModelMessage } from 'ai';
 import { env } from '@/lib/env';
 import { loggers } from '@/lib/logger';
 import type { z } from 'zod';
@@ -162,7 +162,7 @@ export interface GenerateTextOptions {
   /** User prompt (simple single-turn) */
   prompt?: string;
   /** Multi-turn messages (alternative to prompt) */
-  messages?: CoreMessage[];
+  messages?: ModelMessage[];
   /** Max output tokens (default: 4096) */
   maxTokens?: number;
   /** Temperature (default: 0.7) */
@@ -215,20 +215,22 @@ export async function generateTextSafe(options: GenerateTextOptions): Promise<Ge
 
       metrics.totalRequests++;
 
-      const result = await generateText({
+      const baseConfig = {
         model,
         system: options.system,
-        prompt: options.prompt,
-        messages: options.messages,
-        maxTokens: options.maxTokens ?? 4096,
+        maxOutputTokens: options.maxTokens ?? 4096,
         temperature: options.temperature ?? 0.7,
-      });
+      };
+
+      const result = options.messages
+        ? await generateText({ ...baseConfig, messages: options.messages })
+        : await generateText({ ...baseConfig, prompt: options.prompt ?? '' });
 
       // Track usage
       const usage = {
-        promptTokens: result.usage?.promptTokens ?? 0,
-        completionTokens: result.usage?.completionTokens ?? 0,
-        totalTokens: (result.usage?.promptTokens ?? 0) + (result.usage?.completionTokens ?? 0),
+        promptTokens: result.usage?.inputTokens ?? 0,
+        completionTokens: result.usage?.outputTokens ?? 0,
+        totalTokens: (result.usage?.inputTokens ?? 0) + (result.usage?.outputTokens ?? 0),
       };
       metrics.totalTokensIn += usage.promptTokens;
       metrics.totalTokensOut += usage.completionTokens;
@@ -270,7 +272,7 @@ export interface GenerateObjectOptions<T> {
   /** User prompt */
   prompt?: string;
   /** Multi-turn messages */
-  messages?: CoreMessage[];
+  messages?: ModelMessage[];
   /** Zod schema for the expected output */
   schema: z.ZodType<T>;
   /** Schema name for logging */
@@ -321,21 +323,23 @@ export async function generateObjectSafe<T>(options: GenerateObjectOptions<T>): 
 
       metrics.totalRequests++;
 
-      const result = await generateObject({
+      const baseObjConfig = {
         model,
         system: options.system,
-        prompt: options.prompt,
-        messages: options.messages,
         schema: options.schema,
         schemaName: options.schemaName,
-        maxTokens: options.maxTokens ?? 4096,
+        maxOutputTokens: options.maxTokens ?? 4096,
         temperature: options.temperature ?? 0.3,
-      });
+      };
+
+      const result = options.messages
+        ? await generateObject({ ...baseObjConfig, messages: options.messages })
+        : await generateObject({ ...baseObjConfig, prompt: options.prompt ?? '' });
 
       const usage = {
-        promptTokens: result.usage?.promptTokens ?? 0,
-        completionTokens: result.usage?.completionTokens ?? 0,
-        totalTokens: (result.usage?.promptTokens ?? 0) + (result.usage?.completionTokens ?? 0),
+        promptTokens: result.usage?.inputTokens ?? 0,
+        completionTokens: result.usage?.outputTokens ?? 0,
+        totalTokens: (result.usage?.inputTokens ?? 0) + (result.usage?.outputTokens ?? 0),
       };
       metrics.totalTokensIn += usage.promptTokens;
       metrics.totalTokensOut += usage.completionTokens;

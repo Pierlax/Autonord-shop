@@ -13,7 +13,7 @@
  * Usage:
  *   import { adaptRagToQa } from './rag-adapter';
  *   const qaInput = adaptRagToQa(ragResult, productTitle, vendor, sku, productType);
- *   const qaResult = await runTwoPhaseQA(qaInput, anthropic);
+ *   const qaResult = await runTwoPhaseQA(qaInput);
  */
 
 import { UniversalRAGResult } from './universal-rag';

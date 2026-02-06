@@ -121,14 +121,14 @@ Rispondi in JSON:
 }`;
 
   try {
-    const response = await generateTextSafe({
+    const result = await generateTextSafe({
       prompt,
       maxTokens: 3000,
       temperature: 0.5,
     });
-    const content = response.text;
+    const content = result.text;
     
-    const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error('No JSON found');
     }
@@ -221,15 +221,13 @@ Rispondi in JSON:
 }`;
 
   try {
-    const response = await generateTextSafe({
+    const result = await generateTextSafe({
       prompt,
       maxTokens: 2500,
       temperature: 0.5,
     });
-    const content = response.text;
-    if (content.type !== 'text') return { specs: [], sources: [] };
-    
-    const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+    const content = result.text;
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return { specs: [], sources: [] };
     
     const data = JSON.parse(jsonMatch[0]);
@@ -326,14 +324,14 @@ Rispondi in JSON:
 }`;
 
   try {
-    const response = await generateTextSafe({
+    const result = await generateTextSafe({
       prompt,
       maxTokens: 3000,
       temperature: 0.5,
     });
-    const content = response.text;
+    const content = result.text;
     
-    const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error('No JSON found');
     }
@@ -407,15 +405,13 @@ Rispondi in JSON:
 }`;
 
   try {
-    const response = await generateTextSafe({
+    const result = await generateTextSafe({
       prompt,
       maxTokens: 2000,
       temperature: 0.5,
     });
-    const content = response.text;
-    if (content.type !== 'text') return [];
-    
-    const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+    const content = result.text;
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return [];
     
     const data = JSON.parse(jsonMatch[0]);
