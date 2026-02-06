@@ -86,7 +86,8 @@ export function listSkillNames(): string[] {
  */
 export function getSkillsHealth(): Record<string, SkillHealthStatus> {
   const health: Record<string, SkillHealthStatus> = {};
-  for (const [name, skill] of skills) {
+  const skillEntries = Array.from(skills.entries());
+  for (const [name, skill] of skillEntries) {
     health[name] = skill.getStatus();
   }
   return health;

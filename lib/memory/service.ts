@@ -187,7 +187,8 @@ export function searchMemory(input: SearchInput): MemorySearchResult[] {
 
   const results: MemorySearchResult[] = [];
 
-  for (const entry of store.values()) {
+  const allEntries = Array.from(store.values());
+  for (const entry of allEntries) {
     // Filter by namespace
     if (input.namespace && entry.namespace !== input.namespace) continue;
 
@@ -263,7 +264,8 @@ export function getMemoryStats(): {
   let oldest: string | undefined;
   let newest: string | undefined;
 
-  for (const entry of store.values()) {
+  const allEntries = Array.from(store.values());
+  for (const entry of allEntries) {
     byNamespace[entry.namespace] = (byNamespace[entry.namespace] || 0) + 1;
     totalAccessCount += entry.accessCount;
 
