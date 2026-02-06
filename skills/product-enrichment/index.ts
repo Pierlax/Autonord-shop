@@ -300,12 +300,13 @@ async function execute(context: SkillContext): Promise<SkillResult> {
     // =========================================================================
     log.info('Step 1: Running UniversalRAG...');
     const ragPipeline = new UniversalRAGPipeline();
-    const ragResult: UniversalRAGResult = await ragPipeline.research({
-      productName: payload.title,
-      brand: payload.vendor,
-      sku: payload.sku || undefined,
-      category: payload.productType || undefined,
-    });
+    const ragResult: UniversalRAGResult = await ragPipeline.enrichProduct(
+      payload.title,
+      payload.vendor,
+      payload.productType || '',
+      payload.sku || '',
+      'full'
+    );
 
     // =========================================================================
     // STEP 2: RagAdapter — Transform for QA
