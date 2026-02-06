@@ -128,11 +128,13 @@ async function createOrUpdateMetafield(
 }
 
 /**
- * Check if product is already enriched (has AI-Enhanced or 'scheda arricchita' tag)
+ * Check if product is already enriched.
+ * Recognizes all enrichment tags: AI-Enhanced, TAYA, TAYA-V3.1, TAYA-V5, scheda arricchita
  */
 export function isProductAlreadyEnriched(tags: string): boolean {
-  const tagsLower = tags.toLowerCase();
-  return tagsLower.includes('ai-enhanced') || tagsLower.includes('scheda arricchita');
+  const tagList = tags.split(',').map(t => t.trim().toLowerCase());
+  const enrichmentTags = ['ai-enhanced', 'taya', 'taya-v3', 'taya-v3.1', 'taya-v5', 'scheda arricchita'];
+  return tagList.some(tag => enrichmentTags.includes(tag));
 }
 
 /**

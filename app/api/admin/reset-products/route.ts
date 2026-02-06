@@ -73,11 +73,11 @@ interface ProductNode {
   tags: string[];
 }
 
-async function getAIEnhancedProducts(limit: number): Promise<ProductNode[]> {
-  // Fetch products with AI-Enhanced OR 'scheda arricchita' tag
+async function getTaggedProducts(limit: number): Promise<ProductNode[]> {
+  // Fetch products with ANY enrichment-related tag (TAYA, AI-Enhanced, scheda arricchita)
   const query = `
-    query GetAIEnhancedProducts($first: Int!, $after: String) {
-      products(first: $first, after: $after, query: "tag:AI-Enhanced OR tag:'scheda arricchita'") {
+    query GetTaggedProducts($first: Int!, $after: String) {
+      products(first: $first, after: $after, query: "tag:TAYA OR tag:AI-Enhanced OR tag:'TAYA-V3.1' OR tag:'TAYA-V5'") {
         edges {
           node {
             id
@@ -126,10 +126,10 @@ async function getAIEnhancedProducts(limit: number): Promise<ProductNode[]> {
 // COUNT: Get total number of AI-Enhanced products
 // =============================================================================
 
-async function countAIEnhancedProducts(): Promise<number> {
+async function countTaggedProducts(): Promise<number> {
   const query = `
-    query CountAIEnhanced {
-      productsCount(query: "tag:AI-Enhanced OR tag:'scheda arricchita'") {
+    query CountTagged {
+      productsCount(query: "tag:TAYA OR tag:AI-Enhanced OR tag:'TAYA-V3.1' OR tag:'TAYA-V5'") {
         count
       }
     }
@@ -140,7 +140,7 @@ async function countAIEnhancedProducts(): Promise<number> {
     return result.data?.productsCount?.count || 0;
   } catch {
     // Fallback: count manually
-    const products = await getAIEnhancedProducts(1000);
+    const products = await getTaggedProducts(1000);
     return products.length;
   }
 }
@@ -205,8 +205,8 @@ export async function POST(request: NextRequest) {
     
     console.log(`[ResetProducts] Starting reset: ${resetAll ? 'ALL products' : `${count} products`}`);
 
-    // Step 1: Get products with AI-Enhanced tag
-    const products = await getAIEnhancedProducts(count);
+    // Step 1: Get products with enrichment tags (TAYA, AI-Enhanced, etc.)
+    const products = await getTaggedProducts(count);
 
     if (products.length === 0) {
       return NextResponse.json({
@@ -299,13 +299,13 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const aiEnhancedCount = await countAIEnhancedProducts();
+    const taggedCount = await countTaggedProducts();
 
     return NextResponse.json({
       message: 'Reset Products API — V3.1 Fix Architetturale',
       stats: {
-        productsWithAIEnhancedTag: aiEnhancedCount,
-        description: 'These products will have their AI tags removed and will be reprocessed with the fixed pipeline',
+        productsWithEnrichmentTags: taggedCount,
+        description: 'These products will have their AI/TAYA tags removed and will be reprocessed with the fixed pipeline',
       },
       usage: {
         resetSome: 'POST /api/admin/reset-products?count=10',
