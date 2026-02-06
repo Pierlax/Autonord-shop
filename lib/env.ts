@@ -56,6 +56,10 @@ interface OptionalEnv {
   RESEND_API_KEY?: string;
   /** Email address for notifications */
   NOTIFICATION_EMAIL?: string;
+  /** Upstash Redis REST URL for RAG cache */
+  UPSTASH_REDIS_REST_URL?: string;
+  /** Upstash Redis REST token for RAG cache */
+  UPSTASH_REDIS_REST_TOKEN?: string;
   /** Vercel deployment URL (auto-set by Vercel) */
   VERCEL_URL?: string;
   /** Base URL for the application */
@@ -129,6 +133,8 @@ export const optionalEnv: OptionalEnv = {
   SLACK_WEBHOOK_URL: process.env.SLACK_WEBHOOK_URL,
   RESEND_API_KEY: process.env.RESEND_API_KEY,
   NOTIFICATION_EMAIL: process.env.NOTIFICATION_EMAIL,
+  UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
+  UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
   VERCEL_URL: process.env.VERCEL_URL,
   NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
   NODE_ENV: process.env.NODE_ENV,

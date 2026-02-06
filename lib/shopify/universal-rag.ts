@@ -65,8 +65,12 @@ import {
   sourceTypeToSearchIntent,
   isWhitelistedDomain,
   getSourceConfidence,
+  getDomainsForIntent,
   SearchIntent,
 } from './rag-sources';
+
+import { performWebSearch, SearchResult } from './search-client';
+import { cachedSearch, CacheIntent } from './rag-cache';
 
 // Pipeline configuration
 export interface UniversalRAGConfig {
@@ -356,9 +360,14 @@ export class UniversalRAGPipeline {
   /**
    * Execute retrieval using whitelisted RAG sources.
    * 
-   * Replaces the previous placeholder with real source-aware queries.
-   * Uses rag-sources.ts to build domain-restricted search queries
-   * that target only trusted, sector-specific domains.
+   * Performs REAL web searches via search-client.ts, with results
+   * cached by rag-cache.ts to avoid redundant API calls.
+   * 
+   * Flow:
+   * 1. Map SourceType → SearchIntent (determines which domains to query)
+   * 2. Get whitelisted domains for the intent
+   * 3. For each query: check cache → if miss, call performWebSearch()
+   * 4. Aggregate all results into structured retrieval data
    */
   private async executeSourceAwareRetrieval(
     source: SourceType,
@@ -369,35 +378,57 @@ export class UniversalRAGPipeline {
   ): Promise<any[]> {
     // Map the SourceType to a SearchIntent for domain selection
     const intent: SearchIntent = sourceTypeToSearchIntent(source);
+    const cacheIntent: CacheIntent = intent as CacheIntent;
     
-    // Build domain-restricted queries using rag-sources.ts
-    const domainRestrictedQueries = queries.map(q => 
-      buildSourceQuery(intent, q)
-    );
+    // Get whitelisted domains for this intent (primary only for focused search)
+    const domains = getDomainsForIntent(intent, false);
     
-    // Log the actual queries being used
-    log.info(`[UniversalRAG] Source: ${source} → Intent: ${intent}`);
-    log.info(`[UniversalRAG] Domain-restricted queries: ${domainRestrictedQueries.length}`);
+    log.info(`[UniversalRAG] Source: ${source} → Intent: ${intent}, Domains: ${domains.length}`);
     
-    // Return structured retrieval data with domain-restricted queries.
-    // The actual HTTP fetching is handled by the search APIs (Google Custom Search,
-    // SerpAPI, or Exa) which are called by the enrichment pipeline.
-    // This module prepares the optimized queries for those APIs.
-    return [{
+    // Execute searches for each query (with caching)
+    const allResults: SearchResult[] = [];
+    
+    for (const query of queries) {
+      try {
+        // cachedSearch checks cache first, then calls performWebSearch on miss
+        const results = await cachedSearch(
+          query,
+          domains,
+          cacheIntent,
+          performWebSearch
+        );
+        allResults.push(...results);
+      } catch (error) {
+        log.error(`[UniversalRAG] Search failed for query "${query.substring(0, 60)}...": ${error}`);
+      }
+    }
+    
+    log.info(`[UniversalRAG] Retrieved ${allResults.length} total results for source ${source}`);
+    
+    // Transform SearchResult[] into structured retrieval data for the pipeline
+    return allResults.map(result => ({
       source,
       sourceType: source,
       intent,
-      originalQueries: queries,
-      domainRestrictedQueries,
+      // Content fields (used by rag-adapter.ts to build sourceData)
+      content: result.snippet,
+      text: result.snippet,
+      title: result.title,
+      url: result.link,
+      domain: result.domain,
+      // Confidence based on domain whitelist status
+      confidence: isWhitelistedDomain(result.link) 
+        ? getSourceConfidence(result.link) 
+        : 0.5,
+      // Metadata
       granularity: granularityDecision?.level || 'paragraph',
-      // Metadata for downstream processing
+      provider: result.provider,
       queryMetadata: {
-        isWhitelisted: true,
+        isWhitelisted: isWhitelistedDomain(result.link),
         intent,
-        domainCount: domainRestrictedQueries.length,
         timestamp: new Date().toISOString(),
       },
-    }];
+    }));
   }
   
   /**
