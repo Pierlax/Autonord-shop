@@ -190,19 +190,24 @@ function sleep(ms: number): Promise<void> {
 export async function GET(request: NextRequest) {
   // Verifica autorizzazione per Vercel Cron
   const authHeader = request.headers.get('authorization');
-  if (authHeader !== `Bearer ${env.CRON_SECRET}`) {
-    // Vercel Cron usa CRON_SECRET automaticamente
-    const cronSecret = request.headers.get('x-vercel-cron-secret');
-    if (!cronSecret) {
-      // Permetti accesso per vedere lo stato
-      const stats = await getProductStats();
-      return NextResponse.json({
-        message: 'Auto-process cron job status',
-        stats,
-        nextRun: 'Every 15 minutes',
-        productsPerRun: PRODUCTS_PER_RUN,
-      });
-    }
+  const { searchParams } = new URL(request.url);
+  const querySecret = searchParams.get('secret');
+  const cronHeader = request.headers.get('x-vercel-cron-secret');
+  
+  const isAuthorized = 
+    authHeader === `Bearer ${env.CRON_SECRET}` ||
+    querySecret === env.CRON_SECRET ||
+    !!cronHeader;
+
+  if (!isAuthorized) {
+    // Permetti accesso per vedere lo stato (senza processare)
+    const stats = await getProductStats();
+    return NextResponse.json({
+      message: 'Auto-process cron job status (read-only, auth required to process)',
+      stats,
+      nextRun: 'Every 2 hours',
+      productsPerRun: PRODUCTS_PER_RUN,
+    });
   }
 
   // Esegui il processamento
