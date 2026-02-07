@@ -15,9 +15,7 @@ const SHOPIFY_STORE = 'autonord-service.myshopify.com';
 const SHOPIFY_ACCESS_TOKEN = env.SHOPIFY_ADMIN_ACCESS_TOKEN;
 
 function getBaseUrl(): string {
-  if (optionalEnv.VERCEL_URL) {
-    return `https://${optionalEnv.VERCEL_URL}`;
-  }
+  // IMPORTANT: Non usare VERCEL_URL — punta al deployment specifico con Deployment Protection
   return optionalEnv.NEXT_PUBLIC_BASE_URL || 'https://autonord-shop.vercel.app';
 }
 

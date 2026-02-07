@@ -137,12 +137,11 @@ async function triggerAIEnrichment(
  * Uses VERCEL_URL in production, falls back to request origin.
  */
 function getBaseUrl(request: NextRequest): string {
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
+  // IMPORTANT: Non usare VERCEL_URL — punta al deployment specifico con Deployment Protection
+  if (process.env.NEXT_PUBLIC_BASE_URL) {
+    return process.env.NEXT_PUBLIC_BASE_URL;
   }
-  // Fallback: extract from request
-  const url = new URL(request.url);
-  return `${url.protocol}//${url.host}`;
+  return 'https://autonord-shop.vercel.app';
 }
 
 export async function POST(request: NextRequest) {

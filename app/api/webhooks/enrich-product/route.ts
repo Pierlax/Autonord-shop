@@ -151,16 +151,11 @@ export async function POST(request: NextRequest) {
  * Get the base URL for the current deployment
  */
 function getBaseUrl(request: NextRequest): string {
-  // In production, use VERCEL_URL or custom domain
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
+  // IMPORTANT: Non usare VERCEL_URL — punta al deployment specifico con Deployment Protection
+  if (process.env.NEXT_PUBLIC_BASE_URL) {
+    return process.env.NEXT_PUBLIC_BASE_URL;
   }
-  
-  // Fallback to request host
-  const host = request.headers.get('host');
-  const protocol = request.headers.get('x-forwarded-proto') || 'https';
-  
-  return `${protocol}://${host}`;
+  return 'https://autonord-shop.vercel.app';
 }
 
 // Handle GET requests (for webhook verification/testing)

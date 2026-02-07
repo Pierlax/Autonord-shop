@@ -82,10 +82,8 @@ export async function GET(request: NextRequest) {
 
     log.info(`[Cron] Found ${products.length} products to enrich`);
 
-    // Get base URL for queueing
-    const baseUrl = process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}`
-      : 'https://autonord-shop.vercel.app';
+    // IMPORTANT: Non usare VERCEL_URL — punta al deployment specifico con Deployment Protection
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://autonord-shop.vercel.app';
 
     // Queue each product for enrichment
     const results = await Promise.all(
