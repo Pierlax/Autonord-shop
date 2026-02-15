@@ -1,0 +1,141 @@
+# =============================================================================
+# xG Betting System — Configuration
+# Team Marigliano Analytics | v1.0 | February 2026
+# =============================================================================
+# Architecture: "Doppio Filtro" (Double Filter)
+#   Filtro A → xG Model (XGBoost + Poisson)
+#   Filtro B → Market Analysis (Steam Detection)
+#   Ensemble → 3-level stacking with Isotonic Calibration
+#
+# References in brackets: [Peta], [Mack], [Tippett], [Miller], [Wong].
+# =============================================================================
+
+# ── Data ────────────────────────────────────────────────────────────────────
+data:
+  path: "data/matches.csv"
+  min_team_history: 10
+
+  # Column mapping — set to null if CSV already uses canonical names.
+  # Canonical columns:
+  #   date, home_team, away_team, home_goals, away_goals,
+  #   home_xg, away_xg,
+  #   over25_open_odds, under25_open_odds,
+  #   over25_close_odds, under25_close_odds
+  column_map: null
+
+  # Target leagues (for filtering / labelling)
+  target_leagues:
+    - "Serie A"
+    - "Premier League"
+    - "La Liga"
+    - "Bundesliga"
+    - "Ligue 1"
+    - "Eredivisie"
+
+# ── Feature Engineering ─────────────────────────────────────────────────────
+features:
+  # Rolling window for simple moving averages [Tippett – xGenius].
+  rolling_window: 5
+
+  # EMA span for exponential moving averages [Tippett].
+  ema_span: 10
+
+  # Market momentum: (open_odds - close_odds) / open_odds
+  # [Miller & Davidow] "Follow the steam or fade the public."
+  steam_threshold: 0.05   # 5% move = significant steam
+
+  # Game State Adjustment [Project Doc §6.4]
+  game_state_enabled: true
+
+# ── Model (Filtro A) ───────────────────────────────────────────────────────
+model:
+  # XGBoost — used as REGRESSOR to predict expected goals per team.
+  xgb_params:
+    n_estimators: 300
+    max_depth: 4
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+    min_child_weight: 3
+    gamma: 0.1
+    reg_alpha: 0.1
+    reg_lambda: 1.0
+    objective: "reg:squarederror"
+    random_state: 42
+
+  # Over/Under line (default 2.5 goals).
+  ou_line: 2.5
+
+  # Poisson distribution [Mack – Statistical Sports Models].
+  # Max goals to sum in the Poisson grid (higher = more precise).
+  poisson_max_goals: 10
+
+  # Calibration [Project Doc §5 — Bayesian Calibration]
+  # Isotonic Regression on top of ensemble output.
+  calibration_method: "isotonic"
+
+  # Time-Series splits for out-of-sample evaluation [Mack].
+  time_series_splits: 5
+
+# ── Ensemble (3-Level Stacking) ─────────────────────────────────────────────
+ensemble:
+  # Level 1: Base models
+  #   - model_xg:     XGBoost + Poisson (Filtro A)
+  #   - model_market:  Market momentum signal (Filtro B placeholder)
+  #   - model_poisson: Pure Poisson from league averages [Wong]
+
+  # Level 2: Meta-learner
+  meta_learner: "logistic_regression"
+
+  # Level 3: Isotonic calibration
+  final_calibration: "isotonic"
+
+  # Dynamic weights by liquidity context [Project Doc §5.4]
+  dynamic_weights:
+    high_liquidity:    { market: 0.70, xg: 0.30 }
+    medium_liquidity:  { market: 0.50, xg: 0.50 }
+    low_liquidity:     { market: 0.30, xg: 0.70 }
+
+  # Skip match if |prob_market - prob_xg| exceeds this threshold.
+  disagreement_skip_threshold: 0.20
+
+# ── Strategy / Bankroll Management ──────────────────────────────────────────
+strategy:
+  # Fractional Kelly [Wong – Sharp Sports Betting].
+  fractional_kelly: 0.25
+
+  # Minimum EV threshold [Miller & Davidow].
+  min_ev_threshold: 0.05
+
+  # Minimum probability threshold for single event [Project Doc §1.2].
+  min_prob_threshold: 0.80
+
+  # Minimum bookmaker odds (safety margin) [Project Doc §2.3].
+  min_odds: 1.75
+
+  # Maximum stake per bet (hard cap) [Project Doc §8.1].
+  max_stake_pct: 0.03    # 3% of bankroll
+
+  # Initial bankroll.
+  initial_bankroll: 1000.0
+
+  # CLV tracking [Miller & Davidow].
+  clv_enabled: true
+
+  # Stop-loss: consecutive losses before pause.
+  stop_loss_consecutive: 5
+
+# ── Pairing (Doubles Strategy) ──────────────────────────────────────────────
+pairing:
+  enabled: true
+  # Algorithm: "balanced" pairs strongest with weakest [Project Doc §7.1].
+  algorithm: "balanced"
+  # Avoid same-hour matches.
+  avoid_same_hour: true
+  # Prefer cross-league pairs for independence.
+  prefer_cross_league: true
+
+# ── Logging ─────────────────────────────────────────────────────────────────
+logging:
+  level: "INFO"
+  log_file: "logs/engine.log"

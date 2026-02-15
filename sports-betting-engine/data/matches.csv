@@ -1,0 +1,501 @@
+date,home_team,away_team,home_goals,away_goals,home_xg,away_xg,over25_open_odds,under25_open_odds,over25_close_odds,under25_close_odds,league
+2023-08-18,Atalanta,Napoli,0,2,0.83,1.36,2.8,1.68,2.56,1.83,Serie A
+2023-08-18,Tottenham,Arsenal,1,1,1.22,0.97,2.8,1.68,2.8,1.68,Premier League
+2023-08-19,Atletico,Athletic Bilbao,2,2,1.49,1.38,1.93,2.31,1.93,2.31,La Liga
+2023-08-20,Wolfsburg,Freiburg,2,3,1.99,0.59,2.2,2.01,2.14,2.06,Bundesliga
+2023-08-20,Heerenveen,Groningen,2,1,1.66,2.02,1.48,3.63,1.48,3.63,Eredivisie
+2023-08-21,Inter,Fiorentina,0,0,2.12,1.67,1.44,3.87,1.34,4.14,Serie A
+2023-08-22,Arsenal,Man City,3,2,1.39,0.99,2.46,1.83,2.46,1.83,Premier League
+2023-08-22,Athletic Bilbao,Valencia,0,2,1.13,1.37,2.3,1.93,2.46,1.8,La Liga
+2023-08-23,Leipzig,Wolfsburg,4,3,1.01,0.95,3.35,1.53,3.48,1.47,Bundesliga
+2023-08-24,Groningen,AZ,0,1,0.69,0.69,6.49,1.25,6.49,1.25,Eredivisie
+2023-08-25,Lazio,Fiorentina,1,1,0.93,1.9,1.95,2.28,2.08,2.12,Serie A
+2023-08-25,Arsenal,Tottenham,2,1,1.45,1.08,2.26,1.96,2.26,1.96,Premier League
+2023-08-26,Real Madrid,Villarreal,1,0,2.34,0.5,1.94,2.28,1.94,2.28,La Liga
+2023-08-27,Leverkusen,Leipzig,1,1,0.84,0.86,4.32,1.39,4.32,1.39,Bundesliga
+2023-08-27,Vitesse,PSV,2,2,2.2,1.64,1.42,4.0,1.29,4.38,Eredivisie
+2023-08-28,Roma,Atalanta,3,0,0.76,0.54,7.38,1.22,6.87,1.31,Serie A
+2023-08-29,Liverpool,Brighton,1,0,1.6,0.59,2.79,1.68,2.79,1.68,Premier League
+2023-08-29,Sevilla,Real Betis,1,1,2.08,1.41,1.55,3.24,1.47,3.41,La Liga
+2023-08-30,Frankfurt,Freiburg,2,1,2.23,1.47,1.47,3.67,1.47,3.67,Bundesliga
+2023-08-31,PSV,Twente,2,0,1.7,1.45,1.72,2.69,1.72,2.69,Eredivisie
+2023-09-01,Atalanta,Inter,2,2,0.94,0.94,3.58,1.49,3.58,1.49,Serie A
+2023-09-01,Arsenal,West Ham,1,5,2.02,1.73,1.45,3.8,1.45,3.8,Premier League
+2023-09-02,Atletico,Athletic Bilbao,1,3,1.54,1.0,2.26,1.96,2.36,1.88,La Liga
+2023-09-03,Stuttgart,Bayern,2,1,1.18,1.59,2.01,2.2,2.21,1.98,Bundesliga
+2023-09-03,Sparta Rotterdam,Feyenoord,0,3,1.1,1.63,2.04,2.16,2.04,2.16,Eredivisie
+2023-09-04,Inter,Milan,2,2,1.31,1.1,2.43,1.85,2.43,1.85,Serie A
+2023-09-05,Liverpool,Man Utd,0,1,1.3,0.79,3.02,1.61,3.27,1.48,Premier League
+2023-09-05,Real Sociedad,Athletic Bilbao,0,1,1.21,0.2,6.2,1.26,6.79,1.14,La Liga
+2023-09-06,Bayern,Freiburg,1,2,0.91,1.43,2.53,1.8,2.53,1.8,Bundesliga
+2023-09-07,PSV,Feyenoord,1,1,1.77,1.77,1.53,3.34,1.64,3.11,Eredivisie
+2023-09-08,Atalanta,Inter,0,2,0.81,1.99,1.99,2.23,1.94,2.28,Serie A
+2023-09-08,Brighton,Man Utd,3,3,1.53,1.45,1.84,2.45,1.84,2.45,Premier League
+2023-09-09,Athletic Bilbao,Valencia,1,0,1.12,0.53,4.56,1.36,5.0,1.23,La Liga
+2023-09-10,Leverkusen,Union Berlin,3,3,1.69,1.13,1.95,2.27,2.07,2.14,Bundesliga
+2023-09-10,Heerenveen,Sparta Rotterdam,0,2,2.09,1.13,1.69,2.78,1.82,2.57,Eredivisie
+2023-09-11,Torino,Bologna,0,1,1.84,1.64,1.56,3.22,1.56,3.22,Serie A
+2023-09-12,Newcastle,Brighton,0,1,0.45,1.73,2.81,1.68,2.81,1.68,Premier League
+2023-09-12,Atletico,Barcelona,0,3,1.09,1.18,2.66,1.74,2.66,1.74,La Liga
+2023-09-13,Freiburg,Bayern,3,2,1.63,1.21,1.94,2.28,1.9,2.34,Bundesliga
+2023-09-14,Sparta Rotterdam,Vitesse,0,1,0.97,1.08,3.1,1.59,3.1,1.59,Eredivisie
+2023-09-15,Roma,Bologna,0,0,1.31,0.37,4.44,1.38,4.44,1.38,Serie A
+2023-09-15,Liverpool,Tottenham,1,3,0.71,2.12,1.96,2.26,1.96,2.26,Premier League
+2023-09-16,Valencia,Villarreal,0,0,1.66,1.82,1.56,3.22,1.68,2.98,La Liga
+2023-09-17,Stuttgart,Frankfurt,2,1,1.6,1.6,1.69,2.77,1.69,2.77,Bundesliga
+2023-09-17,PSV,Vitesse,1,4,0.58,1.84,2.41,1.86,2.41,1.86,Eredivisie
+2023-09-18,Atalanta,Roma,1,2,2.39,1.64,1.37,4.5,1.3,4.71,Serie A
+2023-09-19,Tottenham,Man City,2,2,1.21,1.87,1.77,2.58,1.66,2.74,Premier League
+2023-09-19,Atletico,Valencia,3,2,2.91,0.65,1.52,3.38,1.52,3.38,La Liga
+2023-09-20,Stuttgart,Dortmund,0,0,1.01,0.92,3.45,1.51,3.45,1.51,Bundesliga
+2023-09-21,Sparta Rotterdam,Groningen,1,0,1.48,0.75,2.73,1.7,2.66,1.75,Eredivisie
+2023-09-22,Juventus,Napoli,1,1,1.17,0.59,4.07,1.42,4.07,1.42,Serie A
+2023-09-22,Newcastle,Liverpool,0,1,1.52,1.68,1.69,2.77,1.69,2.77,Premier League
+2023-09-23,Real Sociedad,Girona,1,1,2.21,1.31,1.54,3.32,1.54,3.32,La Liga
+2023-09-24,Dortmund,Leipzig,2,2,2.92,1.71,1.25,6.59,1.16,7.04,Bundesliga
+2023-09-24,PSV,Twente,0,1,1.11,0.96,3.08,1.59,3.08,1.59,Eredivisie
+2023-09-25,Fiorentina,Roma,2,3,1.73,1.16,1.9,2.34,1.9,2.34,Serie A
+2023-09-26,Tottenham,West Ham,0,0,1.04,0.3,6.9,1.24,6.9,1.24,Premier League
+2023-09-26,Real Sociedad,Sevilla,2,0,2.03,0.36,2.46,1.83,2.54,1.77,La Liga
+2023-09-27,Union Berlin,Bayern,1,1,1.46,0.69,2.9,1.65,2.61,1.81,Bundesliga
+2023-09-28,Ajax,Feyenoord,1,0,1.55,1.12,2.1,2.1,2.1,2.1,Eredivisie
+2023-09-29,Roma,Juventus,3,2,1.67,2.24,1.4,4.18,1.4,4.18,Serie A
+2023-09-29,Brighton,Man City,2,2,1.36,1.61,1.84,2.44,1.84,2.44,Premier League
+2023-09-30,Real Madrid,Sevilla,3,3,1.79,1.99,1.44,3.86,1.44,3.86,La Liga
+2023-10-01,Leipzig,Freiburg,1,0,1.53,2.45,1.38,4.37,1.38,4.37,Bundesliga
+2023-10-01,AZ,Sparta Rotterdam,2,1,1.04,0.58,4.77,1.35,4.77,1.35,Eredivisie
+2023-10-02,Milan,Bologna,0,1,2.02,0.73,2.02,2.18,2.02,2.18,Serie A
+2023-10-03,Man City,West Ham,1,0,1.12,0.95,3.05,1.6,3.05,1.6,Premier League
+2023-10-03,Valencia,Real Sociedad,1,1,2.14,0.91,1.79,2.55,1.79,2.55,La Liga
+2023-10-04,Dortmund,Bayern,1,0,1.23,1.24,2.33,1.91,2.33,1.91,Bundesliga
+2023-10-05,Utrecht,Sparta Rotterdam,2,1,1.34,0.65,3.29,1.54,3.17,1.6,Eredivisie
+2023-10-06,Inter,Fiorentina,0,2,0.51,1.55,3.09,1.59,3.24,1.52,Serie A
+2023-10-06,Newcastle,Liverpool,0,0,0.66,0.81,5.74,1.28,5.74,1.28,Premier League
+2023-10-07,Real Betis,Real Madrid,0,1,0.53,1.37,3.55,1.49,3.32,1.59,La Liga
+2023-10-08,Freiburg,Dortmund,2,0,2.25,1.41,1.48,3.59,1.48,3.59,Bundesliga
+2023-10-08,PSV,Heerenveen,3,0,1.7,1.64,1.62,2.98,1.62,2.98,Eredivisie
+2023-10-09,Roma,Lazio,0,1,1.12,1.83,1.86,2.42,1.86,2.42,Serie A
+2023-10-10,Newcastle,Man City,3,0,2.87,0.2,1.77,2.57,1.64,2.77,Premier League
+2023-10-10,Real Sociedad,Villarreal,1,0,0.52,1.48,3.25,1.55,3.55,1.41,La Liga
+2023-10-11,Frankfurt,Freiburg,4,1,1.93,0.53,2.35,1.9,2.55,1.74,Bundesliga
+2023-10-12,Twente,Vitesse,4,0,1.99,1.14,1.73,2.66,1.73,2.66,Eredivisie
+2023-10-13,Juventus,Napoli,2,1,1.5,0.87,2.49,1.82,2.49,1.82,Serie A
+2023-10-13,West Ham,Brighton,2,0,1.92,0.92,1.94,2.29,1.88,2.36,Premier League
+2023-10-14,Girona,Valencia,3,1,0.71,1.09,3.92,1.43,3.92,1.43,La Liga
+2023-10-15,Hoffenheim,Union Berlin,2,4,1.76,1.3,1.78,2.56,1.62,2.79,Bundesliga
+2023-10-15,Ajax,Sparta Rotterdam,4,3,2.31,1.85,1.34,4.86,1.34,4.86,Eredivisie
+2023-10-16,Inter,Torino,1,2,1.37,1.7,1.77,2.57,1.82,2.51,Serie A
+2023-10-17,Man City,Man Utd,1,1,3.06,0.87,1.4,4.23,1.48,3.99,Premier League
+2023-10-17,Real Betis,Barcelona,0,1,0.9,0.82,4.26,1.39,4.26,1.39,La Liga
+2023-10-18,Hoffenheim,Stuttgart,2,0,2.09,1.09,1.7,2.74,1.58,2.94,Bundesliga
+2023-10-19,Twente,Feyenoord,0,1,0.56,1.24,3.92,1.43,4.3,1.29,Eredivisie
+2023-10-19,Inter,Bologna,1,0,1.28,0.61,3.58,1.49,3.58,1.49,Serie A
+2023-10-20,Brighton,Chelsea,0,5,1.0,1.28,2.64,1.74,2.78,1.65,Premier League
+2023-10-21,Villarreal,Real Betis,1,1,1.36,1.25,2.17,2.03,2.04,2.16,La Liga
+2023-10-22,Leverkusen,Hoffenheim,5,1,2.62,1.61,1.32,5.09,1.29,5.23,Bundesliga
+2023-10-22,Utrecht,Heerenveen,2,2,2.12,1.15,1.65,2.88,1.65,2.88,Eredivisie
+2023-10-23,Inter,Bologna,1,3,0.68,1.57,2.67,1.73,2.67,1.73,Serie A
+2023-10-24,Man Utd,Tottenham,1,1,1.61,1.4,1.81,2.49,1.81,2.49,Premier League
+2023-10-24,Barcelona,Sevilla,0,2,2.16,2.06,1.32,5.07,1.37,4.91,La Liga
+2023-10-25,Dortmund,Leipzig,1,0,0.63,0.2,20.19,1.11,20.19,1.11,Bundesliga
+2023-10-26,Utrecht,Feyenoord,2,2,1.89,1.15,1.79,2.54,1.79,2.54,Eredivisie
+2023-10-27,Inter,Bologna,1,0,1.8,2.06,1.42,4.05,1.42,4.05,Serie A
+2023-10-27,Arsenal,Chelsea,1,1,1.81,1.07,1.91,2.33,1.91,2.33,Premier League
+2023-10-28,Valencia,Villarreal,1,1,1.16,0.97,2.94,1.63,2.94,1.63,La Liga
+2023-10-29,Dortmund,Frankfurt,1,0,2.11,0.65,2.01,2.2,2.01,2.2,Bundesliga
+2023-10-29,Groningen,Utrecht,0,1,2.4,1.64,1.37,4.52,1.37,4.52,Eredivisie
+2023-10-30,Inter,Napoli,0,1,0.67,0.65,7.17,1.23,7.17,1.23,Serie A
+2023-10-31,Aston Villa,Liverpool,2,4,1.63,1.64,1.66,2.87,1.66,2.87,Premier League
+2023-10-31,Villarreal,Girona,0,3,1.44,1.95,1.6,3.07,1.6,3.07,La Liga
+2023-11-01,Leverkusen,Wolfsburg,1,0,2.5,1.1,1.51,3.47,1.51,3.47,Bundesliga
+2023-11-02,Twente,Vitesse,1,0,1.52,1.26,1.99,2.22,1.99,2.22,Eredivisie
+2023-11-03,Roma,Torino,2,3,1.21,1.99,1.69,2.76,1.54,3.01,Serie A
+2023-11-03,Tottenham,Newcastle,2,0,1.89,0.41,2.59,1.76,2.59,1.76,Premier League
+2023-11-04,Athletic Bilbao,Girona,2,1,1.69,1.05,2.03,2.18,2.03,2.18,La Liga
+2023-11-05,Union Berlin,Dortmund,1,2,2.53,1.97,1.27,6.04,1.27,6.04,Bundesliga
+2023-11-05,Groningen,PSV,2,0,2.81,0.57,1.6,3.06,1.6,3.06,Eredivisie
+2023-11-06,Inter,Fiorentina,1,0,1.72,1.85,1.52,3.4,1.52,3.4,Serie A
+2023-11-07,Chelsea,West Ham,1,2,1.94,1.16,1.75,2.62,1.63,2.8,Premier League
+2023-11-07,Valencia,Athletic Bilbao,1,0,2.1,0.2,2.6,1.76,2.6,1.76,La Liga
+2023-11-08,Hoffenheim,Wolfsburg,0,1,1.26,0.99,2.69,1.72,2.69,1.72,Bundesliga
+2023-11-09,Heerenveen,Sparta Rotterdam,3,5,1.44,1.19,2.15,2.05,2.15,2.05,Eredivisie
+2023-11-10,Milan,Lazio,1,0,1.98,1.0,1.83,2.46,1.83,2.46,Serie A
+2023-11-10,Tottenham,Chelsea,3,0,2.13,1.48,1.5,3.49,1.5,3.49,Premier League
+2023-11-11,Girona,Athletic Bilbao,0,1,0.29,1.74,3.18,1.57,3.18,1.57,La Liga
+2023-11-12,Freiburg,Hoffenheim,4,1,1.5,2.01,1.54,3.3,1.54,3.3,Bundesliga
+2023-11-12,Heerenveen,Utrecht,3,2,2.01,1.69,1.47,3.68,1.47,3.68,Eredivisie
+2023-11-13,Juventus,Milan,4,0,1.73,0.64,2.47,1.83,2.26,1.98,Serie A
+2023-11-14,Newcastle,West Ham,1,1,1.18,1.46,2.14,2.06,2.14,2.06,Premier League
+2023-11-14,Real Betis,Girona,2,3,1.65,2.33,1.39,4.34,1.39,4.34,La Liga
+2023-11-15,Freiburg,Leverkusen,1,0,1.76,1.65,1.59,3.1,1.59,3.1,Bundesliga
+2023-11-16,Ajax,PSV,2,1,1.39,1.14,2.27,1.95,2.27,1.95,Eredivisie
+2023-11-17,Milan,Juventus,2,2,2.5,1.66,1.34,4.89,1.23,5.28,Serie A
+2023-11-17,Chelsea,Aston Villa,2,2,2.18,2.06,1.32,5.11,1.32,5.11,Premier League
+2023-11-18,Real Betis,Villarreal,1,1,2.51,1.64,1.34,4.84,1.27,5.11,La Liga
+2023-11-19,Leipzig,Freiburg,2,2,1.01,1.28,2.62,1.75,2.62,1.75,Bundesliga
+2023-11-19,Vitesse,AZ,1,1,0.2,0.95,9.55,1.18,9.55,1.18,Eredivisie
+2023-11-20,Napoli,Lazio,2,0,1.99,0.86,1.94,2.29,1.94,2.29,Serie A
+2023-11-21,Arsenal,Brighton,0,4,0.4,1.45,3.7,1.47,3.7,1.47,Premier League
+2023-11-21,Real Madrid,Girona,3,1,2.82,1.54,1.3,5.51,1.3,5.51,La Liga
+2023-11-22,Leverkusen,Dortmund,2,0,1.55,1.47,1.8,2.52,1.65,2.73,Bundesliga
+2023-11-23,AZ,Feyenoord,1,1,1.02,1.38,2.45,1.84,2.45,1.84,Eredivisie
+2023-11-24,Napoli,Milan,0,1,1.94,0.97,1.89,2.36,1.89,2.36,Serie A
+2023-11-24,Arsenal,West Ham,1,0,1.45,0.46,3.5,1.5,3.79,1.38,Premier League
+2023-11-25,Atletico,Athletic Bilbao,3,1,1.27,1.29,2.24,1.98,2.44,1.8,La Liga
+2023-11-26,Leverkusen,Wolfsburg,0,1,0.33,2.55,1.91,2.33,1.91,2.33,Bundesliga
+2023-11-26,Utrecht,Twente,0,0,1.17,1.4,2.22,1.99,2.03,2.16,Eredivisie
+2023-11-27,Napoli,Inter,1,0,1.57,0.71,2.62,1.75,2.62,1.75,Serie A
+2023-11-28,Arsenal,Aston Villa,2,3,1.77,1.8,1.52,3.41,1.52,3.41,Premier League
+2023-11-28,Barcelona,Girona,2,1,1.99,0.84,1.95,2.27,1.9,2.34,La Liga
+2023-11-29,Bayern,Wolfsburg,1,0,1.36,1.25,2.17,2.03,2.0,2.19,Bundesliga
+2023-11-30,Sparta Rotterdam,AZ,1,2,2.22,0.87,1.76,2.61,1.81,2.54,Eredivisie
+2023-12-01,Inter,Fiorentina,1,3,1.86,1.86,1.46,3.72,1.34,4.03,Serie A
+2023-12-01,Aston Villa,Arsenal,2,2,2.37,2.1,1.28,5.94,1.28,5.94,Premier League
+2023-12-02,Girona,Valencia,2,1,1.19,0.82,3.21,1.56,3.08,1.62,La Liga
+2023-12-03,Dortmund,Stuttgart,3,2,1.35,2.0,1.61,3.01,1.61,3.01,Bundesliga
+2023-12-03,Twente,AZ,3,1,1.18,1.49,2.1,2.1,2.1,2.1,Eredivisie
+2023-12-04,Atalanta,Bologna,0,2,1.13,1.44,2.22,1.99,2.22,1.99,Serie A
+2023-12-05,West Ham,Arsenal,1,1,1.66,0.5,2.87,1.65,3.11,1.52,Premier League
+2023-12-05,Villarreal,Real Madrid,3,2,1.96,1.76,1.46,3.73,1.57,3.46,La Liga
+2023-12-06,Frankfurt,Freiburg,2,0,1.26,0.99,2.67,1.73,2.67,1.73,Bundesliga
+2023-12-07,AZ,Vitesse,3,2,2.48,1.68,1.34,4.86,1.34,4.86,Eredivisie
+2023-12-08,Juventus,Napoli,1,2,1.72,0.91,2.15,2.05,2.15,2.05,Serie A
+2023-12-08,Tottenham,Chelsea,4,1,0.7,1.19,3.56,1.49,3.56,1.49,Premier League
+2023-12-09,Villarreal,Real Madrid,1,1,1.15,0.55,4.33,1.39,4.73,1.26,La Liga
+2023-12-10,Leverkusen,Bayern,1,0,1.34,0.7,3.15,1.57,3.29,1.51,Bundesliga
+2023-12-10,Heerenveen,Vitesse,1,1,1.46,1.32,1.99,2.22,1.99,2.22,Eredivisie
+2023-12-11,Bologna,Roma,1,3,0.2,1.64,3.74,1.46,3.74,1.46,Serie A
+2023-12-12,Brighton,Man Utd,2,0,0.83,1.48,2.57,1.78,2.57,1.78,Premier League
+2023-12-12,Sevilla,Girona,2,2,1.66,0.9,2.22,1.99,2.22,1.99,La Liga
+2023-12-13,Dortmund,Bayern,0,1,0.84,1.09,3.44,1.51,3.44,1.51,Bundesliga
+2023-12-14,Vitesse,Utrecht,1,0,1.39,1.89,1.65,2.89,1.65,2.89,Eredivisie
+2023-12-14,Napoli,Lazio,2,1,0.92,1.43,2.52,1.8,2.52,1.8,Serie A
+2023-12-15,Man City,West Ham,1,1,0.92,1.2,2.97,1.63,2.97,1.63,Premier League
+2023-12-16,Real Betis,Valencia,3,4,2.62,1.74,1.3,5.54,1.25,5.72,La Liga
+2023-12-17,Bayern,Wolfsburg,1,3,0.93,1.41,2.53,1.79,2.35,1.92,Bundesliga
+2023-12-17,Ajax,AZ,0,1,0.98,1.38,2.49,1.81,2.49,1.81,Eredivisie
+2023-12-18,Juventus,Bologna,1,2,1.6,1.86,1.56,3.2,1.56,3.2,Serie A
+2023-12-19,West Ham,Man Utd,1,5,1.14,2.02,1.72,2.71,1.85,2.49,Premier League
+2023-12-19,Barcelona,Atletico,1,1,1.22,1.3,2.27,1.95,2.27,1.95,La Liga
+2023-12-20,Union Berlin,Frankfurt,2,1,1.14,1.1,2.69,1.72,2.5,1.85,Bundesliga
+2023-12-21,Utrecht,Heerenveen,0,0,1.27,0.63,3.53,1.49,3.53,1.49,Eredivisie
+2023-12-21,Napoli,Inter,2,0,1.37,1.41,2.0,2.21,1.84,2.38,Serie A
+2023-12-22,Newcastle,Brighton,2,0,1.9,1.01,1.89,2.36,1.89,2.36,Premier League
+2023-12-23,Valencia,Real Sociedad,0,2,0.87,0.67,5.26,1.31,5.07,1.36,La Liga
+2023-12-24,Wolfsburg,Bayern,2,0,1.17,0.35,5.36,1.31,5.36,1.31,Bundesliga
+2023-12-24,Twente,Groningen,3,2,1.66,1.52,1.7,2.73,1.61,2.89,Eredivisie
+2023-12-25,Fiorentina,Roma,2,4,2.23,2.07,1.31,5.35,1.31,5.35,Serie A
+2023-12-26,Newcastle,Tottenham,1,0,1.44,1.11,2.25,1.97,2.14,2.06,Premier League
+2023-12-26,Real Madrid,Atletico,1,0,1.77,0.58,2.52,1.8,2.52,1.8,La Liga
+2023-12-27,Leipzig,Bayern,3,1,2.15,0.91,1.78,2.56,1.78,2.56,Bundesliga
+2023-12-28,Heerenveen,Groningen,0,3,1.46,0.9,2.49,1.82,2.49,1.82,Eredivisie
+2023-12-29,Inter,Torino,0,1,1.59,0.89,2.33,1.91,2.45,1.81,Serie A
+2023-12-29,Chelsea,Man City,3,4,1.81,1.12,1.88,2.38,1.83,2.44,Premier League
+2023-12-30,Real Betis,Barcelona,2,1,1.48,1.1,2.21,2.0,2.21,2.0,La Liga
+2023-12-31,Union Berlin,Frankfurt,2,5,1.78,1.62,1.59,3.1,1.59,3.1,Bundesliga
+2023-12-31,Sparta Rotterdam,Groningen,1,0,1.45,1.03,2.33,1.91,2.33,1.91,Eredivisie
+2024-01-01,Napoli,Juventus,1,0,1.53,1.12,2.13,2.07,2.13,2.07,Serie A
+2024-01-02,Man Utd,Aston Villa,1,1,0.76,0.9,4.5,1.37,4.5,1.37,Premier League
+2024-01-02,Sevilla,Girona,1,1,0.84,1.02,3.68,1.47,3.51,1.54,La Liga
+2024-01-03,Wolfsburg,Frankfurt,3,1,2.2,1.38,1.51,3.45,1.51,3.45,Bundesliga
+2024-01-04,Ajax,Utrecht,2,1,1.89,0.95,1.94,2.29,1.94,2.29,Eredivisie
+2024-01-05,Napoli,Juventus,1,1,1.68,0.61,2.63,1.75,2.63,1.75,Serie A
+2024-01-05,Tottenham,Brighton,0,2,1.39,1.92,1.64,2.93,1.64,2.93,Premier League
+2024-01-06,Barcelona,Villarreal,1,1,2.15,1.25,1.59,3.09,1.54,3.19,La Liga
+2024-01-07,Leverkusen,Hoffenheim,2,2,1.49,1.4,1.91,2.34,1.91,2.34,Bundesliga
+2024-01-07,Ajax,PSV,3,3,2.22,1.03,1.67,2.84,1.57,3.0,Eredivisie
+2024-01-08,Atalanta,Milan,2,1,2.67,1.08,1.45,3.8,1.45,3.8,Serie A
+2024-01-09,Brighton,Liverpool,3,5,1.18,1.63,1.97,2.24,1.97,2.24,Premier League
+2024-01-09,Sevilla,Villarreal,2,1,1.78,0.27,3.11,1.59,3.38,1.45,La Liga
+2024-01-10,Frankfurt,Dortmund,0,2,1.4,0.85,2.69,1.72,2.57,1.8,Bundesliga
+2024-01-11,Twente,Heerenveen,3,0,1.88,0.58,2.35,1.9,2.35,1.9,Eredivisie
+2024-01-12,Torino,Napoli,0,3,1.11,1.29,2.43,1.85,2.63,1.7,Serie A
+2024-01-12,Arsenal,Newcastle,1,4,1.83,1.61,1.57,3.16,1.57,3.16,Premier League
+2024-01-13,Villarreal,Real Sociedad,4,1,1.61,0.67,2.63,1.75,2.8,1.64,La Liga
+2024-01-14,Union Berlin,Freiburg,1,0,0.99,1.41,2.44,1.84,2.44,1.84,Bundesliga
+2024-01-14,Groningen,Twente,2,1,2.84,0.99,1.42,4.0,1.42,4.0,Eredivisie
+2024-01-15,Juventus,Bologna,2,0,2.24,1.04,1.65,2.89,1.65,2.89,Serie A
+2024-01-16,Arsenal,Brighton,2,0,1.73,0.75,2.33,1.91,2.23,1.99,Premier League
+2024-01-16,Atletico,Valencia,0,2,1.81,1.49,1.64,2.93,1.64,2.93,La Liga
+2024-01-17,Hoffenheim,Leverkusen,0,2,0.2,1.1,7.3,1.23,7.3,1.23,Bundesliga
+2024-01-18,AZ,Heerenveen,1,2,1.93,1.56,1.55,3.25,1.55,3.25,Eredivisie
+2024-01-19,Roma,Bologna,1,3,1.56,1.97,1.53,3.34,1.4,3.62,Serie A
+2024-01-19,Brighton,Aston Villa,0,0,0.2,0.73,15.4,1.13,15.4,1.13,Premier League
+2024-01-20,Athletic Bilbao,Girona,2,1,1.59,1.21,1.98,2.24,1.98,2.24,La Liga
+2024-01-21,Wolfsburg,Hoffenheim,2,2,0.82,0.73,5.16,1.32,5.16,1.32,Bundesliga
+2024-01-21,Groningen,Ajax,1,1,1.77,1.3,1.77,2.57,1.77,2.57,Eredivisie
+2024-01-22,Torino,Roma,2,2,1.56,1.41,1.84,2.44,1.71,2.62,Serie A
+2024-01-23,Man City,Arsenal,0,4,1.24,1.49,2.04,2.17,2.04,2.17,Premier League
+2024-01-23,Atletico,Athletic Bilbao,2,4,1.61,0.87,2.32,1.92,2.32,1.92,La Liga
+2024-01-24,Leipzig,Bayern,6,0,2.39,1.09,1.55,3.24,1.55,3.24,Bundesliga
+2024-01-25,Vitesse,Ajax,1,0,2.33,1.23,1.52,3.4,1.47,3.51,Eredivisie
+2024-01-26,Atalanta,Milan,4,2,1.11,1.86,1.84,2.44,1.84,2.44,Serie A
+2024-01-26,Arsenal,Man City,0,0,1.51,0.72,2.72,1.71,2.61,1.78,Premier League
+2024-01-27,Sevilla,Real Sociedad,2,6,1.8,2.05,1.42,4.01,1.42,4.01,La Liga
+2024-01-28,Freiburg,Union Berlin,2,0,1.95,0.39,2.54,1.79,2.76,1.64,Bundesliga
+2024-01-28,AZ,Ajax,1,2,1.11,1.81,1.88,2.37,1.88,2.37,Eredivisie
+2024-01-29,Bologna,Lazio,1,1,2.32,0.78,1.75,2.61,1.75,2.61,Serie A
+2024-01-30,Tottenham,Liverpool,2,1,2.23,1.61,1.42,4.0,1.42,4.0,Premier League
+2024-01-30,Villarreal,Sevilla,0,1,2.38,0.34,2.06,2.14,2.06,2.14,La Liga
+2024-01-31,Union Berlin,Bayern,2,0,1.89,0.45,2.53,1.79,2.53,1.79,Bundesliga
+2024-02-01,Groningen,Vitesse,1,1,1.29,1.01,2.6,1.76,2.67,1.72,Eredivisie
+2024-02-02,Bologna,Lazio,3,2,1.76,1.59,1.61,3.01,1.75,2.75,Serie A
+2024-02-02,Aston Villa,West Ham,3,1,2.15,1.38,1.53,3.32,1.53,3.32,Premier League
+2024-02-03,Real Betis,Atletico,2,0,1.61,1.31,1.87,2.39,1.87,2.39,La Liga
+2024-02-04,Wolfsburg,Leverkusen,0,1,0.69,1.54,2.72,1.71,2.72,1.71,Bundesliga
+2024-02-04,Utrecht,PSV,1,0,2.11,1.11,1.69,2.78,1.69,2.78,Eredivisie
+2024-02-05,Milan,Atalanta,1,1,1.6,1.45,1.79,2.54,1.79,2.54,Serie A
+2024-02-06,Arsenal,West Ham,3,0,1.74,1.18,1.88,2.38,1.88,2.38,Premier League
+2024-02-06,Athletic Bilbao,Atletico,1,1,1.45,0.48,3.46,1.51,3.8,1.36,La Liga
+2024-02-07,Union Berlin,Frankfurt,2,3,1.26,2.14,1.59,3.08,1.59,3.08,Bundesliga
+2024-02-08,Ajax,AZ,3,1,1.83,1.37,1.69,2.77,1.69,2.77,Eredivisie
+2024-02-09,Inter,Torino,2,0,2.17,1.03,1.69,2.78,1.82,2.55,Serie A
+2024-02-09,Brighton,Chelsea,3,0,2.51,0.95,1.56,3.2,1.56,3.2,Premier League
+2024-02-10,Athletic Bilbao,Sevilla,0,1,1.08,0.76,3.73,1.46,3.73,1.46,La Liga
+2024-02-11,Dortmund,Wolfsburg,2,3,1.74,1.43,1.71,2.72,1.71,2.72,Bundesliga
+2024-02-11,Groningen,Utrecht,2,4,1.14,1.74,1.91,2.33,1.91,2.33,Eredivisie
+2024-02-12,Roma,Milan,0,1,1.17,1.63,1.98,2.24,1.98,2.24,Serie A
+2024-02-13,Chelsea,Man City,0,0,1.2,1.92,1.74,2.65,1.8,2.56,Premier League
+2024-02-13,Real Sociedad,Barcelona,0,1,1.58,1.28,1.92,2.31,1.92,2.31,La Liga
+2024-02-14,Wolfsburg,Union Berlin,1,1,0.69,0.54,8.29,1.2,8.29,1.2,Bundesliga
+2024-02-15,Sparta Rotterdam,Heerenveen,0,0,1.06,0.65,4.27,1.39,4.27,1.39,Eredivisie
+2024-02-16,Roma,Torino,1,1,1.31,1.6,1.89,2.36,1.89,2.36,Serie A
+2024-02-16,Chelsea,Newcastle,4,2,2.46,0.97,1.58,3.13,1.58,3.13,Premier League
+2024-02-17,Atletico,Sevilla,0,0,1.35,1.03,2.47,1.82,2.47,1.82,La Liga
+2024-02-18,Freiburg,Union Berlin,1,0,0.55,0.26,21.0,1.1,21.0,1.1,Bundesliga
+2024-02-18,Utrecht,PSV,1,1,1.83,2.31,1.34,4.81,1.34,4.81,Eredivisie
+2024-02-19,Roma,Torino,1,0,1.42,1.29,2.06,2.14,2.06,2.14,Serie A
+2024-02-20,Man Utd,West Ham,3,1,1.67,2.08,1.45,3.78,1.32,4.13,Premier League
+2024-02-20,Atletico,Real Sociedad,1,0,2.55,0.66,1.68,2.79,1.68,2.79,La Liga
+2024-02-21,Freiburg,Leipzig,3,0,1.59,1.79,1.6,3.06,1.6,3.06,Bundesliga
+2024-02-22,Feyenoord,Utrecht,2,4,1.92,1.94,1.42,4.07,1.42,4.07,Eredivisie
+2024-02-23,Milan,Fiorentina,3,0,1.06,1.24,2.6,1.76,2.6,1.76,Serie A
+2024-02-23,Newcastle,Brighton,0,0,0.81,0.4,8.63,1.2,8.63,1.2,Premier League
+2024-02-24,Girona,Real Sociedad,3,4,2.45,1.33,1.44,3.86,1.44,3.86,La Liga
+2024-02-25,Hoffenheim,Dortmund,2,1,1.4,0.66,3.09,1.59,3.09,1.59,Bundesliga
+2024-02-25,Twente,Sparta Rotterdam,0,1,2.04,0.56,2.19,2.02,2.0,2.19,Eredivisie
+2024-02-26,Torino,Roma,1,5,1.12,1.43,2.25,1.97,2.25,1.97,Serie A
+2024-02-27,Aston Villa,Newcastle,0,2,1.22,1.52,2.03,2.17,2.03,2.17,Premier League
+2024-02-27,Girona,Atletico,0,2,1.44,0.95,2.46,1.83,2.46,1.83,La Liga
+2024-02-28,Leverkusen,Frankfurt,5,4,2.3,1.51,1.43,3.94,1.43,3.94,Bundesliga
+2024-02-29,Feyenoord,Heerenveen,5,0,1.72,0.2,3.48,1.5,3.48,1.5,Eredivisie
+2024-03-01,Atalanta,Lazio,3,0,1.83,1.12,1.85,2.42,1.85,2.42,Serie A
+2024-03-01,Chelsea,Man City,2,1,1.84,0.76,2.18,2.02,2.18,2.02,Premier League
+2024-03-02,Real Betis,Villarreal,5,0,1.85,1.33,1.7,2.74,1.7,2.74,La Liga
+2024-03-03,Leipzig,Freiburg,2,4,1.62,1.57,1.7,2.75,1.7,2.75,Bundesliga
+2024-03-03,Twente,Sparta Rotterdam,2,2,2.02,2.0,1.37,4.47,1.31,4.67,Eredivisie
+2024-03-04,Milan,Atalanta,0,0,1.1,0.85,3.38,1.52,3.72,1.37,Serie A
+2024-03-05,Brighton,Aston Villa,0,1,1.25,0.96,2.76,1.69,2.76,1.69,Premier League
+2024-03-05,Sevilla,Real Sociedad,2,0,2.01,1.95,1.39,4.31,1.39,4.31,La Liga
+2024-03-06,Wolfsburg,Bayern,2,0,1.69,1.18,1.92,2.32,1.92,2.32,Bundesliga
+2024-03-07,Vitesse,PSV,3,2,1.25,1.6,1.93,2.3,1.93,2.3,Eredivisie
+2024-03-08,Juventus,Atalanta,2,3,1.62,1.07,2.08,2.12,2.08,2.12,Serie A
+2024-03-08,Tottenham,Chelsea,1,3,0.97,1.68,2.12,2.08,2.12,2.08,Premier League
+2024-03-09,Athletic Bilbao,Real Betis,4,1,2.25,0.92,1.71,2.71,1.71,2.71,La Liga
+2024-03-10,Stuttgart,Hoffenheim,2,0,3.02,1.51,1.27,6.17,1.27,6.17,Bundesliga
+2024-03-10,PSV,Vitesse,1,2,2.0,1.19,1.7,2.74,1.7,2.74,Eredivisie
+2024-03-11,Atalanta,Milan,3,1,1.55,2.01,1.52,3.38,1.52,3.38,Serie A
+2024-03-12,Liverpool,Chelsea,0,6,1.27,2.21,1.55,3.25,1.55,3.25,Premier League
+2024-03-12,Real Madrid,Valencia,0,2,0.59,1.58,2.85,1.66,2.85,1.66,La Liga
+2024-03-13,Hoffenheim,Stuttgart,0,2,1.95,1.26,1.69,2.77,1.69,2.77,Bundesliga
+2024-03-14,Vitesse,PSV,1,0,0.76,0.7,5.81,1.28,5.81,1.28,Eredivisie
+2024-03-15,Lazio,Atalanta,2,3,1.6,2.47,1.36,4.59,1.36,4.59,Serie A
+2024-03-15,Aston Villa,Man City,1,0,1.7,1.21,1.89,2.37,1.89,2.37,Premier League
+2024-03-16,Real Betis,Athletic Bilbao,1,5,1.47,1.44,1.89,2.37,1.93,2.32,La Liga
+2024-03-17,Union Berlin,Stuttgart,2,0,2.0,0.72,2.05,2.15,2.05,2.15,Bundesliga
+2024-03-17,Ajax,Feyenoord,0,0,1.0,0.26,7.9,1.21,7.9,1.21,Eredivisie
+2024-03-18,Torino,Napoli,2,0,1.97,1.89,1.42,4.03,1.42,4.03,Serie A
+2024-03-19,Man Utd,Liverpool,2,1,2.65,1.6,1.32,5.16,1.32,5.16,Premier League
+2024-03-19,Athletic Bilbao,Real Sociedad,2,1,2.41,1.5,1.4,4.18,1.28,4.53,La Liga
+2024-03-20,Hoffenheim,Union Berlin,0,0,1.16,0.99,2.9,1.65,2.7,1.76,Bundesliga
+2024-03-21,Groningen,Sparta Rotterdam,2,0,2.15,0.96,1.74,2.64,1.74,2.64,Eredivisie
+2024-03-22,Inter,Lazio,0,0,0.59,0.2,21.0,1.1,21.0,1.1,Serie A
+2024-03-22,Man City,Man Utd,2,2,1.18,1.31,2.31,1.92,2.11,2.09,Premier League
+2024-03-23,Athletic Bilbao,Atletico,2,3,2.12,1.87,1.38,4.39,1.38,4.39,La Liga
+2024-03-24,Frankfurt,Hoffenheim,0,0,0.44,1.35,3.92,1.43,3.8,1.48,Bundesliga
+2024-03-24,Sparta Rotterdam,Ajax,2,4,0.59,1.36,3.38,1.52,3.38,1.52,Eredivisie
+2024-03-25,Milan,Roma,2,1,1.21,1.87,1.77,2.59,1.77,2.59,Serie A
+2024-03-26,Tottenham,West Ham,1,0,1.47,1.81,1.65,2.88,1.65,2.88,Premier League
+2024-03-26,Real Madrid,Sevilla,2,0,0.83,0.83,4.53,1.37,4.53,1.37,La Liga
+2024-03-27,Hoffenheim,Leverkusen,0,1,0.2,0.52,21.0,1.09,21.0,1.09,Bundesliga
+2024-03-28,Heerenveen,Groningen,2,0,1.3,1.03,2.54,1.79,2.73,1.66,Eredivisie
+2024-03-29,Napoli,Milan,2,0,1.48,1.17,2.13,2.07,2.33,1.88,Serie A
+2024-03-29,Man City,Liverpool,0,1,1.28,1.16,2.38,1.88,2.38,1.88,Premier League
+2024-03-30,Sevilla,Athletic Bilbao,2,1,2.96,1.85,1.22,7.4,1.22,7.4,La Liga
+2024-03-31,Bayern,Freiburg,0,1,1.28,1.09,2.49,1.82,2.49,1.82,Bundesliga
+2024-03-31,Sparta Rotterdam,Heerenveen,1,0,1.49,0.87,2.49,1.81,2.49,1.81,Eredivisie
+2024-04-01,Roma,Atalanta,1,0,1.4,1.12,2.29,1.94,2.4,1.84,Serie A
+2024-04-02,Newcastle,Arsenal,3,0,1.82,0.63,2.37,1.88,2.37,1.88,Premier League
+2024-04-02,Valencia,Sevilla,1,1,2.09,1.46,1.53,3.36,1.68,3.03,La Liga
+2024-04-03,Hoffenheim,Wolfsburg,4,1,2.24,0.85,1.76,2.61,1.76,2.61,Bundesliga
+2024-04-04,Heerenveen,Twente,0,1,0.5,0.93,6.02,1.27,6.02,1.27,Eredivisie
+2024-04-04,Inter,Roma,0,3,1.04,1.62,2.12,2.08,2.12,2.08,Serie A
+2024-04-05,Man City,Tottenham,3,1,2.47,1.66,1.34,4.79,1.34,4.79,Premier League
+2024-04-06,Girona,Real Sociedad,1,1,0.8,1.5,2.59,1.77,2.59,1.77,La Liga
+2024-04-07,Union Berlin,Hoffenheim,0,2,0.86,2.16,1.81,2.5,1.69,2.66,Bundesliga
+2024-04-07,Heerenveen,Vitesse,1,0,1.93,0.2,2.93,1.64,2.64,1.8,Eredivisie
+2024-04-08,Lazio,Napoli,1,1,0.54,1.64,2.82,1.67,2.69,1.75,Serie A
+2024-04-09,Liverpool,Newcastle,1,2,2.2,0.58,2.0,2.21,2.1,2.09,Premier League
+2024-04-09,Real Betis,Real Madrid,4,3,0.81,1.29,3.0,1.61,3.0,1.61,La Liga
+2024-04-10,Bayern,Leipzig,1,1,1.02,1.11,2.93,1.64,2.93,1.64,Bundesliga
+2024-04-11,AZ,Utrecht,2,2,2.49,1.59,1.36,4.66,1.32,4.78,Eredivisie
+2024-04-11,Bologna,Lazio,1,0,1.45,0.22,4.44,1.38,4.44,1.38,Serie A
+2024-04-12,Newcastle,Brighton,1,0,1.62,0.75,2.49,1.81,2.49,1.81,Premier League
+2024-04-13,Villarreal,Sevilla,4,0,2.05,0.43,2.33,1.91,2.33,1.91,La Liga
+2024-04-14,Leverkusen,Stuttgart,7,2,2.54,1.31,1.42,4.02,1.42,4.02,Bundesliga
+2024-04-14,Groningen,Sparta Rotterdam,0,1,1.42,1.87,1.65,2.9,1.8,2.62,Eredivisie
+2024-04-15,Fiorentina,Bologna,0,0,0.42,0.52,14.87,1.13,14.87,1.13,Serie A
+2024-04-16,West Ham,Newcastle,2,1,1.74,1.27,1.82,2.49,1.82,2.49,Premier League
+2024-04-16,Barcelona,Sevilla,1,2,1.0,1.54,2.26,1.96,2.26,1.96,La Liga
+2024-04-17,Union Berlin,Dortmund,2,1,2.14,1.28,1.58,3.13,1.58,3.13,Bundesliga
+2024-04-18,Ajax,AZ,0,2,1.08,1.65,2.05,2.15,2.16,2.04,Eredivisie
+2024-04-18,Roma,Milan,3,0,1.91,1.26,1.71,2.72,1.71,2.72,Serie A
+2024-04-19,Man City,Man Utd,0,1,2.69,0.78,1.56,3.23,1.56,3.23,Premier League
+2024-04-20,Real Madrid,Girona,0,0,0.68,1.07,4.14,1.41,3.9,1.49,La Liga
+2024-04-21,Wolfsburg,Union Berlin,0,0,1.43,1.26,2.08,2.12,2.08,2.12,Bundesliga
+2024-04-21,Twente,Heerenveen,1,0,1.09,1.66,2.03,2.17,2.19,2.0,Eredivisie
+2024-04-22,Juventus,Lazio,2,0,2.12,1.03,1.72,2.69,1.83,2.52,Serie A
+2024-04-23,Liverpool,Brighton,0,0,1.83,1.23,1.78,2.57,1.78,2.57,Premier League
+2024-04-23,Real Sociedad,Real Madrid,6,0,2.05,0.33,2.47,1.83,2.47,1.83,La Liga
+2024-04-24,Union Berlin,Dortmund,0,1,2.08,0.6,2.09,2.11,2.09,2.11,Bundesliga
+2024-04-25,PSV,AZ,1,0,1.57,1.45,1.81,2.51,1.81,2.51,Eredivisie
+2024-04-25,Milan,Torino,0,3,0.66,2.52,1.7,2.73,1.56,2.97,Serie A
+2024-04-26,Aston Villa,Brighton,0,1,2.32,1.57,1.41,4.13,1.41,4.13,Premier League
+2024-04-27,Real Madrid,Atletico,3,2,1.04,1.22,2.66,1.73,2.66,1.73,La Liga
+2024-04-28,Leverkusen,Freiburg,2,0,2.32,0.62,1.87,2.4,1.87,2.4,Bundesliga
+2024-04-28,Heerenveen,Ajax,1,0,1.39,0.37,4.08,1.41,4.08,1.41,Eredivisie
+2024-04-29,Fiorentina,Inter,2,1,1.26,0.89,2.87,1.65,2.87,1.65,Serie A
+2024-04-30,Arsenal,Aston Villa,0,0,1.62,0.68,2.59,1.77,2.69,1.7,Premier League
+2024-04-30,Real Madrid,Sevilla,1,1,1.47,0.31,3.98,1.43,3.98,1.43,La Liga
+2024-05-01,Union Berlin,Bayern,1,1,0.93,0.96,3.57,1.49,3.88,1.36,Bundesliga
+2024-05-02,Heerenveen,Sparta Rotterdam,0,2,1.95,1.67,1.5,3.52,1.5,3.52,Eredivisie
+2024-05-03,Torino,Napoli,3,0,0.98,0.59,4.99,1.33,4.99,1.33,Serie A
+2024-05-03,Brighton,Aston Villa,0,1,0.66,1.74,2.45,1.84,2.45,1.84,Premier League
+2024-05-04,Real Sociedad,Girona,2,2,2.71,1.27,1.38,4.34,1.38,4.34,La Liga
+2024-05-05,Leipzig,Wolfsburg,1,0,1.73,0.79,2.28,1.95,2.28,1.95,Bundesliga
+2024-05-05,Utrecht,AZ,0,3,1.0,1.58,2.2,2.01,2.01,2.18,Eredivisie
+2024-05-06,Inter,Juventus,0,0,1.43,1.43,1.93,2.3,1.93,2.3,Serie A
+2024-05-07,Chelsea,Liverpool,2,3,1.27,1.56,1.95,2.27,1.95,2.27,Premier League
+2024-05-07,Girona,Atletico,0,0,1.26,1.11,2.47,1.82,2.47,1.82,La Liga
+2024-05-08,Wolfsburg,Freiburg,3,2,1.26,1.55,1.97,2.25,1.78,2.47,Bundesliga
+2024-05-09,Utrecht,Heerenveen,1,1,0.83,1.0,3.78,1.45,3.78,1.45,Eredivisie
+2024-05-10,Roma,Juventus,2,1,1.14,1.36,2.3,1.93,2.3,1.93,Serie A
+2024-05-10,Arsenal,Tottenham,3,3,2.05,1.01,1.78,2.56,1.85,2.45,Premier League
+2024-05-11,Valencia,Barcelona,0,0,1.41,0.57,3.29,1.54,3.29,1.54,La Liga
+2024-05-12,Dortmund,Bayern,5,0,2.15,1.13,1.65,2.88,1.81,2.61,Bundesliga
+2024-05-12,Heerenveen,Ajax,0,1,1.0,1.75,2.03,2.18,2.03,2.18,Eredivisie
+2024-05-13,Torino,Bologna,2,2,1.58,0.73,2.59,1.77,2.59,1.77,Serie A
+2024-05-14,Chelsea,Arsenal,1,0,1.58,1.09,2.11,2.09,2.11,2.09,Premier League
+2024-05-14,Barcelona,Girona,3,1,1.97,0.49,2.35,1.9,2.5,1.78,La Liga
+2024-05-15,Leipzig,Leverkusen,0,3,1.15,1.7,1.93,2.3,1.93,2.3,Bundesliga
+2024-05-16,Groningen,Sparta Rotterdam,1,0,1.9,0.92,1.96,2.26,1.96,2.26,Eredivisie
+2024-05-17,Atalanta,Juventus,0,3,1.09,1.14,2.71,1.71,2.71,1.71,Serie A
+2024-05-17,Arsenal,Newcastle,2,1,2.05,1.43,1.56,3.23,1.51,3.32,Premier League
+2024-05-18,Real Madrid,Atletico,2,2,2.53,1.12,1.49,3.55,1.49,3.55,La Liga
+2024-05-19,Wolfsburg,Stuttgart,0,0,0.9,0.69,4.87,1.34,4.87,1.34,Bundesliga
+2024-05-19,Sparta Rotterdam,Ajax,2,0,1.52,0.22,4.16,1.4,4.16,1.4,Eredivisie
+2024-05-20,Inter,Atalanta,1,3,2.04,1.73,1.45,3.84,1.45,3.84,Serie A
+2024-05-21,Liverpool,Newcastle,4,6,1.03,2.25,1.65,2.89,1.65,2.89,Premier League
+2024-05-21,Atletico,Girona,3,1,1.93,1.25,1.7,2.74,1.7,2.74,La Liga
+2024-05-22,Union Berlin,Wolfsburg,2,0,1.07,1.13,2.8,1.68,2.8,1.68,Bundesliga
+2024-05-23,Vitesse,PSV,2,0,1.5,1.09,2.19,2.01,2.19,2.01,Eredivisie
+2024-05-24,Roma,Milan,0,2,1.58,1.7,1.65,2.89,1.65,2.89,Serie A
+2024-05-24,Chelsea,Arsenal,1,0,3.11,1.23,1.3,5.45,1.27,5.6,Premier League
+2024-05-25,Girona,Valencia,1,2,0.84,1.64,2.32,1.92,2.32,1.92,La Liga
+2024-05-26,Leverkusen,Bayern,5,2,1.26,1.7,1.85,2.44,1.85,2.44,Bundesliga
+2024-05-26,Utrecht,AZ,1,1,1.85,0.83,2.09,2.11,1.93,2.27,Eredivisie
+2024-05-27,Milan,Inter,1,0,1.54,1.67,1.69,2.78,1.73,2.72,Serie A
+2024-05-28,Brighton,Newcastle,1,1,1.95,0.61,2.23,1.98,2.23,1.98,Premier League
+2024-05-28,Sevilla,Atletico,1,1,2.25,0.53,1.99,2.22,1.99,2.22,La Liga
+2024-05-29,Wolfsburg,Leverkusen,2,0,2.01,1.02,1.8,2.52,1.8,2.52,Bundesliga
+2024-05-30,Twente,Groningen,0,3,0.8,1.46,2.67,1.73,2.46,1.86,Eredivisie
+2024-05-31,Lazio,Atalanta,1,0,1.14,1.38,2.28,1.95,2.28,1.95,Serie A
+2024-05-31,Tottenham,Brighton,0,2,1.55,1.26,1.97,2.25,1.97,2.25,Premier League
+2024-06-01,Real Sociedad,Sevilla,0,1,1.83,0.93,2.02,2.19,2.02,2.19,La Liga
+2024-06-02,Stuttgart,Dortmund,2,0,0.59,0.8,6.39,1.26,6.84,1.17,Bundesliga
+2024-06-02,Utrecht,Vitesse,1,0,2.21,0.6,1.97,2.25,1.97,2.25,Eredivisie
+2024-06-03,Bologna,Napoli,2,0,1.21,1.52,2.05,2.15,2.1,2.1,Serie A
+2024-06-04,Newcastle,Aston Villa,2,2,1.36,0.78,2.9,1.65,2.9,1.65,Premier League
+2024-06-04,Real Madrid,Barcelona,3,2,2.46,1.6,1.36,4.58,1.36,4.58,La Liga
+2024-06-05,Union Berlin,Stuttgart,0,2,0.86,0.85,4.26,1.39,3.94,1.5,Bundesliga
+2024-06-06,Twente,Heerenveen,2,3,1.57,1.55,1.74,2.66,1.74,2.66,Eredivisie
+2024-06-07,Torino,Fiorentina,1,1,1.61,1.35,1.85,2.43,1.85,2.43,Serie A
+2024-06-07,Man Utd,Newcastle,1,0,1.28,0.2,5.62,1.29,5.62,1.29,Premier League
+2024-06-08,Sevilla,Real Betis,2,2,1.28,1.22,2.29,1.94,2.29,1.94,La Liga
+2024-06-09,Stuttgart,Dortmund,2,2,1.6,1.41,1.81,2.49,1.81,2.49,Bundesliga
+2024-06-09,Utrecht,Twente,2,0,0.64,0.92,5.09,1.32,5.09,1.32,Eredivisie
+2024-06-10,Roma,Juventus,2,1,2.09,1.4,1.55,3.25,1.55,3.25,Serie A
+2024-06-11,West Ham,Chelsea,1,0,1.35,0.25,4.79,1.34,4.64,1.39,Premier League
+2024-06-11,Real Madrid,Villarreal,1,0,1.88,0.39,2.65,1.74,2.65,1.74,La Liga
+2024-06-12,Leverkusen,Dortmund,2,2,1.44,1.77,1.69,2.78,1.69,2.78,Bundesliga
+2024-06-13,Ajax,Groningen,0,1,1.88,1.39,1.66,2.86,1.66,2.86,Eredivisie
+2024-06-14,Inter,Milan,1,2,1.77,1.7,1.56,3.21,1.64,3.04,Serie A
+2024-06-14,Arsenal,Man Utd,0,0,1.49,1.1,2.2,2.01,2.2,2.01,Premier League
+2024-06-15,Atletico,Real Sociedad,0,0,1.67,0.95,2.17,2.04,2.17,2.04,La Liga
+2024-06-16,Union Berlin,Leipzig,1,4,0.71,2.17,1.91,2.33,1.73,2.55,Bundesliga
+2024-06-16,Sparta Rotterdam,Twente,2,3,2.08,1.26,1.62,2.99,1.62,2.99,Eredivisie
+2024-06-17,Bologna,Lazio,2,3,2.59,1.08,1.48,3.62,1.36,3.93,Serie A
+2024-06-18,Arsenal,Chelsea,1,0,1.02,1.54,2.22,1.99,2.28,1.93,Premier League
+2024-06-18,Sevilla,Real Betis,1,0,1.45,1.13,2.2,2.01,2.01,2.18,La Liga
+2024-06-19,Wolfsburg,Bayern,2,0,1.61,0.2,3.87,1.44,4.01,1.39,Bundesliga
+2024-06-20,Heerenveen,Utrecht,1,3,1.8,1.17,1.84,2.44,1.95,2.3,Eredivisie
+2024-06-21,Bologna,Fiorentina,2,1,1.05,0.58,4.7,1.35,4.7,1.35,Serie A
+2024-06-21,Tottenham,Newcastle,1,0,1.42,0.94,2.5,1.81,2.5,1.81,Premier League
+2024-06-22,Athletic Bilbao,Barcelona,2,2,1.57,1.96,1.53,3.33,1.53,3.33,La Liga
+2024-06-23,Hoffenheim,Leverkusen,2,1,1.81,0.98,1.99,2.23,1.99,2.23,Bundesliga
+2024-06-23,PSV,Heerenveen,1,1,1.82,1.02,1.94,2.29,1.94,2.29,Eredivisie
+2024-06-24,Roma,Fiorentina,1,0,0.64,0.2,19.69,1.11,21.26,1.05,Serie A
+2024-06-25,Tottenham,Man City,2,1,1.17,0.87,3.15,1.57,3.43,1.43,Premier League
+2024-06-25,Girona,Real Betis,2,1,2.18,2.45,1.25,6.6,1.25,6.6,La Liga
+2024-06-26,Stuttgart,Freiburg,0,2,2.56,1.39,1.39,4.3,1.39,4.3,Bundesliga
+2024-06-27,Ajax,Groningen,0,1,0.42,1.44,3.68,1.47,3.42,1.57,Eredivisie
+2024-06-28,Inter,Fiorentina,1,0,2.62,1.69,1.31,5.34,1.31,5.34,Serie A
+2024-06-28,West Ham,Arsenal,2,2,1.33,1.1,2.39,1.87,2.39,1.87,Premier League
+2024-06-29,Girona,Athletic Bilbao,4,0,1.26,0.89,2.89,1.65,2.89,1.65,La Liga
+2024-06-30,Leverkusen,Wolfsburg,5,2,1.69,1.12,1.97,2.25,1.97,2.25,Bundesliga
+2024-06-30,Heerenveen,PSV,1,1,1.42,1.62,1.79,2.55,1.79,2.55,Eredivisie
+2024-07-01,Lazio,Torino,3,1,1.08,0.44,5.36,1.31,5.36,1.31,Serie A
+2024-07-02,West Ham,Aston Villa,0,3,2.27,0.59,1.92,2.31,1.77,2.5,Premier League
+2024-07-02,Girona,Villarreal,0,2,1.69,0.41,3.0,1.61,3.0,1.61,La Liga
+2024-07-03,Dortmund,Union Berlin,4,1,3.01,1.61,1.25,6.54,1.25,6.54,Bundesliga
+2024-07-04,Utrecht,Twente,0,1,0.81,0.53,6.91,1.24,6.91,1.24,Eredivisie
+2024-07-05,Atalanta,Roma,1,1,1.69,1.53,1.68,2.8,1.68,2.8,Serie A
+2024-07-05,Brighton,Tottenham,1,1,2.09,0.38,2.35,1.9,2.35,1.9,Premier League
+2024-07-06,Real Betis,Sevilla,0,0,0.66,1.73,2.45,1.83,2.45,1.83,La Liga
+2024-07-07,Freiburg,Frankfurt,0,1,1.2,1.27,2.34,1.9,2.34,1.9,Bundesliga
+2024-07-07,PSV,Feyenoord,2,2,1.15,0.97,2.96,1.63,2.96,1.63,Eredivisie
+2024-07-08,Torino,Milan,0,0,0.55,1.41,3.37,1.53,3.37,1.53,Serie A
+2024-07-09,Brighton,Newcastle,1,0,1.65,0.45,3.0,1.62,3.0,1.62,Premier League
+2024-07-09,Sevilla,Valencia,0,4,1.82,2.55,1.29,5.55,1.29,5.55,La Liga
+2024-07-10,Dortmund,Union Berlin,0,0,0.74,0.88,4.73,1.35,4.73,1.35,Bundesliga
+2024-07-11,PSV,Feyenoord,4,2,1.8,0.76,2.23,1.99,2.23,1.99,Eredivisie
+2024-07-12,Atalanta,Juventus,2,2,0.97,1.28,2.69,1.72,2.78,1.67,Serie A
+2024-07-12,Brighton,Tottenham,2,0,2.37,0.49,1.93,2.3,1.97,2.25,Premier League
+2024-07-13,Barcelona,Girona,1,3,1.98,0.91,1.9,2.34,2.09,2.11,La Liga
+2024-07-14,Union Berlin,Hoffenheim,0,0,1.2,0.78,3.33,1.53,3.48,1.46,Bundesliga
+2024-07-14,Feyenoord,AZ,1,0,0.79,1.05,3.75,1.46,4.0,1.36,Eredivisie
+2024-07-15,Milan,Roma,2,0,2.57,0.97,1.53,3.34,1.53,3.34,Serie A
+2024-07-16,Liverpool,West Ham,4,0,2.08,1.38,1.56,3.2,1.56,3.2,Premier League
+2024-07-16,Sevilla,Villarreal,0,2,1.27,0.34,4.83,1.34,4.83,1.34,La Liga
+2024-07-17,Leverkusen,Stuttgart,2,1,1.7,1.27,1.84,2.44,1.77,2.54,Bundesliga
+2024-07-18,Heerenveen,Sparta Rotterdam,0,1,1.21,0.67,3.63,1.48,3.86,1.38,Eredivisie
+2024-07-19,Inter,Milan,3,1,1.81,0.59,2.43,1.85,2.43,1.85,Serie A
+2024-07-19,Brighton,Aston Villa,0,1,1.07,1.3,2.48,1.82,2.31,1.95,Premier League
+2024-07-20,Atletico,Athletic Bilbao,1,0,0.8,1.13,3.46,1.51,3.46,1.51,La Liga
+2024-07-21,Union Berlin,Dortmund,0,3,1.11,2.03,1.72,2.69,1.67,2.78,Bundesliga
+2024-07-21,Twente,Feyenoord,3,0,1.99,0.72,2.06,2.14,1.96,2.25,Eredivisie
+2024-07-22,Napoli,Atalanta,0,2,1.77,1.39,1.72,2.71,1.72,2.71,Serie A
+2024-07-23,Liverpool,Arsenal,2,3,1.34,1.73,1.77,2.57,1.93,2.35,Premier League
+2024-07-23,Villarreal,Athletic Bilbao,1,4,1.44,1.98,1.58,3.13,1.58,3.13,La Liga
+2024-07-24,Stuttgart,Leverkusen,0,3,0.31,1.74,3.1,1.59,3.1,1.59,Bundesliga
+2024-07-25,Feyenoord,Ajax,2,2,2.1,1.46,1.52,3.39,1.52,3.39,Eredivisie
+2024-07-26,Bologna,Juventus,1,1,0.87,1.44,2.58,1.77,2.58,1.77,Serie A
+2024-07-26,Brighton,Tottenham,0,1,0.2,1.26,5.76,1.28,5.76,1.28,Premier League
+2024-07-27,Girona,Athletic Bilbao,0,4,1.42,1.24,2.11,2.09,2.11,2.09,La Liga
+2024-07-28,Union Berlin,Hoffenheim,1,1,1.66,1.71,1.61,3.04,1.61,3.04,Bundesliga
+2024-07-28,Groningen,Twente,3,3,1.51,1.57,1.76,2.59,1.76,2.59,Eredivisie
+2024-07-29,Lazio,Inter,2,2,1.88,2.4,1.31,5.24,1.31,5.24,Serie A
+2024-07-30,Liverpool,West Ham,1,0,1.22,1.08,2.59,1.77,2.59,1.77,Premier League
+2024-07-30,Sevilla,Valencia,2,0,1.9,0.73,2.14,2.06,2.14,2.06,La Liga
+2024-07-31,Hoffenheim,Union Berlin,3,1,1.68,1.08,2.02,2.19,2.02,2.19,Bundesliga
+2024-08-01,Utrecht,Groningen,2,2,1.44,1.18,2.16,2.04,2.27,1.94,Eredivisie

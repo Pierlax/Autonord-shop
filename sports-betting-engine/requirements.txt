@@ -1,0 +1,27 @@
+# =============================================================================
+# Sports Betting Quantitative Engine — Dependencies
+# =============================================================================
+# Focus: Over/Under 2.5 Goals market with Poisson-based totals.
+# Install with:  pip install -r requirements.txt
+# =============================================================================
+
+# Core data stack
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Machine-learning
+scikit-learn>=1.3.0
+xgboost>=2.0.0
+
+# Statistical distributions (Poisson for O/U probabilities) [Mack]
+scipy>=1.11.0
+
+# Configuration
+pyyaml>=6.0
+
+# Logging & utilities
+colorlog>=6.7.0
+
+# Optional – visualisation
+matplotlib>=3.7.0
+seaborn>=0.12.0
