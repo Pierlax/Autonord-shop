@@ -16,8 +16,11 @@ import { env, optionalEnv } from '@/lib/env';
 const SHOPIFY_STORE = 'autonord-service.myshopify.com';
 const SHOPIFY_ACCESS_TOKEN = env.SHOPIFY_ADMIN_ACCESS_TOKEN;
 
-function getBaseUrl(): string {
-  // IMPORTANT: Non usare VERCEL_URL — punta al deployment specifico con Deployment Protection
+function getBaseUrl(request?: Request): string {
+  // Prefer to derive from incoming request (works both locally and in production)
+  if (request) {
+    return new URL(request.url).origin;
+  }
   return optionalEnv.NEXT_PUBLIC_BASE_URL || 'https://autonord-shop.vercel.app';
 }
 
@@ -102,7 +105,7 @@ async function getAllProducts(): Promise<ShopifyProduct[]> {
 }
 
 // Funzione per processare un singolo prodotto
-async function processProduct(product: ShopifyProduct): Promise<{ success: boolean; error?: string }> {
+async function processProduct(product: ShopifyProduct, baseUrl: string): Promise<{ success: boolean; error?: string }> {
   const payload = {
     productId: product.id,
     title: product.title,
@@ -114,7 +117,7 @@ async function processProduct(product: ShopifyProduct): Promise<{ success: boole
   };
 
   try {
-    const response = await fetch(`${getBaseUrl()}/api/workers/regenerate-product`, {
+    const response = await fetch(`${baseUrl}/api/workers/regenerate-product`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -177,13 +180,16 @@ export async function POST(request: NextRequest) {
     let processed = 0;
     let failed = 0;
 
+    // Derive base URL from request so it works in both local dev and production
+    const baseUrl = getBaseUrl(request);
+
     // Processa ogni prodotto con un delay di 5 secondi tra uno e l'altro
     for (let i = 0; i < productsToProcess.length; i++) {
       const product = productsToProcess[i];
-      
+
       console.log(`Processing [${startIndex + i + 1}/${allProducts.length}]: ${product.title}`);
-      
-      const result = await processProduct(product);
+
+      const result = await processProduct(product, baseUrl);
       
       results.push({
         title: product.title,

@@ -446,6 +446,11 @@ function DashboardContent({ secret }: { secret: string }) {
           <TestEnrichmentPanel secret={secret} />
         </section>
 
+        {/* Section 4b: Bulk Sync */}
+        <section>
+          <BulkSyncPanel secret={secret} pendingProducts={data.productStats.pendingProducts} />
+        </section>
+
         {/* Section 5: Quick Actions */}
         <section>
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">
@@ -480,6 +485,195 @@ function DashboardContent({ secret }: { secret: string }) {
           </div>
         </section>
       </main>
+    </div>
+  );
+}
+
+// =============================================================================
+// BULK SYNC PANEL
+// =============================================================================
+
+interface BatchResult {
+  title: string;
+  success: boolean;
+  error?: string;
+}
+
+interface BatchSummary {
+  totalProducts: number;
+  batchStart: number;
+  batchEnd: number;
+  processed: number;
+  failed: number;
+  hasMore: boolean;
+  nextStartIndex: number | null;
+}
+
+function BulkSyncPanel({ secret, pendingProducts }: { secret: string; pendingProducts: number }) {
+  const [batchSize, setBatchSize] = useState(5);
+  const [startIndex, setStartIndex] = useState(0);
+  const [onlyPending, setOnlyPending] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [log, setLog] = useState<Array<{ ts: string; text: string; ok: boolean }>>([]);
+  const [summary, setSummary] = useState<BatchSummary | null>(null);
+  const [totalProcessed, setTotalProcessed] = useState(0);
+  const [totalFailed, setTotalFailed] = useState(0);
+
+  const addLog = (text: string, ok: boolean) => {
+    const ts = new Date().toLocaleTimeString('it-IT');
+    setLog(prev => [{ ts, text, ok }, ...prev].slice(0, 50));
+  };
+
+  const runBatch = async (idx: number) => {
+    try {
+      const res = await fetch('/api/cron/process-products-batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${secret}`,
+        },
+        body: JSON.stringify({ startIndex: idx, batchSize }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        addLog(`Batch ${idx}-${idx + batchSize}: ERRORE — ${data.error || 'sconosciuto'}`, false);
+        return null;
+      }
+
+      const results: BatchResult[] = data.results || [];
+      results.forEach((r: BatchResult) => {
+        addLog(`${r.success ? '✓' : '✗'} [${idx + results.indexOf(r) + 1}] ${r.title}${r.error ? ` — ${r.error}` : ''}`, r.success);
+      });
+
+      setTotalProcessed(p => p + (data.summary?.processed || 0));
+      setTotalFailed(f => f + (data.summary?.failed || 0));
+      setSummary(data.summary);
+      return data.summary as BatchSummary;
+    } catch (err) {
+      addLog(`Errore di rete: ${err instanceof Error ? err.message : 'sconosciuto'}`, false);
+      return null;
+    }
+  };
+
+  const startBulk = async () => {
+    setRunning(true);
+    setLog([]);
+    setSummary(null);
+    setTotalProcessed(0);
+    setTotalFailed(0);
+
+    addLog(`Avvio bulk sync — batchSize=${batchSize}, startIndex=${startIndex}`, true);
+
+    let currentIndex = startIndex;
+    let batchNum = 0;
+
+    while (true) {
+      batchNum++;
+      addLog(`Batch #${batchNum} (prodotti ${currentIndex + 1}–${currentIndex + batchSize})...`, true);
+      const result = await runBatch(currentIndex);
+
+      if (!result || !result.hasMore) {
+        addLog(result ? `Completato! ${totalProcessed + (result.processed || 0)} processati.` : 'Interrotto per errore.', !!result);
+        break;
+      }
+
+      currentIndex = result.nextStartIndex!;
+      // Pausa 3s tra batch per ridurre il rischio di rate limit
+      await new Promise(r => setTimeout(r, 3000));
+    }
+
+    setRunning(false);
+  };
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <h2 className="text-lg font-bold text-white">Bulk Sync Prodotti</h2>
+          <p className="text-gray-400 text-sm mt-0.5">
+            Processa più prodotti in sequenza. Rate limit gestito automaticamente (5s tra prodotti).
+          </p>
+        </div>
+        {pendingProducts > 0 && (
+          <span className="px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs rounded-lg font-medium whitespace-nowrap">
+            {pendingProducts} da arricchire
+          </span>
+        )}
+      </div>
+
+      {/* Config */}
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        <div>
+          <label className="block text-gray-500 text-xs mb-1">Prodotti per batch</label>
+          <select
+            value={batchSize}
+            onChange={e => setBatchSize(Number(e.target.value))}
+            disabled={running}
+            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm disabled:opacity-50"
+          >
+            <option value={3}>3 (test)</option>
+            <option value={5}>5 (sicuro)</option>
+            <option value={10}>10 (standard)</option>
+            <option value={20}>20 (veloce)</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-gray-500 text-xs mb-1">Inizia da indice</label>
+          <input
+            type="number"
+            min={0}
+            value={startIndex}
+            onChange={e => setStartIndex(Number(e.target.value))}
+            disabled={running}
+            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm disabled:opacity-50"
+          />
+        </div>
+        <div className="flex items-end">
+          <button
+            onClick={running ? undefined : startBulk}
+            disabled={running}
+            className={`w-full px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+              running
+                ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+            }`}
+          >
+            {running ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                In corso...
+              </span>
+            ) : 'Avvia Bulk'}
+          </button>
+        </div>
+      </div>
+
+      {/* Progress summary */}
+      {(totalProcessed > 0 || totalFailed > 0) && (
+        <div className="flex gap-4 mb-3 text-sm">
+          <span className="text-emerald-400">✓ {totalProcessed} completati</span>
+          {totalFailed > 0 && <span className="text-red-400">✗ {totalFailed} falliti</span>}
+          {summary?.hasMore && (
+            <span className="text-amber-400">→ prossimo indice: {summary.nextStartIndex}</span>
+          )}
+        </div>
+      )}
+
+      {/* Log */}
+      {log.length > 0 && (
+        <div className="bg-gray-950 border border-gray-800 rounded-lg p-3 max-h-48 overflow-y-auto">
+          {log.map((entry, i) => (
+            <div key={i} className="flex gap-2 text-xs py-0.5">
+              <span className="text-gray-600 shrink-0">{entry.ts}</span>
+              <span className={entry.ok ? 'text-gray-300' : 'text-red-400'}>{entry.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
