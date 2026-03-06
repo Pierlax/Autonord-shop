@@ -462,8 +462,12 @@ export class UniversalRAGPipeline {
     fusionResult: FusionResult | undefined,
     granularityDecision: GranularityDecision | undefined
   ): any {
-    if (fusionResult) {
-      // Use fusion result
+    // Only use fusion result if it actually produced evidence.
+    // executeFusionPlan expects items with {field, value} but search results have
+    // {content, text} — the mismatch means combinedEvidence is always empty.
+    // When that happens, fall through to the raw-data path so rag-adapter can
+    // extract content from the source-keyed arrays using its fallback loop.
+    if (fusionResult && fusionResult.combinedEvidence.length > 0) {
       return {
         evidence: fusionResult.combinedEvidence,
         coverage: fusionResult.coverageScore,
@@ -472,11 +476,17 @@ export class UniversalRAGPipeline {
         granularity: granularityDecision?.level,
       };
     }
-    
-    // Fallback: return raw retrieved data
+
+    // Fallback: return raw retrieved data keyed by source type.
+    // rag-adapter.ts handles this format in its second evidence-extraction path.
     const rawData: any = {};
     for (const [source, data] of Array.from(retrievedData.entries())) {
       rawData[source] = data;
+    }
+    // Preserve fusion metadata even when using raw data
+    if (fusionResult) {
+      rawData._fusionCoverage = fusionResult.coverageScore;
+      rawData._fusionConflicts = fusionResult.conflictsDetected;
     }
     return rawData;
   }

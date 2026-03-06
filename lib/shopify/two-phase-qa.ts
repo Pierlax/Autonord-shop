@@ -73,29 +73,118 @@ export interface TwoPhaseQAResult {
 }
 
 // ============================================================================
-// Simple QA Questions (Atomic Fact Extraction)
+// Dynamic QA Questions by Product Category
 // ============================================================================
 
-const SIMPLE_QA_QUESTIONS = {
-  // Technical Specs
-  torque: "Qual è la coppia massima in Nm (Newton-metri)?",
-  weight: "Qual è il peso in kg senza batteria?",
-  rpm: "Quanti giri al minuto (RPM) a vuoto?",
-  voltage: "Qual è il voltaggio del sistema (V)?",
-  batteryCapacity: "Qual è la capacità della batteria in Ah?",
-  chuckSize: "Qual è la dimensione del mandrino/attacco?",
-  impactRate: "Quanti colpi al minuto (IPM/BPM)?",
-  noiseLevel: "Qual è il livello di rumore in dB?",
-  vibration: "Qual è il livello di vibrazione in m/s²?",
-  warranty: "Quanti anni di garanzia?",
-  
-  // Additional Facts
-  motorType: "È brushless o con spazzole?",
-  ledLight: "Ha luce LED integrata?",
-  speedSettings: "Quante velocità/marce ha?",
-  madeIn: "Dove è prodotto?",
-  releaseYear: "In che anno è stato lanciato?",
-};
+/**
+ * Maps a productType/category string to a set of category-specific questions.
+ * Returns a list of question strings tailored to the product family.
+ */
+function getQuestionsForCategory(category: string): string[] {
+  const cat = category.toLowerCase();
+
+  // --- Generatori / Gruppi Elettrogeni ---
+  if (cat.includes('generato') || cat.includes('gruppo') || cat.includes('elettroge') || cat.includes('avr')) {
+    return [
+      "Qual è la potenza nominale in kVA o kW?",
+      "Qual è la potenza di picco in kVA o kW?",
+      "Qual è il tipo e la marca del motore (es. Honda GX390)?",
+      "Qual è la cilindrata del motore in cc?",
+      "Qual è la capacità del serbatoio carburante in litri?",
+      "Qual è l'autonomia a pieno carico in ore?",
+      "Qual è la tensione di uscita in Volt (V)?",
+      "Qual è la frequenza di uscita in Hz?",
+      "Qual è il peso in kg?",
+      "Qual è il livello di rumore in dB a 7 metri?",
+      "Ha regolatore di tensione automatico (AVR)?",
+      "Quanti anni di garanzia?",
+    ];
+  }
+
+  // --- Aspiratori / Vacuum ---
+  if (cat.includes('aspirato') || cat.includes('vacuum') || cat.includes('pulizia')) {
+    return [
+      "Qual è la potenza del motore in Watt (W)?",
+      "Qual è la capacità del serbatoio in litri?",
+      "Qual è la depressione massima in mbar o mmH2O?",
+      "Qual è la portata d'aria in l/s o m³/h?",
+      "Ha filtro HEPA?",
+      "Qual è il peso in kg?",
+      "Qual è il livello di rumore in dB?",
+      "È adatto per liquidi oltre che polveri (wet & dry)?",
+      "Quanti anni di garanzia?",
+    ];
+  }
+
+  // --- Compressori ---
+  if (cat.includes('compressor') || cat.includes('compressa')) {
+    return [
+      "Qual è la pressione massima in bar?",
+      "Qual è la portata in l/min?",
+      "Qual è la capacità del serbatoio in litri?",
+      "Qual è la potenza del motore in W o HP?",
+      "Qual è il peso in kg?",
+      "Qual è il livello di rumore in dB?",
+      "È oil-free (senza olio)?",
+      "Quanti anni di garanzia?",
+    ];
+  }
+
+  // --- Saldatrici ---
+  if (cat.includes('saldatri') || cat.includes('saldatur') || cat.includes('mig') || cat.includes('tig') || cat.includes('mma')) {
+    return [
+      "Qual è la corrente massima di saldatura in Ampere (A)?",
+      "Qual è la tensione di alimentazione in V?",
+      "Qual è il ciclo di lavoro (duty cycle) a corrente max?",
+      "Quali processi supporta (MIG/MAG, TIG, MMA)?",
+      "Qual è il peso in kg?",
+      "Qual è il diametro massimo dell'elettrodo in mm?",
+      "Ha inverter?",
+      "Quanti anni di garanzia?",
+    ];
+  }
+
+  // --- Smerigliatrici angolari ---
+  if (cat.includes('smerigliatori') || cat.includes('smerigliatri') || cat.includes('flex') || cat.includes('angolari')) {
+    return [
+      "Qual è la potenza in Watt (W)?",
+      "Qual è il diametro del disco in mm?",
+      "Quanti giri al minuto (RPM) a vuoto?",
+      "Qual è il peso in kg?",
+      "Qual è il livello di vibrazione in m/s²?",
+      "Qual è il livello di rumore in dB?",
+      "Ha sistema di protezione da riavvio accidentale?",
+      "Quanti anni di garanzia?",
+    ];
+  }
+
+  // --- Idropulitrici / Lavaggio a pressione ---
+  if (cat.includes('idropulitri') || cat.includes('lavaggio') || cat.includes('pressione') || cat.includes('karcher')) {
+    return [
+      "Qual è la pressione massima in bar?",
+      "Qual è la portata d'acqua in l/h?",
+      "Qual è la potenza del motore in W?",
+      "Qual è il peso in kg?",
+      "Ha serbatoio detergente integrato?",
+      "Qual è la lunghezza del tubo flessibile in metri?",
+      "Quanti anni di garanzia?",
+    ];
+  }
+
+  // --- Trapani, Avvitatori, Percussori (default power tool) ---
+  return [
+    "Qual è la coppia massima in Nm (Newton-metri)?",
+    "Qual è il peso in kg senza batteria?",
+    "Quanti giri al minuto (RPM) a vuoto?",
+    "Qual è il voltaggio del sistema (V)?",
+    "Qual è la capacità della batteria in Ah?",
+    "Qual è la dimensione del mandrino/attacco?",
+    "Quanti colpi al minuto (IPM/BPM)?",
+    "È brushless o con spazzole?",
+    "Quante velocità/marce ha?",
+    "Quanti anni di garanzia?",
+  ];
+}
 
 // ============================================================================
 // Simple QA Extraction
@@ -107,16 +196,21 @@ export async function extractAtomicFacts(
     description: string;
     brand: string;
     sku: string;
+    category?: string;
     sourceData?: string; // Raw data from research
   }
 ): Promise<SimpleQAResult> {
   const startTime = Date.now();
-  
-  const prompt = `Sei un tecnico esperto di elettroutensili. Devi estrarre SOLO fatti verificabili da questi dati.
+
+  const questions = getQuestionsForCategory(productData.category || '');
+  const numberedQuestions = questions.map((q, i) => `${i + 1}. ${q}`).join('\n');
+
+  const prompt = `Sei un tecnico esperto di attrezzature professionali. Estrai SOLO fatti verificabili dai dati forniti.
 
 PRODOTTO: ${productData.title}
 BRAND: ${productData.brand}
 SKU: ${productData.sku}
+CATEGORIA: ${productData.category || 'Attrezzatura professionale'}
 
 DATI DISPONIBILI:
 ${productData.description}
@@ -125,29 +219,20 @@ ${productData.sourceData || ''}
 ---
 
 Per ogni domanda, rispondi con:
-- Il valore esatto (numero + unità)
-- La fonte (es. "scheda tecnica ufficiale", "manuale", "non trovato")
-- Confidence: high (dato verificato da fonte ufficiale), medium (dato da retailer), low (dato incerto)
+- Il valore esatto (numero + unità di misura)
+- La fonte (es. "scheda tecnica ufficiale", "scheda prodotto retailer", "non trovato")
+- Confidence: high (dato da scheda tecnica ufficiale o manuale), medium (dato da retailer o e-commerce), low (dato incerto o stimato)
 
-Se il dato NON è presente o è ambiguo, rispondi "NON TROVATO".
+Se il dato NON è presente nei dati forniti, rispondi esattamente "NON TROVATO".
 
 DOMANDE:
-1. ${SIMPLE_QA_QUESTIONS.torque}
-2. ${SIMPLE_QA_QUESTIONS.weight}
-3. ${SIMPLE_QA_QUESTIONS.rpm}
-4. ${SIMPLE_QA_QUESTIONS.voltage}
-5. ${SIMPLE_QA_QUESTIONS.batteryCapacity}
-6. ${SIMPLE_QA_QUESTIONS.chuckSize}
-7. ${SIMPLE_QA_QUESTIONS.impactRate}
-8. ${SIMPLE_QA_QUESTIONS.motorType}
-9. ${SIMPLE_QA_QUESTIONS.warranty}
-10. ${SIMPLE_QA_QUESTIONS.speedSettings}
+${numberedQuestions}
 
-Rispondi in formato JSON:
+Rispondi SOLO con JSON valido, senza testo prima o dopo:
 {
   "facts": [
     {
-      "question": "domanda",
+      "question": "testo della domanda",
       "answer": "valore esatto o NON TROVATO",
       "source": "fonte del dato",
       "confidence": "high|medium|low"
@@ -156,10 +241,11 @@ Rispondi in formato JSON:
 }`;
 
   const result = await generateTextSafe({
-    system: 'Sei un tecnico esperto di elettroutensili professionali. Rispondi sempre in formato JSON valido.',
+    system: 'Sei un tecnico esperto di attrezzature e macchinari professionali. Rispondi SOLO con JSON valido, nessun testo aggiuntivo.',
     prompt,
     maxTokens: 2000,
-    temperature: 0.3,
+    temperature: 0.1,
+    useLiteModel: true,
   });
 
   // Parse JSON response
@@ -182,14 +268,18 @@ Rispondi in formato JSON:
     verified: f.answer !== 'NON TROVATO' && f.confidence === 'high',
   }));
 
-  // Map to specs object
+  // Map to specs object using flexible keyword matching
   const specs: SimpleQAResult['specs'] = {};
   const specMapping: Record<string, keyof SimpleQAResult['specs']> = {
     'coppia': 'torque',
     'peso': 'weight',
     'giri': 'rpm',
+    'potenza nominale': 'rpm',       // generators: map kVA to rpm slot for display
     'voltaggio': 'voltage',
+    'tensione di uscita': 'voltage',
     'batteria': 'batteryCapacity',
+    'serbatoio carburante': 'batteryCapacity', // generators: fuel tank → battery slot
+    'capacità del serbatoio': 'batteryCapacity',
     'mandrino': 'chuckSize',
     'colpi': 'impactRate',
     'rumore': 'noiseLevel',
@@ -282,10 +372,11 @@ Rispondi in formato JSON:
 }`;
 
   const result = await generateTextSafe({
-    system: 'Sei un esperto tecnico di elettroutensili professionali. Rispondi sempre in formato JSON valido.',
+    system: 'Sei un esperto tecnico di attrezzature e macchinari professionali. Rispondi SOLO con JSON valido, nessun testo aggiuntivo.',
     prompt,
     maxTokens: 2000,
-    temperature: 0.5,
+    temperature: 0.4,
+    useLiteModel: true,
   });
 
   // Parse JSON response

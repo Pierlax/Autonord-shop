@@ -156,6 +156,9 @@ export function adaptRagToQa(
       if (key === 'benchmarkContext' || key === 'brandProfile' || key === 'competitors') {
         continue; // Handle these separately below
       }
+      if (key.startsWith('_')) {
+        continue; // Skip internal metadata keys (e.g., _fusionCoverage, _fusionConflicts)
+      }
       if (Array.isArray(value)) {
         for (const item of value) {
           evidenceCount++;

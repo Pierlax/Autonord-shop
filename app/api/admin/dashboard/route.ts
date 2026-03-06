@@ -313,24 +313,27 @@ export async function POST(request: NextRequest) {
     const variant = product.variants?.edges?.[0]?.node;
 
     // Trigger the regenerate-product worker
-    // IMPORTANT: Non usare VERCEL_URL — punta al deployment specifico con Deployment Protection
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://autonord-shop.vercel.app';
+    // Derive base URL from the incoming request so it works both locally and in production
+    const baseUrl = new URL(request.url).origin;
 
+    // FIX Bug 3: payload fields must match WorkerPayload interface in regenerate-product/route.ts
     const workerPayload = {
-      id: product.id,
+      productId: product.id,
       title: product.title,
       vendor: product.vendor || '',
-      product_type: product.productType || '',
-      tags: product.tags?.join(', ') || '',
-      variants: variant ? [{
-        sku: variant.sku || null,
-        barcode: variant.barcode || null,
-      }] : [],
+      productType: product.productType || '',
+      sku: variant?.sku || null,
+      barcode: variant?.barcode || null,
+      tags: product.tags || [],
     };
 
+    // FIX Bug 2: worker requires Authorization: Bearer <CRON_SECRET>
     const workerRes = await fetch(`${baseUrl}/api/workers/regenerate-product`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.CRON_SECRET}`,
+      },
       body: JSON.stringify(workerPayload),
     });
 

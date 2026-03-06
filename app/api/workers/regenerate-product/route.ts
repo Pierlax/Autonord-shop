@@ -553,6 +553,11 @@ export async function POST(request: NextRequest) {
       console.log(`[Worker V5] QA completed: ${qaResult.simpleQA.rawFacts.filter(f => f.verified).length} verified facts, confidence=${qaResult.complexQA.recommendation.confidence}`);
     } catch (qaError) {
       console.error('[Worker V5] TwoPhaseQA failed (non-fatal, continuing with V3 enrichment):', qaError);
+      console.error('[Worker V5] QA error details:', {
+        name: qaError instanceof Error ? qaError.name : 'unknown',
+        message: qaError instanceof Error ? qaError.message : String(qaError),
+        stack: qaError instanceof Error ? qaError.stack?.split('\n').slice(0, 5).join(' | ') : undefined,
+      });
     }
 
     // ===========================================
