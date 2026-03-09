@@ -12,7 +12,7 @@
  */
 
 import { generateTextSafe } from '@/lib/shopify/ai-client';
-import { performWebSearch } from '@/lib/shopify/search-client';
+import { performWebSearch, searchProductImages } from '@/lib/shopify/search-client';
 
 // =============================================================================
 // CONFIG
@@ -364,27 +364,45 @@ async function searchGoldStandard(
     priorityDomains = [...GOLD_STANDARD_DOMAINS.uk.slice(0, 3), ...GOLD_STANDARD_DOMAINS.eu.slice(0, 2)];
   }
   
-  // Cerca con search-client sui domini Gold Standard
-  const codesQuery = codes.slice(0, 3).join(' OR ');
-  const searchQuery = `${brand} ${codesQuery} product image`;
-  
+  const codeQuery = codes.slice(0, 2).join(' ');
+  const imageSearchQuery = `${brand} ${codeQuery || title}`;
+
   try {
-    const searchResults = await performWebSearch(
-      searchQuery,
+    // STEP A: Direct image search — returns actual .jpg/.png URLs (most reliable)
+    const imageResults = await searchProductImages(
+      imageSearchQuery,
       priorityDomains.slice(0, 4),
-      { maxResults: 10 }
+      5
     );
-    
-    // Filtra risultati per trovare URL immagine
+
+    for (const imgResult of imageResults) {
+      if (isBlockedDomain(imgResult.imageUrl)) continue;
+      if (!isValidImageUrl(imgResult.imageUrl)) continue;
+      const isOfficialDomain = GOLD_STANDARD_DOMAINS.official.some(d => imgResult.domain.includes(d));
+      console.log(`[ImageAgent V4] Gold Standard image search hit: ${imgResult.imageUrl}`);
+      return {
+        found: true,
+        imageUrl: imgResult.imageUrl,
+        domain: imgResult.domain,
+        confidence: isOfficialDomain ? 'high' : 'medium',
+      };
+    }
+
+    // STEP B: Web search + og:image extraction from product pages
+    const pageSearchQuery = `${brand} ${codes.slice(0, 3).join(' ')} product`;
+    const searchResults = await performWebSearch(
+      pageSearchQuery,
+      priorityDomains.slice(0, 4),
+      { maxResults: 8 }
+    );
+
     for (const result of searchResults) {
       if (isBlockedDomain(result.link)) continue;
-      
-      // Cerca URL immagine nel link o snippet
-      const imageUrl = await extractImageUrlFromPage(result.link, title, brand, codes);
+      const imageUrl = await fetchOgImageFromPage(result.link, brand, codes);
       if (imageUrl) {
         const domain = extractDomain(result.link);
         const isOfficialDomain = GOLD_STANDARD_DOMAINS.official.some(d => domain.includes(d));
-        
+        console.log(`[ImageAgent V4] og:image extracted from ${domain}: ${imageUrl}`);
         return {
           found: true,
           imageUrl,
@@ -393,13 +411,13 @@ async function searchGoldStandard(
         };
       }
     }
-    
-    // Se non troviamo URL immagine diretti, usa Gemini per analizzare i risultati
+
+    // STEP C: Last resort — Gemini analyzes snippets (no HTML access, low reliability)
     if (searchResults.length > 0) {
-      const resultsSummary = searchResults.slice(0, 5).map(r => 
+      const resultsSummary = searchResults.slice(0, 5).map(r =>
         `- ${r.title}: ${r.link} (${r.snippet})`
       ).join('\n');
-      
+
       const aiResult = await generateTextSafe({
         system: 'You are an expert at finding product images from search results. Return ONLY valid JSON.',
         prompt: `From these search results, find the best direct image URL for: ${brand} ${codes[0] || title}
@@ -423,11 +441,11 @@ Return JSON:
         temperature: 0.2,
         useLiteModel: true,
       });
-      
+
       const jsonMatch = aiResult.text.match(/\{[\s\S]*?"found"[\s\S]*?\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
-        if (parsed.found && parsed.imageUrl && !isBlockedDomain(parsed.imageUrl)) {
+        if (parsed.found && parsed.imageUrl && isValidImageUrl(parsed.imageUrl) && !isBlockedDomain(parsed.imageUrl)) {
           return {
             found: true,
             imageUrl: parsed.imageUrl,
@@ -440,37 +458,158 @@ Return JSON:
   } catch (e) {
     console.log(`[ImageAgent V4] Gold Standard search error: ${e}`);
   }
-  
+
   return { found: false, imageUrl: null, domain: null, confidence: 'low' };
 }
 
 /**
- * Try to extract a direct image URL from a product page URL.
- * Uses common patterns for known e-commerce sites.
+ * Fetches a product page HTML and extracts the og:image (or twitter:image) meta tag.
+ *
+ * og:image is the canonical product image set by the retailer for social sharing —
+ * it is always the main product image, never a logo or placeholder.
+ * Reads only the first 50KB of the response (the <head> is always near the top).
+ *
+ * Returns null if the fetch fails, times out, or no valid image is found.
  */
-async function extractImageUrlFromPage(
+async function fetchOgImageFromPage(
   pageUrl: string,
-  title: string,
   brand: string,
   codes: string[]
 ): Promise<string | null> {
-  // Check if the URL itself is an image
+  // If the URL itself is already a direct image, use it
   if (/\.(jpg|jpeg|png|webp)(\?.*)?$/i.test(pageUrl)) {
-    return pageUrl;
+    return isValidImageUrl(pageUrl) ? pageUrl : null;
   }
-  
-  // Known image URL patterns for Gold Standard domains
-  const domain = extractDomain(pageUrl);
-  
-  // For toolstop.co.uk - images often at /images/products/
-  if (domain.includes('toolstop')) {
-    const codeMatch = codes.find(c => pageUrl.toLowerCase().includes(c.toLowerCase()));
-    if (codeMatch) {
-      return `https://www.toolstop.co.uk/media/catalog/product/cache/image/${codeMatch.toLowerCase()}.jpg`;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+    const response = await fetch(pageUrl, {
+      signal: controller.signal,
+      headers: {
+        // Identify as Googlebot so retailers don't block the request
+        'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+        'Accept': 'text/html,application/xhtml+xml',
+      },
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) return null;
+
+    // Stream only the first 50KB — <head> with og:image is always near the top
+    const reader = response.body?.getReader();
+    if (!reader) return null;
+
+    let html = '';
+    let bytesRead = 0;
+    while (bytesRead < 51200) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      html += new TextDecoder().decode(value);
+      bytesRead += value.byteLength;
+      // Stop reading once we have </head> — no need for the full page
+      if (html.includes('</head>')) break;
     }
+    reader.cancel();
+
+    // 1. og:image — highest priority (canonical product image)
+    const ogMatch =
+      html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ||
+      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
+    if (ogMatch?.[1]) {
+      const url = maximizeImageUrl(decodeHtmlEntities(ogMatch[1].trim()));
+      if (isValidImageUrl(url)) return url;
+    }
+
+    // 2. twitter:image — same purpose, equally reliable
+    const twitterMatch =
+      html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i) ||
+      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i);
+    if (twitterMatch?.[1]) {
+      const url = maximizeImageUrl(decodeHtmlEntities(twitterMatch[1].trim()));
+      if (isValidImageUrl(url)) return url;
+    }
+
+    return null;
+  } catch {
+    // Timeout, DNS failure, or bot-blocked — silently skip this page
+    return null;
   }
-  
-  return null;
+}
+
+/**
+ * Decodes HTML entities in URLs extracted from HTML attributes.
+ * e.g. "https://example.com/img?a=1&amp;b=2" → "https://example.com/img?a=1&b=2"
+ */
+function decodeHtmlEntities(url: string): string {
+  return url
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+/**
+ * Removes small resize parameters from CDN image URLs.
+ * Many CDNs accept w=/h= query params to resize on-the-fly.
+ * If values are small (< 400), remove them to get full resolution.
+ *
+ * Examples:
+ *   milwaukeetool.com: ?hash=...&w=200&h=200  → strip w/h
+ *   toolstop.co.uk:    ?width=265&height=265   → strip width/height
+ *   makita CDN:        ?$maxi-product$          → leave unchanged
+ */
+function maximizeImageUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const w = parseInt(u.searchParams.get('w') || u.searchParams.get('width') || '9999');
+    const h = parseInt(u.searchParams.get('h') || u.searchParams.get('height') || '9999');
+    // Only strip if the requested size is too small for a product image
+    if (w < 400 || h < 400) {
+      u.searchParams.delete('w');
+      u.searchParams.delete('h');
+      u.searchParams.delete('width');
+      u.searchParams.delete('height');
+      // Also remove CDN-specific resize/optimize params
+      u.searchParams.delete('optimize');
+      u.searchParams.delete('fit');
+      return u.toString();
+    }
+    return url;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Validates that a URL points to a usable product image.
+ * Rejects placeholders, logos, banners, and blocked domains.
+ */
+function isValidImageUrl(url: string): boolean {
+  if (!url || !url.startsWith('http')) return false;
+  if (isBlockedDomain(url)) return false;
+  const lower = url.toLowerCase();
+  if (
+    lower.includes('placeholder') ||
+    lower.includes('no-image') ||
+    lower.includes('noimage') ||
+    lower.includes('default') ||
+    lower.includes('/logo') ||
+    lower.includes('banner') ||
+    // Reject social media tiles hosted on brand CDNs (e.g. /MediaLibrary/Facebook/tile.jpg)
+    lower.includes('/facebook/') ||
+    lower.includes('/twitter/') ||
+    lower.includes('/instagram/') ||
+    lower.includes('/linkedin/') ||
+    lower.includes('social-tile') ||
+    lower.includes('facebook-tile') ||
+    lower.includes('-tile.jpg') ||
+    lower.includes('-tile.png') ||
+    lower.includes('-tile.webp')
+  ) return false;
+  return true;
 }
 
 async function searchOfficialSite(
@@ -495,14 +634,35 @@ async function searchOfficialSite(
     return { found: false, imageUrl: null, domain: null };
   }
   
-  const searchQuery = `${brand} ${codes.slice(0, 2).join(' ')} product`;
-  
+  const codeQuery = codes.slice(0, 2).join(' ');
+
   try {
+    // STEP A: Direct image search on official brand domains
+    const imageResults = await searchProductImages(
+      `${brand} ${codeQuery || title}`,
+      domains,
+      3
+    );
+
+    for (const imgResult of imageResults) {
+      if (!isValidImageUrl(imgResult.imageUrl)) continue;
+      if (isBlockedDomain(imgResult.imageUrl)) continue;
+      console.log(`[ImageAgent V4] Official site image search hit: ${imgResult.imageUrl}`);
+      return {
+        found: true,
+        imageUrl: imgResult.imageUrl,
+        domain: imgResult.domain,
+      };
+    }
+
+    // STEP B: Web search + og:image extraction
+    const searchQuery = `${brand} ${codeQuery} product`;
     const searchResults = await performWebSearch(searchQuery, domains, { maxResults: 5 });
-    
+
     for (const result of searchResults) {
-      const imageUrl = await extractImageUrlFromPage(result.link, title, brand, codes);
+      const imageUrl = await fetchOgImageFromPage(result.link, brand, codes);
       if (imageUrl) {
+        console.log(`[ImageAgent V4] og:image from official site ${extractDomain(result.link)}: ${imageUrl}`);
         return {
           found: true,
           imageUrl,
@@ -510,13 +670,13 @@ async function searchOfficialSite(
         };
       }
     }
-    
-    // Use Gemini to analyze results
+
+    // STEP C: Gemini fallback
     if (searchResults.length > 0) {
-      const resultsSummary = searchResults.slice(0, 3).map(r => 
+      const resultsSummary = searchResults.slice(0, 3).map(r =>
         `- ${r.title}: ${r.link}`
       ).join('\n');
-      
+
       const aiResult = await generateTextSafe({
         system: 'Find the direct product image URL from these official brand pages. Return ONLY valid JSON.',
         prompt: `Find product image for ${brand} ${codes[0] || title} from these official pages:
@@ -527,11 +687,11 @@ Return JSON: {"found": true/false, "imageUrl": "direct URL", "domain": "domain"}
         temperature: 0.2,
         useLiteModel: true,
       });
-      
+
       const jsonMatch = aiResult.text.match(/\{[\s\S]*?"found"[\s\S]*?\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
-        if (parsed.found && parsed.imageUrl) {
+        if (parsed.found && parsed.imageUrl && isValidImageUrl(parsed.imageUrl)) {
           return {
             found: true,
             imageUrl: parsed.imageUrl,
@@ -543,7 +703,7 @@ Return JSON: {"found": true/false, "imageUrl": "direct URL", "domain": "domain"}
   } catch (e) {
     console.log(`[ImageAgent V4] Official site search error: ${e}`);
   }
-  
+
   return { found: false, imageUrl: null, domain: null };
 }
 
@@ -559,14 +719,28 @@ async function searchWeb(
     : `${brand} ${title} product image`;
   
   try {
+    // STEP A: Direct image search — no domain filter, broader reach
+    const imageResults = await searchProductImages(searchQuery, undefined, 5);
+
+    for (const imgResult of imageResults) {
+      if (isBlockedDomain(imgResult.imageUrl)) continue;
+      if (!isValidImageUrl(imgResult.imageUrl)) continue;
+      console.log(`[ImageAgent V4] Web image search hit: ${imgResult.imageUrl}`);
+      return {
+        found: true,
+        imageUrl: imgResult.imageUrl,
+        domain: imgResult.domain,
+      };
+    }
+
+    // STEP B: Web search + og:image extraction from product pages
     const searchResults = await performWebSearch(searchQuery, undefined, { maxResults: 10 });
-    
-    // Filter out blocked domains
     const validResults = searchResults.filter(r => !isBlockedDomain(r.link));
-    
+
     for (const result of validResults) {
-      const imageUrl = await extractImageUrlFromPage(result.link, title, brand, codes);
+      const imageUrl = await fetchOgImageFromPage(result.link, brand, codes);
       if (imageUrl) {
+        console.log(`[ImageAgent V4] og:image from web search ${extractDomain(result.link)}: ${imageUrl}`);
         return {
           found: true,
           imageUrl,
@@ -574,13 +748,13 @@ async function searchWeb(
         };
       }
     }
-    
-    // Use Gemini to find image URLs from results
+
+    // STEP C: Gemini fallback — last resort, low reliability
     if (validResults.length > 0) {
-      const resultsSummary = validResults.slice(0, 5).map(r => 
+      const resultsSummary = validResults.slice(0, 5).map(r =>
         `- ${r.title}: ${r.link} (${r.snippet})`
       ).join('\n');
-      
+
       const aiResult = await generateTextSafe({
         system: 'Find direct product image URLs from search results. Avoid Amazon, eBay, social media. Return ONLY valid JSON.',
         prompt: `Find product image for ${brand} ${codes[0] || title} from:
@@ -591,11 +765,11 @@ Return JSON: {"found": true/false, "imageUrl": "direct .jpg/.png/.webp URL", "do
         temperature: 0.2,
         useLiteModel: true,
       });
-      
+
       const jsonMatch = aiResult.text.match(/\{[\s\S]*?"found"[\s\S]*?\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
-        if (parsed.found && parsed.imageUrl && !isBlockedDomain(parsed.imageUrl)) {
+        if (parsed.found && parsed.imageUrl && isValidImageUrl(parsed.imageUrl) && !isBlockedDomain(parsed.imageUrl)) {
           return {
             found: true,
             imageUrl: parsed.imageUrl,
@@ -607,7 +781,7 @@ Return JSON: {"found": true/false, "imageUrl": "direct .jpg/.png/.webp URL", "do
   } catch (e) {
     console.log(`[ImageAgent V4] Web search error: ${e}`);
   }
-  
+
   return { found: false, imageUrl: null, domain: null };
 }
 

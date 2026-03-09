@@ -426,3 +426,177 @@ export function getActiveProvider(): SearchProvider {
 export function isRealSearchAvailable(): boolean {
   return detectProvider() !== 'mock';
 }
+
+// =============================================================================
+// IMAGE SEARCH
+// =============================================================================
+
+/**
+ * Result from a direct image search.
+ * Unlike SearchResult (which returns page URLs), this returns actual image file URLs.
+ */
+export interface ImageSearchResult {
+  /** Direct URL to the image file (.jpg/.png/.webp) */
+  imageUrl: string;
+  /** Product page where the image was found */
+  sourcePageUrl: string;
+  /** Domain of the source page */
+  domain: string;
+  /** Image width in pixels (if available) */
+  width?: number;
+  /** Image height in pixels (if available) */
+  height?: number;
+  /** Which search provider returned this result */
+  provider: 'serpapi' | 'google';
+}
+
+/**
+ * Searches for product images using the best available image search provider.
+ *
+ * Unlike `performWebSearch` which returns page URLs, this function returns
+ * direct image file URLs (.jpg, .png, .webp) ready to be used as Shopify image sources.
+ *
+ * Supported providers:
+ * - SerpAPI: uses `engine=google_images` → returns high-quality direct image URLs
+ * - Google Custom Search: uses `searchType=image` → returns image URLs
+ * - No mock fallback: returns [] when no provider is configured (avoids fake URLs
+ *   that would cause Shopify upload failures)
+ *
+ * @param query      - Product search query (e.g., "Milwaukee M18 FUEL 4933464590")
+ * @param domainFilter - Optional list of domains to restrict image search to
+ * @param maxResults - Maximum number of image results (default: 5)
+ */
+export async function searchProductImages(
+  query: string,
+  domainFilter?: string[],
+  maxResults: number = 5
+): Promise<ImageSearchResult[]> {
+  // Try SerpAPI Google Images (best quality — returns original CDN URLs)
+  if (optionalEnv.SERPAPI_API_KEY) {
+    try {
+      const results = await searchImagesWithSerpApi(query, domainFilter, maxResults);
+      if (results.length > 0) {
+        log.info(`[SearchClient] Image search: ${results.length} results via serpapi`);
+        return results;
+      }
+    } catch (e) {
+      log.error('[SearchClient] SerpAPI image search failed:', e);
+    }
+  }
+
+  // Try Google Custom Search with image mode
+  if (optionalEnv.GOOGLE_SEARCH_API_KEY && optionalEnv.GOOGLE_SEARCH_CX) {
+    try {
+      const results = await searchImagesWithGoogle(query, domainFilter, maxResults);
+      if (results.length > 0) {
+        log.info(`[SearchClient] Image search: ${results.length} results via google`);
+        return results;
+      }
+    } catch (e) {
+      log.error('[SearchClient] Google image search failed:', e);
+    }
+  }
+
+  log.info('[SearchClient] No image search provider available — set SERPAPI_API_KEY or GOOGLE_SEARCH_API_KEY for direct image search');
+  return [];
+}
+
+async function searchImagesWithSerpApi(
+  query: string,
+  domainFilter: string[] | undefined,
+  maxResults: number
+): Promise<ImageSearchResult[]> {
+  const apiKey = optionalEnv.SERPAPI_API_KEY;
+  if (!apiKey) throw new Error('SERPAPI_API_KEY not configured');
+
+  const searchQuery = domainFilter && domainFilter.length > 0
+    ? `${query} (${domainFilter.map(d => `site:${d}`).join(' OR ')})`
+    : query;
+
+  const params = new URLSearchParams({
+    q: searchQuery,
+    api_key: apiKey,
+    engine: 'google_images',
+    num: String(Math.min(maxResults, 10)),
+  });
+
+  const response = await fetch(`https://serpapi.com/search.json?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error(`SerpAPI Images HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  const results: ImageSearchResult[] = [];
+
+  if (data.images_results) {
+    for (const item of data.images_results) {
+      // Prefer original (full-size) over thumbnail
+      const rawUrl: string | undefined = item.original || item.thumbnail;
+      if (!rawUrl) continue;
+      // Decode HTML entities that SerpAPI occasionally encodes in URLs
+      const imageUrl = rawUrl.replace(/&amp;/g, '&');
+      // Prefer original dimensions; fall back to thumbnail only if original is missing
+      // (item.original_width/height may be undefined for thumbnail-only results)
+      results.push({
+        imageUrl,
+        sourcePageUrl: item.link || '',
+        domain: extractDomain(item.link || imageUrl),
+        width: item.original_width,
+        height: item.original_height,
+        provider: 'serpapi',
+      });
+      if (results.length >= maxResults) break;
+    }
+  }
+
+  return results;
+}
+
+async function searchImagesWithGoogle(
+  query: string,
+  domainFilter: string[] | undefined,
+  maxResults: number
+): Promise<ImageSearchResult[]> {
+  const apiKey = optionalEnv.GOOGLE_SEARCH_API_KEY;
+  const cx = optionalEnv.GOOGLE_SEARCH_CX;
+  if (!apiKey || !cx) throw new Error('Google Custom Search not configured');
+
+  const searchQuery = domainFilter && domainFilter.length > 0
+    ? `${query} (${domainFilter.map(d => `site:${d}`).join(' OR ')})`
+    : query;
+
+  const params = new URLSearchParams({
+    key: apiKey,
+    cx,
+    q: searchQuery,
+    searchType: 'image',
+    num: String(Math.min(maxResults, 10)),
+    imgType: 'photo',
+    imgSize: 'large',
+  });
+
+  const response = await fetch(`https://www.googleapis.com/customsearch/v1?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Google Custom Search Images HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  const results: ImageSearchResult[] = [];
+
+  if (data.items) {
+    for (const item of data.items) {
+      if (!item.link) continue;
+      results.push({
+        imageUrl: item.link,
+        sourcePageUrl: item.image?.contextLink || '',
+        domain: extractDomain(item.image?.contextLink || item.link),
+        width: item.image?.width,
+        height: item.image?.height,
+        provider: 'google',
+      });
+      if (results.length >= maxResults) break;
+    }
+  }
+
+  return results;
+}
