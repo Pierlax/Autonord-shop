@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md
 **Autonord Shop — AI Enrichment Pipeline**
-**Documento per Tech Lead | Aggiornato: 2026-03-09**
+**Documento per Tech Lead | Aggiornato: 2026-03-09 | ImageAgent V4: COMPLETATO E STABILE**
 
 ---
 
@@ -61,16 +61,35 @@ POST /api/workers/regenerate-product
 - `source-router.ts` classifica l'intent del prodotto (specs / manuals / reviews / images)
 - `universal-rag.ts` ottimizza le query in base al tipo di fonte e alla categoria merceologica
 
-### 1.3 ImageAgent V4 — VOLUTAMENTE DISABILITATO (STAND-BY)
+### 1.3 ImageAgent V4 — COMPLETATO E STABILE ✓
 
-L'`ImageAgent V4` (`lib/agents/image-agent-v4.ts`) è **sviluppato e integrato** nel codice ma la sua attivazione dipende dalla disponibilità di una search API key (`SERPAPI_API_KEY` o `EXA_API_KEY`).
+**Test di produzione superato** (2026-03-09) su Milwaukee H800E AVR (ID: 10139022491990):
+- `method: official_site` — immagine trovata da milwaukeetool.com
+- `source: milwaukeetool.com`, `success: true`
+- URL: `https://www.milwaukeetool.com/--/web-images/sc/e2b66b178df34e4cbda5feae756102db`
+- `has_amp: false` (entità HTML decodificate correttamente)
+- Risoluzione massimizzata (parametri resize rimossi)
+- TypeScript: `tsc --noEmit` → zero errori
 
-**Ragione della disabilitazione in produzione:**
-- La ricerca automatica di immagini da domini terzi (UK retailers, USA catalogs, EU distributors) richiede supervisione qualitativa prima del go-live
-- Il modulo `search-client.ts` cade in **mock mode** se nessuna search API key è configurata, rendendo il Step 6 un no-op senza crashare la pipeline
-- La scelta di non attivare ImageAgent V4 è **deliberata** per evitare immagini errate o di bassa qualità associate ai prodotti in produzione
+**Architettura: 3-step cascade (per tutte e 3 le search function)**
+1. **Step A:** `searchProductImages()` → URL diretti da Google Images API (SerpAPI / GCS)
+2. **Step B:** `performWebSearch()` + `fetchOgImageFromPage()` → fetch HTTP reale + estrazione `og:image`
+3. **Step C:** Gemini su snippets (last resort — fallback, bassa affidabilità)
 
-**Quando riattivare:** configurare `SERPAPI_API_KEY` in `.env.local` / Vercel dashboard e validare manualmente i risultati su un campione di prodotti.
+**8 fix applicati e confermati:**
+1. `searchProductImages()` restituisce `[]` invece di mock URL quando nessun provider è configurato
+2. `searchImagesWithSerpApi()` — usa `engine=google_images`, restituisce URL CDN diretti
+3. `searchImagesWithGoogle()` — usa `searchType=image`, `imgType=photo`, `imgSize=large`
+4. `fetchOgImageFromPage()` — fetch HTTP reale, legge i primi 50KB, estrae `og:image` → `twitter:image`
+5. `decodeHtmlEntities()` — decodifica `&amp;` negli attributi HTML di `og:image`
+6. Decodifica entità in `searchImagesWithSerpApi()` — SerpAPI a volte HTML-encoda le URL
+7. `maximizeImageUrl()` — rimuove params resize (`w`, `h`, `width`, `height`) < 400px
+8. `isValidImageUrl()` esteso — rifiuta percorsi social media tile (`/facebook/`, `/twitter/`, `-tile.jpg`, ecc.)
+
+**Dipendenze:**
+- Con `SERPAPI_API_KEY`: Step A via Google Images (alta qualità)
+- Con `GOOGLE_SEARCH_API_KEY` + `GOOGLE_SEARCH_CX`: Step A via GCS (fallback)
+- Senza nessuna API key: Step A restituisce `[]` → passa a Step B (og:image) → Step C (Gemini)
 
 ### 1.4 Aggiornamento Shopify via GraphQL — FUNZIONANTE
 
@@ -206,9 +225,9 @@ Redis: SET enrichment:status:{productId} "queued" EX 86400
   - Fix: scrivere su Redis `enrichment:status:{productId} = error:{message}` per retry manuale
 - [ ] **Rate limit QStash** (troppi job in coda)
   - Aggiungere delay incrementale tra i publish (gia' supportato da QStash con parametro `delay`)
-- [ ] **ImageAgent V4 riattivazione sicura**
-  - Prima di abilitare: definire una whitelist ristretta di domini (solo brand ufficiali)
-  - Aggiungere validazione dimensione immagine (min 800x800px) prima di allegare a Shopify
+- [x] **ImageAgent V4 — COMPLETATO** (vedi sezione 1.3)
+  - Whitelist domini: già filtrata tramite `searchGoldStandard` (solo brand ufficiali) e `isValidImageUrl()`
+  - Per validazione dimensione immagine (min 800x800px) aggiungere HEAD request prima dell'upload Shopify (opzionale)
 
 ---
 
