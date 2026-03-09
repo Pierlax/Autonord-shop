@@ -76,11 +76,14 @@ export interface ProductSyncResult {
 
 // Overall sync result
 export interface SyncResult {
-  total: number;
+  total: number;           // Products processed in this batch
+  totalEligible?: number;  // Total eligible products in the full file
   created: number;
   updated: number;
   failed: number;
   skipped: number;
+  hasMore?: boolean;       // Whether more batches remain
+  nextOffset?: number | null;
   results: ProductSyncResult[];
   errors: string[];
 }

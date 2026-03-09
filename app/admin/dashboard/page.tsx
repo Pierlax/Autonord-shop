@@ -687,58 +687,118 @@ function BulkSyncPanel({ secret, pendingProducts }: { secret: string; pendingPro
 // DANEA SYNC PANEL
 // =============================================================================
 
-interface DaneaSyncResult {
+interface DaneaBatchResponse {
   success: boolean;
+  message?: string;
   summary?: {
     total: number;
+    totalEligible?: number;
     created: number;
     updated: number;
     failed: number;
     skipped: number;
   };
+  hasMore?: boolean;
+  nextOffset?: number | null;
   errors?: string[];
   error?: string;
-  message?: string;
+}
+
+interface DaneaSyncTotals {
+  created: number;
+  updated: number;
+  failed: number;
+  skipped: number;
+  totalEligible: number;
 }
 
 function DaneaSyncPanel({ secret }: { secret: string }) {
   const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [result, setResult] = useState<DaneaSyncResult | null>(null);
+  const [running, setRunning] = useState(false);
   const [onlyEcommerce, setOnlyEcommerce] = useState(true);
+  const [batchSize, setBatchSize] = useState(30);
+  const [done, setDone] = useState(false);
+  const [totals, setTotals] = useState<DaneaSyncTotals | null>(null);
+  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
+  const [allErrors, setAllErrors] = useState<string[]>([]);
+  const [fatalError, setFatalError] = useState<string | null>(null);
+
+  const reset = () => {
+    setDone(false);
+    setTotals(null);
+    setProgress(null);
+    setAllErrors([]);
+    setFatalError(null);
+  };
 
   const handleUpload = async () => {
     if (!file) return;
-    setUploading(true);
-    setResult(null);
+    setRunning(true);
+    reset();
+
+    let offset = 0;
+    const acc: DaneaSyncTotals = { created: 0, updated: 0, failed: 0, skipped: 0, totalEligible: 0 };
+    const errors: string[] = [];
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
+      while (true) {
+        const formData = new FormData();
+        formData.append('file', file);
 
-      const url = `/api/sync/danea?onlyEcommerce=${onlyEcommerce}`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${secret}` },
-        body: formData,
-      });
-      const data = await res.json() as DaneaSyncResult;
-      setResult(data);
+        const url = `/api/sync/danea?onlyEcommerce=${onlyEcommerce}&offset=${offset}&limit=${batchSize}`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${secret}` },
+          body: formData,
+        });
+        const data = await res.json() as DaneaBatchResponse;
+
+        if (!data.success) {
+          setFatalError(data.error || data.message || 'Errore sconosciuto');
+          break;
+        }
+
+        if (data.summary) {
+          acc.created += data.summary.created;
+          acc.updated += data.summary.updated;
+          acc.failed += data.summary.failed;
+          // skipped is constant (non-ecommerce products) — take from first batch
+          if (offset === 0) acc.skipped = data.summary.skipped;
+          if (data.summary.totalEligible) acc.totalEligible = data.summary.totalEligible;
+        }
+        if (data.errors) errors.push(...data.errors);
+
+        setTotals({ ...acc });
+        setAllErrors([...errors]);
+        setProgress({ current: offset + (data.summary?.total ?? 0), total: acc.totalEligible });
+
+        if (!data.hasMore || data.nextOffset == null) break;
+        offset = data.nextOffset;
+
+        // Small pause between batches
+        await new Promise(r => setTimeout(r, 500));
+      }
     } catch (err) {
-      setResult({ success: false, error: err instanceof Error ? err.message : 'Errore di rete' });
+      setFatalError(err instanceof Error ? err.message : 'Errore di rete');
     } finally {
-      setUploading(false);
+      setRunning(false);
+      setDone(true);
     }
   };
+
+  const pct = progress && progress.total > 0
+    ? Math.round((progress.current / progress.total) * 100)
+    : 0;
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
       <h2 className="text-lg font-bold text-white mb-1">📦 Sincronizzazione Danea</h2>
       <p className="text-gray-400 text-sm mb-4">
         Carica il file esportato da Danea (.xlsx o .csv) per sincronizzare il catalogo prodotti su Shopify.
+        Il sync avviene in batch da {batchSize} prodotti per non superare il timeout Vercel.
       </p>
 
-      {/* File picker */}
+      {/* File picker + button */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <label className="flex-1 flex items-center gap-3 px-4 py-2.5 bg-gray-800 border border-gray-700 border-dashed rounded-lg cursor-pointer hover:border-gray-500 transition-colors group">
           <span className="text-xl">📂</span>
@@ -749,84 +809,119 @@ function DaneaSyncPanel({ secret }: { secret: string }) {
             type="file"
             accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
             className="hidden"
+            disabled={running}
             onChange={e => {
               setFile(e.target.files?.[0] ?? null);
-              setResult(null);
+              reset();
             }}
           />
         </label>
         <button
           onClick={handleUpload}
-          disabled={!file || uploading}
+          disabled={!file || running}
           className="px-6 py-2.5 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
         >
-          {uploading ? (
+          {running ? (
             <span className="flex items-center gap-2">
               <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              Caricamento...
+              In corso...
             </span>
           ) : 'Sincronizza'}
         </button>
       </div>
 
       {/* Options */}
-      <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer mb-4 select-none">
-        <input
-          type="checkbox"
-          checked={onlyEcommerce}
-          onChange={e => setOnlyEcommerce(e.target.checked)}
-          className="w-4 h-4 rounded accent-blue-500"
-        />
-        Solo prodotti con flag E-commerce attivo
-      </label>
+      <div className="flex flex-wrap items-center gap-4 mb-4">
+        <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={onlyEcommerce}
+            onChange={e => setOnlyEcommerce(e.target.checked)}
+            disabled={running}
+            className="w-4 h-4 rounded accent-blue-500"
+          />
+          Solo prodotti E-commerce
+        </label>
+        <label className="flex items-center gap-2 text-sm text-gray-400 select-none">
+          Batch:
+          <select
+            value={batchSize}
+            onChange={e => setBatchSize(Number(e.target.value))}
+            disabled={running}
+            className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-white text-xs"
+          >
+            <option value={10}>10 (test)</option>
+            <option value={30}>30 (standard)</option>
+            <option value={50}>50 (veloce)</option>
+            <option value={100}>100 (max)</option>
+          </select>
+        </label>
+      </div>
 
-      {/* Result */}
-      {result && (
-        <div className={`rounded-lg p-4 ${result.success ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-red-500/10 border border-red-500/30'}`}>
-          {result.success && result.summary ? (
-            <div>
-              <div className="text-emerald-400 font-medium mb-3">✓ Sincronizzazione completata</div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-white">{result.summary.total}</div>
-                  <div className="text-gray-500 text-xs">Totale</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-emerald-400">{result.summary.created}</div>
-                  <div className="text-gray-500 text-xs">Creati</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-blue-400">{result.summary.updated}</div>
-                  <div className="text-gray-500 text-xs">Aggiornati</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-red-400">{result.summary.failed}</div>
-                  <div className="text-gray-500 text-xs">Falliti</div>
-                </div>
-              </div>
-              {result.summary.skipped > 0 && (
-                <div className="mt-2 text-gray-500 text-xs text-center">{result.summary.skipped} ignorati (non e-commerce)</div>
-              )}
-              {result.errors && result.errors.length > 0 && (
-                <details className="mt-3">
-                  <summary className="text-red-400 text-xs cursor-pointer hover:text-red-300">
-                    {result.errors.length} errori — clicca per espandere
-                  </summary>
-                  <ul className="mt-2 space-y-1">
-                    {result.errors.map((e, i) => (
-                      <li key={i} className="text-red-300 text-xs bg-red-500/5 rounded px-2 py-1">{e}</li>
-                    ))}
-                  </ul>
-                </details>
-              )}
+      {/* Progress bar */}
+      {(running || done) && progress && progress.total > 0 && (
+        <div className="mb-4">
+          <div className="flex justify-between text-xs text-gray-500 mb-1">
+            <span>{progress.current} / {progress.total} prodotti</span>
+            <span>{pct}%</span>
+          </div>
+          <div className="w-full bg-gray-800 rounded-full h-2">
+            <div
+              className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Fatal error */}
+      {fatalError && (
+        <div className="rounded-lg p-4 bg-red-500/10 border border-red-500/30 mb-3">
+          <div className="text-red-400 text-sm"><span className="font-medium">✗ Errore:</span> {fatalError}</div>
+        </div>
+      )}
+
+      {/* Running totals */}
+      {totals && (
+        <div className={`rounded-lg p-4 ${done && !fatalError ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-gray-800 border border-gray-700'}`}>
+          {done && !fatalError && (
+            <div className="text-emerald-400 font-medium mb-3">✓ Sincronizzazione completata</div>
+          )}
+          {running && (
+            <div className="text-blue-400 text-sm font-medium mb-3 animate-pulse">Sincronizzazione in corso...</div>
+          )}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-emerald-400">{totals.created}</div>
+              <div className="text-gray-500 text-xs">Creati</div>
             </div>
-          ) : (
-            <div className="text-red-400 text-sm">
-              <span className="font-medium">✗ Errore:</span> {result.error || result.message || 'Errore sconosciuto'}
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-400">{totals.updated}</div>
+              <div className="text-gray-500 text-xs">Aggiornati</div>
             </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-red-400">{totals.failed}</div>
+              <div className="text-gray-500 text-xs">Falliti</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-gray-400">{totals.skipped}</div>
+              <div className="text-gray-500 text-xs">Ignorati</div>
+            </div>
+          </div>
+          {allErrors.length > 0 && (
+            <details className="mt-3">
+              <summary className="text-red-400 text-xs cursor-pointer hover:text-red-300">
+                {allErrors.length} errori — clicca per espandere
+              </summary>
+              <ul className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+                {allErrors.map((e, i) => (
+                  <li key={i} className="text-red-300 text-xs bg-red-500/5 rounded px-2 py-1">{e}</li>
+                ))}
+              </ul>
+            </details>
           )}
         </div>
       )}

@@ -200,24 +200,44 @@ async function publishProductToOnlineStore(productId: number): Promise<boolean> 
 }
 
 /**
- * Find existing product by SKU
+ * Find existing product by SKU using GraphQL search (handles full catalog, not just first 250)
  */
 async function findProductBySku(sku: string): Promise<{ id: number; variantId: number } | null> {
   try {
-    const { products } = await shopifyAdminRequest<{ 
-      products: Array<{ 
-        id: number; 
-        variants: Array<{ id: number; sku: string }> 
-      }> 
-    }>(`/products.json?fields=id,variants&limit=250`);
-
-    for (const product of products) {
-      const variant = product.variants?.find(v => v.sku === sku);
-      if (variant) {
-        return { id: product.id, variantId: variant.id };
+    const query = `
+      query findBySku($query: String!) {
+        productVariants(first: 5, query: $query) {
+          edges {
+            node {
+              id
+              sku
+              product { id }
+            }
+          }
+        }
       }
-    }
-    return null;
+    `;
+    const data = await shopifyGraphQLRequest<{
+      productVariants: {
+        edges: Array<{
+          node: {
+            id: string;
+            sku: string;
+            product: { id: string };
+          };
+        }>;
+      };
+    }>(query, { query: `sku:${sku}` });
+
+    const edge = data.productVariants.edges.find(e => e.node.sku === sku);
+    if (!edge) return null;
+
+    // GID format: gid://shopify/ProductVariant/123456
+    const variantId = parseInt(edge.node.id.split('/').pop() || '0', 10);
+    const productId = parseInt(edge.node.product.id.split('/').pop() || '0', 10);
+    if (!variantId || !productId) return null;
+
+    return { id: productId, variantId };
   } catch (error) {
     log.error('Error finding product by SKU:', error);
     return null;
@@ -334,41 +354,53 @@ export async function syncSingleProduct(product: ParsedProduct): Promise<Product
 }
 
 /**
- * Sync multiple products to Shopify with rate limiting
+ * Sync multiple products to Shopify with rate limiting and batching.
+ *
+ * @param products   Full list of parsed products (after filtering)
+ * @param options    onlyEcommerce, offset, limit, onProgress
+ * @returns SyncResult with hasMore / nextOffset for client-side pagination
  */
 export async function syncProductsToShopify(
   products: ParsedProduct[],
   options: {
     onlyEcommerce?: boolean;
+    offset?: number;
+    limit?: number;
     onProgress?: (current: number, total: number, result: ProductSyncResult) => void;
   } = {}
 ): Promise<SyncResult> {
-  const { onlyEcommerce = true, onProgress } = options;
-  
+  const { onlyEcommerce = true, offset = 0, limit = 50, onProgress } = options;
+
   // Filter products if needed
-  let toSync = products;
-  if (onlyEcommerce) {
-    toSync = products.filter(p => p.ecommerce);
-  }
+  const eligible = onlyEcommerce ? products.filter(p => p.ecommerce) : products;
+  const skipped = products.length - eligible.length;
+
+  // Slice the batch
+  const batch = eligible.slice(offset, offset + limit);
+  const hasMore = offset + limit < eligible.length;
+  const nextOffset = hasMore ? offset + limit : null;
 
   const result: SyncResult = {
-    total: toSync.length,
+    total: batch.length,
+    totalEligible: eligible.length,
     created: 0,
     updated: 0,
     failed: 0,
-    skipped: products.length - toSync.length,
+    skipped,
+    hasMore,
+    nextOffset,
     results: [],
     errors: [],
   };
 
-  log.info(`Starting sync of ${toSync.length} products to Shopify`);
+  log.info(`Syncing batch ${offset + 1}–${offset + batch.length} of ${eligible.length} products`);
 
-  for (let i = 0; i < toSync.length; i++) {
-    const product = toSync[i];
+  for (let i = 0; i < batch.length; i++) {
+    const product = batch[i];
     const syncResult = await syncSingleProduct(product);
-    
+
     result.results.push(syncResult);
-    
+
     if (syncResult.success) {
       if (syncResult.action === 'created') result.created++;
       if (syncResult.action === 'updated') result.updated++;
@@ -379,19 +411,18 @@ export async function syncProductsToShopify(
       }
     }
 
-    // Progress callback
     if (onProgress) {
-      onProgress(i + 1, toSync.length, syncResult);
+      onProgress(offset + i + 1, eligible.length, syncResult);
     }
 
-    // Rate limiting
-    if (i < toSync.length - 1) {
+    // Rate limiting between requests
+    if (i < batch.length - 1) {
       await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY));
     }
   }
 
-  log.info(`Sync completed: ${result.created} created, ${result.updated} updated, ${result.failed} failed`);
-  
+  log.info(`Batch done: ${result.created} created, ${result.updated} updated, ${result.failed} failed. hasMore=${hasMore}`);
+
   return result;
 }
 

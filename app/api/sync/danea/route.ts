@@ -156,22 +156,29 @@ export async function POST(request: NextRequest) {
     // Get options from query params
     const url = new URL(request.url);
     const onlyEcommerce = url.searchParams.get('onlyEcommerce') !== 'false';
+    const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10), 100);
 
-    // Sync to Shopify
-    const result = await syncProductsToShopify(products, { onlyEcommerce });
+    // Sync to Shopify (batch)
+    const result = await syncProductsToShopify(products, { onlyEcommerce, offset, limit });
 
-    log.info(`Sync completed: ${result.created} created, ${result.updated} updated, ${result.failed} failed`);
+    log.info(`Batch done: ${result.created} created, ${result.updated} updated, ${result.failed} failed, hasMore=${result.hasMore}`);
 
     return NextResponse.json({
       success: true,
-      message: `Sync completed successfully`,
+      message: result.hasMore
+        ? `Batch completato (${offset + 1}–${offset + result.total} di ${result.totalEligible})`
+        : `Sincronizzazione completata`,
       summary: {
         total: result.total,
+        totalEligible: result.totalEligible,
         created: result.created,
         updated: result.updated,
         failed: result.failed,
         skipped: result.skipped,
       },
+      hasMore: result.hasMore,
+      nextOffset: result.nextOffset,
       errors: result.errors.length > 0 ? result.errors : undefined,
     });
 
