@@ -32,11 +32,11 @@ const log = loggers.shopify;
 // CONFIGURATION
 // =============================================================================
 
-/** Primary model: Gemini 2.5 Flash (latest stable) */
-const PRIMARY_MODEL = 'gemini-2.5-flash';
+/** Primary model: Gemini 2.0 Flash */
+const PRIMARY_MODEL = 'gemini-2.0-flash';
 
 /** Fallback model (lighter, for less critical tasks) */
-const LITE_MODEL = 'gemini-2.5-flash-lite';
+const LITE_MODEL = 'gemini-2.0-flash-lite';
 
 /** Rate limit: max requests per minute (Gemini free tier = 15 RPM) */
 const MAX_REQUESTS_PER_MINUTE = 15;

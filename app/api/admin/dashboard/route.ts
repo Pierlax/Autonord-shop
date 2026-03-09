@@ -81,10 +81,10 @@ async function checkShopify(): Promise<ServiceStatus> {
 }
 
 async function checkGemini(): Promise<ServiceStatus> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  
+  const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+
   if (!apiKey) {
-    return { name: 'Gemini AI', status: 'not_configured', details: 'Missing GOOGLE_AI_API_KEY' };
+    return { name: 'Gemini AI', status: 'not_configured', details: 'Missing GOOGLE_GENERATIVE_AI_API_KEY' };
   }
 
   const start = Date.now();
