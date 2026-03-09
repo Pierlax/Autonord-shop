@@ -12,8 +12,9 @@ export const maxDuration = 60;
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { 
-  generateProductContentV3, 
+import { generateTextSafe } from '@/lib/shopify/ai-client';
+import {
+  generateProductContentV3,
   formatDescriptionAsHtmlV3,
 } from '@/lib/shopify/ai-enrichment-v3';
 import { ShopifyProductWebhookPayload } from '@/lib/shopify/webhook-types';
@@ -255,6 +256,30 @@ export async function GET(request: NextRequest) {
   console.log('='.repeat(80) + '\n');
 
   try {
+    // =========================================================================
+    // STEP 0: Direct Gemini connectivity test
+    // =========================================================================
+    const step0Start = Date.now();
+    let geminiRawOutput = '';
+    let geminiError = '';
+    try {
+      const geminiTest = await generateTextSafe({
+        prompt: 'Respond with exactly this JSON and nothing else: {"ok":true}',
+        maxTokens: 50,
+        temperature: 0,
+      });
+      geminiRawOutput = geminiTest.text;
+    } catch (err) {
+      geminiError = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    }
+    logs.push({
+      step: 0,
+      name: 'Gemini Direct Test',
+      status: geminiError ? 'error' : 'success',
+      duration: Date.now() - step0Start,
+      details: { rawOutput: geminiRawOutput.substring(0, 200), error: geminiError || undefined },
+    });
+
     // =========================================================================
     // STEP 1: Fetch from Shopify
     // =========================================================================
