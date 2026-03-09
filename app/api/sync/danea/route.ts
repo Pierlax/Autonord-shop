@@ -18,14 +18,20 @@ import { loggers } from '@/lib/logger';
 const log = loggers.sync;
 
 // Verify sync secret for security
+// Accepts SYNC_SECRET (dedicated) or CRON_SECRET (shared admin secret)
 function verifySecret(request: NextRequest): boolean {
-  const secret = process.env.SYNC_SECRET;
-  if (!secret) return true; // If no secret configured, allow all
-  
+  const syncSecret = process.env.SYNC_SECRET;
+  const cronSecret = process.env.CRON_SECRET;
+
+  // If neither secret is configured, allow all
+  if (!syncSecret && !cronSecret) return true;
+
   const authHeader = request.headers.get('Authorization');
   const providedSecret = authHeader?.replace('Bearer ', '');
-  
-  return providedSecret === secret;
+
+  if (syncSecret && providedSecret === syncSecret) return true;
+  if (cronSecret && providedSecret === cronSecret) return true;
+  return false;
 }
 
 export async function GET(request: NextRequest) {
