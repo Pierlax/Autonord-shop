@@ -494,11 +494,16 @@ export async function GET(request: NextRequest) {
     };
     const descriptionHtml = formatDescriptionAsHtmlV3(enrichedWithCleanContent);
     
-    // Extract specs
+    // Extract specs (only real QA-verified specs, not RAG metadata entries)
     const specs: Record<string, string> = {};
     if (enrichedData.provenance?.facts) {
       for (const fact of enrichedData.provenance.facts) {
-        if (fact.verificationStatus === 'verified') {
+        if (
+          fact.verificationStatus === 'verified' &&
+          !fact.factKey.startsWith('Source queried:') &&
+          !fact.factKey.startsWith('RAG Evidence') &&
+          fact.factValue !== 'RAG pipeline source'
+        ) {
           specs[fact.factKey] = fact.factValue;
         }
       }

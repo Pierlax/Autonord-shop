@@ -171,16 +171,21 @@ function toWebhookPayload(payload: WorkerPayload): ShopifyProductWebhookPayload 
  */
 function extractSpecsFromV3(enrichedData: EnrichedProductDataV3): TayaSpecs {
   const specs: TayaSpecs = {};
-  
-  // Estrai da provenance facts
+
+  // Estrai da provenance facts (only real verified specs, not RAG metadata)
   if (enrichedData.provenance?.facts) {
     for (const fact of enrichedData.provenance.facts) {
-      if (fact.verificationStatus === 'verified') {
+      if (
+        fact.verificationStatus === 'verified' &&
+        !fact.factKey.startsWith('Source queried:') &&
+        !fact.factKey.startsWith('RAG Evidence') &&
+        fact.factValue !== 'RAG pipeline source'
+      ) {
         specs[fact.factKey] = fact.factValue;
       }
     }
   }
-  
+
   return specs;
 }
 

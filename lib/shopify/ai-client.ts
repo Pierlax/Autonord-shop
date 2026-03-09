@@ -218,7 +218,7 @@ export async function generateTextSafe(options: GenerateTextOptions): Promise<Ge
       const baseConfig = {
         model,
         system: options.system,
-        maxOutputTokens: options.maxTokens ?? 4096,
+        maxTokens: options.maxTokens ?? 4096,
         temperature: options.temperature ?? 0.7,
       };
 
@@ -328,7 +328,7 @@ export async function generateObjectSafe<T>(options: GenerateObjectOptions<T>): 
         system: options.system,
         schema: options.schema,
         schemaName: options.schemaName,
-        maxOutputTokens: options.maxTokens ?? 4096,
+        maxTokens: options.maxTokens ?? 4096,
         temperature: options.temperature ?? 0.3,
       };
 

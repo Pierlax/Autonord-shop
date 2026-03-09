@@ -893,16 +893,9 @@ function buildFallbackContent(
   ragEvidence: RAGEvidence,
   qaFacts: QAFacts | null,
 ): EnrichedProductData {
-  // Build description from RAG snippets
-  const descriptionParts: string[] = [];
-  if (ragEvidence.snippets.length > 0) {
-    descriptionParts.push(ragEvidence.snippets[0].text.substring(0, 200));
-  }
-  if (qaFacts?.verdict) {
-    descriptionParts.push(qaFacts.verdict);
-  }
-  const description = descriptionParts.length > 0
-    ? descriptionParts.join('. ')
+  // Build description: prefer QA verdict (fact-based), never raw RAG scrape
+  const description = qaFacts?.verdict && qaFacts.verdict.length > 20
+    ? qaFacts.verdict
     : 'Contattaci per una consulenza personalizzata su questo prodotto.';
 
   // Build pros from QA strengths or RAG data
