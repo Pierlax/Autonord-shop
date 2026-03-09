@@ -4,10 +4,10 @@
       "maxDuration": 60
     },
     "app/api/cron/**/*.ts": {
-      "maxDuration": 300
+      "maxDuration": 60
     },
     "app/api/workers/regenerate-product/route.ts": {
-      "maxDuration": 300
+      "maxDuration": 60
     }
   },
   "crons": [
