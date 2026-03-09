@@ -873,8 +873,9 @@ async function generateWithLLMV3(
     return parsed;
     
   } catch (error) {
-    log.error('[AI-V3] Generation Error:', error);
-    
+    const errMsg = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    log.error('[AI-V3] Generation Error:', errMsg);
+
     // Record error
     getMetricsStore().recordError({
       productId: 'unknown',

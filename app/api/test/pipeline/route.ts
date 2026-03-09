@@ -352,8 +352,11 @@ export async function GET(request: NextRequest) {
     // Step 2c: AI Enrichment V3 (using RAG + QA data)
     console.log('   🧠 Running V3 content generation (with RAG+QA data)...');
     const enrichedData = await generateProductContentV3(product, ragResult, qaResult);
-    
-    console.log(`   ✅ Content generated`);
+
+    const usedFallback = enrichedData.description === 'Contattaci per una consulenza personalizzata su questo prodotto.'
+      || enrichedData.description.startsWith('Contattaci per');
+
+    console.log(`   ${usedFallback ? '⚠️ Fallback content used (LLM failed)' : '✅ Content generated'}`);
     console.log(`   📊 Confidence: ${enrichedData.provenance.overallConfidence}%`);
     console.log(`   📚 Sources used: ${enrichedData.sourcesUsed.length}`);
     enrichedData.sourcesUsed.forEach(s => console.log(`      - ${s}`));
@@ -365,21 +368,22 @@ export async function GET(request: NextRequest) {
     console.log(`   👎 Cons: ${enrichedData.cons.length}`);
     console.log(`   ❓ FAQs: ${enrichedData.faqs.length}`);
     console.log(`   🔧 Accessories: ${enrichedData.accessories.length}`);
-    
+
     // Show KG context
     const kgContext = enrichedData.knowledgeGraphContext;
     if (kgContext) {
       console.log(`   🎯 Suitable for trades: ${kgContext.suitableForTrades.join(', ') || 'N/A'}`);
       console.log(`   📋 Use cases: ${kgContext.relatedUseCases.join(', ') || 'N/A'}`);
     }
-    
+
     logs.push({
       step: 2,
       name: 'AI Enrichment V3',
-      status: enrichedData.provenance.warnings.length > 0 ? 'warning' : 'success',
+      status: usedFallback ? 'warning' : (enrichedData.provenance.warnings.length > 0 ? 'warning' : 'success'),
       duration: Date.now() - step2Start,
       details: {
         confidence: enrichedData.provenance.overallConfidence,
+        usedFallback,
         sourcesCount: enrichedData.sourcesUsed.length,
         sources: enrichedData.sourcesUsed,
         warnings: enrichedData.provenance.warnings,
