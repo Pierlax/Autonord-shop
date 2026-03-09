@@ -15,7 +15,7 @@ const log = loggers.api;
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 90;
+export const maxDuration = 60;
 
 // Get ALL products (ignoring AI-Enhanced tag)
 async function getAllProducts(limit: number = 50): Promise<any[]> {

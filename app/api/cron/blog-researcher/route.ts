@@ -26,7 +26,7 @@ import { sendNotification } from '@/lib/blog-researcher/notifications';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300; // 5 minutes max for cron job
+export const maxDuration = 60; // 5 minutes max for cron job
 
 /**
  * Verify the request is from Vercel Cron

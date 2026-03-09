@@ -27,7 +27,7 @@ import { logger } from '@/lib/logging';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 // Increase max duration for Vercel Pro (90 seconds)
-export const maxDuration = 90;
+export const maxDuration = 60;
 
 async function handler(request: NextRequest) {
   const startTime = Date.now();

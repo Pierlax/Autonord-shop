@@ -15,7 +15,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 
-export const maxDuration = 300; // Allow up to 5 minutes for bulk reset
+export const maxDuration = 60; // Allow up to 5 minutes for bulk reset
 
 const SHOPIFY_STORE = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN;
 const SHOPIFY_ADMIN_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
