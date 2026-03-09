@@ -65,6 +65,10 @@ interface OptionalEnv {
   UPSTASH_REDIS_REST_TOKEN?: string;
   /** Anthropic API key for Claude AI (legacy fallback) */
   ANTHROPIC_API_KEY?: string;
+  /** Override primary Gemini model (e.g. gemini-2.5-flash-preview-05-20) */
+  GOOGLE_AI_MODEL?: string;
+  /** Override lite Gemini model for fast tasks */
+  GOOGLE_AI_LITE_MODEL?: string;
   /** Vercel deployment URL (auto-set by Vercel) */
   VERCEL_URL?: string;
   /** Base URL for the application */
