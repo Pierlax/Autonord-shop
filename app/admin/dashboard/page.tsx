@@ -451,6 +451,11 @@ function DashboardContent({ secret }: { secret: string }) {
           <BulkSyncPanel secret={secret} pendingProducts={data.productStats.pendingProducts} />
         </section>
 
+        {/* Section 4c: Danea Sync */}
+        <section>
+          <DaneaSyncPanel secret={secret} />
+        </section>
+
         {/* Section 5: Quick Actions */}
         <section>
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">
@@ -672,6 +677,157 @@ function BulkSyncPanel({ secret, pendingProducts }: { secret: string; pendingPro
               <span className={entry.ok ? 'text-gray-300' : 'text-red-400'}>{entry.text}</span>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
+// DANEA SYNC PANEL
+// =============================================================================
+
+interface DaneaSyncResult {
+  success: boolean;
+  summary?: {
+    total: number;
+    created: number;
+    updated: number;
+    failed: number;
+    skipped: number;
+  };
+  errors?: string[];
+  error?: string;
+  message?: string;
+}
+
+function DaneaSyncPanel({ secret }: { secret: string }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState<DaneaSyncResult | null>(null);
+  const [onlyEcommerce, setOnlyEcommerce] = useState(true);
+
+  const handleUpload = async () => {
+    if (!file) return;
+    setUploading(true);
+    setResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const url = `/api/sync/danea?onlyEcommerce=${onlyEcommerce}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${secret}` },
+        body: formData,
+      });
+      const data = await res.json() as DaneaSyncResult;
+      setResult(data);
+    } catch (err) {
+      setResult({ success: false, error: err instanceof Error ? err.message : 'Errore di rete' });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+      <h2 className="text-lg font-bold text-white mb-1">📦 Sincronizzazione Danea</h2>
+      <p className="text-gray-400 text-sm mb-4">
+        Carica il file esportato da Danea (.xlsx o .csv) per sincronizzare il catalogo prodotti su Shopify.
+      </p>
+
+      {/* File picker */}
+      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+        <label className="flex-1 flex items-center gap-3 px-4 py-2.5 bg-gray-800 border border-gray-700 border-dashed rounded-lg cursor-pointer hover:border-gray-500 transition-colors group">
+          <span className="text-xl">📂</span>
+          <span className="text-sm text-gray-400 group-hover:text-gray-300 truncate">
+            {file ? file.name : 'Seleziona file .xlsx o .csv...'}
+          </span>
+          <input
+            type="file"
+            accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+            className="hidden"
+            onChange={e => {
+              setFile(e.target.files?.[0] ?? null);
+              setResult(null);
+            }}
+          />
+        </label>
+        <button
+          onClick={handleUpload}
+          disabled={!file || uploading}
+          className="px-6 py-2.5 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+        >
+          {uploading ? (
+            <span className="flex items-center gap-2">
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Caricamento...
+            </span>
+          ) : 'Sincronizza'}
+        </button>
+      </div>
+
+      {/* Options */}
+      <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer mb-4 select-none">
+        <input
+          type="checkbox"
+          checked={onlyEcommerce}
+          onChange={e => setOnlyEcommerce(e.target.checked)}
+          className="w-4 h-4 rounded accent-blue-500"
+        />
+        Solo prodotti con flag E-commerce attivo
+      </label>
+
+      {/* Result */}
+      {result && (
+        <div className={`rounded-lg p-4 ${result.success ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-red-500/10 border border-red-500/30'}`}>
+          {result.success && result.summary ? (
+            <div>
+              <div className="text-emerald-400 font-medium mb-3">✓ Sincronizzazione completata</div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-white">{result.summary.total}</div>
+                  <div className="text-gray-500 text-xs">Totale</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-emerald-400">{result.summary.created}</div>
+                  <div className="text-gray-500 text-xs">Creati</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-400">{result.summary.updated}</div>
+                  <div className="text-gray-500 text-xs">Aggiornati</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-red-400">{result.summary.failed}</div>
+                  <div className="text-gray-500 text-xs">Falliti</div>
+                </div>
+              </div>
+              {result.summary.skipped > 0 && (
+                <div className="mt-2 text-gray-500 text-xs text-center">{result.summary.skipped} ignorati (non e-commerce)</div>
+              )}
+              {result.errors && result.errors.length > 0 && (
+                <details className="mt-3">
+                  <summary className="text-red-400 text-xs cursor-pointer hover:text-red-300">
+                    {result.errors.length} errori — clicca per espandere
+                  </summary>
+                  <ul className="mt-2 space-y-1">
+                    {result.errors.map((e, i) => (
+                      <li key={i} className="text-red-300 text-xs bg-red-500/5 rounded px-2 py-1">{e}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+          ) : (
+            <div className="text-red-400 text-sm">
+              <span className="font-medium">✗ Errore:</span> {result.error || result.message || 'Errore sconosciuto'}
+            </div>
+          )}
         </div>
       )}
     </div>

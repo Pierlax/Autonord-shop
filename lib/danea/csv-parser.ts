@@ -48,6 +48,12 @@ const DANEA_COLUMN_MAP: Record<string, keyof DaneaProduct> = {
   "Cost": "supplierPrice",
   "Fornitore": "supplier",
   "Supplier": "supplier",
+  // Codice del produttore/fornitore — es. "4933451900" per Milwaukee
+  // Questo è il vero SKU di catalogo, usato dalla pipeline AI per le ricerche web
+  "Cod per il F.": "supplierCode",
+  "Cod. per il F.": "supplierCode",
+  "Codice fornitore": "supplierCode",
+  "Supplier Code": "supplierCode",
 };
 
 /**
@@ -160,44 +166,48 @@ function parseCSVLine(line: string, delimiter: string): string[] {
 }
 
 /**
+ * Normalize a single row (already keyed by column name) into a ParsedProduct.
+ * Used by both the CSV and XLSX parsers.
+ */
+export function normalizeDaneaRecord(record: Record<string, string>): ParsedProduct | null {
+  const danea: Partial<DaneaProduct> = {};
+
+  for (const [col, key] of Object.entries(DANEA_COLUMN_MAP)) {
+    if (record[col] !== undefined) {
+      danea[key] = record[col];
+    }
+  }
+
+  if (!danea.code || danea.code.trim() === '') return null;
+
+  return {
+    daneaCode: danea.code.trim(),
+    supplierCode: danea.supplierCode?.trim() || null,
+    title: danea.description?.trim() || danea.code.trim(),
+    description: danea.notes?.trim() || null,
+    category: danea.category?.trim() || null,
+    manufacturer: danea.manufacturer?.trim() || null,
+    price: parsePrice(danea.price1 || ''),
+    compareAtPrice: parsePrice(danea.price2 || ''),
+    costPrice: parsePrice(danea.supplierPrice || ''),
+    quantity: parseQuantity(danea.quantity || ''),
+    unit: danea.unit?.trim() || 'PZ',
+    barcode: danea.barcode?.trim() || null,
+    ecommerce: isEcommerceEnabled(danea.ecommerce || ''),
+    notes: danea.notes?.trim() || null,
+  };
+}
+
+/**
  * Parse Danea CSV content into normalized products
  */
 export function parseDaneaCSV(csvContent: string): ParsedProduct[] {
   const records = parseCSV(csvContent);
   const products: ParsedProduct[] = [];
-
   for (const record of records) {
-    // Map Danea columns to our structure
-    const danea: Partial<DaneaProduct> = {};
-    
-    for (const [csvCol, ourKey] of Object.entries(DANEA_COLUMN_MAP)) {
-      if (record[csvCol] !== undefined) {
-        danea[ourKey] = record[csvCol];
-      }
-    }
-
-    // Skip if no code
-    if (!danea.code || danea.code.trim() === '') continue;
-
-    const product: ParsedProduct = {
-      daneaCode: danea.code.trim(),
-      title: danea.description?.trim() || danea.code.trim(),
-      description: danea.notes?.trim() || null,
-      category: danea.category?.trim() || null,
-      manufacturer: danea.manufacturer?.trim() || null,
-      price: parsePrice(danea.price1 || ''),
-      compareAtPrice: parsePrice(danea.price2 || ''),
-      costPrice: parsePrice(danea.supplierPrice || ''),
-      quantity: parseQuantity(danea.quantity || ''),
-      unit: danea.unit?.trim() || 'PZ',
-      barcode: danea.barcode?.trim() || null,
-      ecommerce: isEcommerceEnabled(danea.ecommerce || ''),
-      notes: danea.notes?.trim() || null,
-    };
-
-    products.push(product);
+    const product = normalizeDaneaRecord(record);
+    if (product) products.push(product);
   }
-
   return products;
 }
 

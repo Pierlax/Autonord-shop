@@ -255,6 +255,8 @@ function toShopifyProduct(product: ParsedProduct): ShopifyProductInput {
   const tags: string[] = [];
   if (product.category) tags.push(product.category);
   if (product.manufacturer) tags.push(product.manufacturer);
+  // Codice interno Danea nei tag per tracciabilità (non usato come SKU)
+  if (product.daneaCode) tags.push(`danea:${product.daneaCode}`);
   
   return {
     title: product.title,
@@ -266,7 +268,10 @@ function toShopifyProduct(product: ParsedProduct): ShopifyProductInput {
     variants: [{
       price: product.price?.toString() || '0',
       compare_at_price: product.compareAtPrice?.toString() || undefined,
-      sku: product.daneaCode,
+      // supplierCode = codice catalogo del produttore (es. "4933451900" Milwaukee)
+      // È il valore giusto per il campo SKU: usato dalla pipeline AI per ricerche web
+      // daneaCode rimane nei tag per tracciabilità interna
+      sku: product.supplierCode || product.daneaCode,
       barcode: product.barcode || undefined,
       inventory_quantity: product.quantity,
       inventory_management: 'shopify',

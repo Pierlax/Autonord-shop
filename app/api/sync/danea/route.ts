@@ -12,6 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { parseDaneaCSV, syncProductsToShopify } from '@/lib/danea';
+import { parseDaneaXLSX, isXLSXBuffer } from '@/lib/danea/xlsx-parser';
 import { loggers } from '@/lib/logger';
 
 const log = loggers.sync;
@@ -76,58 +77,75 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    let csvContent: string;
     const contentType = request.headers.get('content-type') || '';
+    let products;
 
     // Handle different content types
     if (contentType.includes('multipart/form-data')) {
-      // File upload
+      // File upload — supports both .xlsx and .csv
       const formData = await request.formData();
       const file = formData.get('file') as File | null;
-      
+
       if (!file) {
         return NextResponse.json(
           { error: 'Bad Request', message: 'No file provided' },
           { status: 400 }
         );
       }
-      
-      csvContent = await file.text();
+
+      const buffer = await file.arrayBuffer();
+      const filename = (file.name || '').toLowerCase();
+
+      if (filename.endsWith('.xlsx') || isXLSXBuffer(buffer)) {
+        log.info(`Received XLSX file: ${file.name}`);
+        products = parseDaneaXLSX(buffer);
+      } else {
+        const text = new TextDecoder('utf-8').decode(buffer);
+        products = parseDaneaCSV(text);
+      }
+
+    } else if (
+      contentType.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') ||
+      contentType.includes('application/octet-stream')
+    ) {
+      // Raw XLSX binary upload
+      const buffer = await request.arrayBuffer();
+      log.info('Received raw XLSX binary');
+      products = parseDaneaXLSX(buffer);
+
     } else if (contentType.includes('text/csv') || contentType.includes('text/plain')) {
       // Raw CSV content
-      csvContent = await request.text();
+      const csvContent = await request.text();
+      products = parseDaneaCSV(csvContent);
+
     } else if (contentType.includes('application/json')) {
-      // JSON with CSV content
-      const body = await request.json();
-      csvContent = body.csv || body.content || '';
+      // JSON with CSV content (legacy)
+      const body = await request.json() as { csv?: string; content?: string };
+      const csvContent = body.csv || body.content || '';
+      products = parseDaneaCSV(csvContent);
+
     } else {
-      // Try to read as text
-      csvContent = await request.text();
+      // Fallback: sniff by magic bytes
+      const buffer = await request.arrayBuffer();
+      if (isXLSXBuffer(buffer)) {
+        products = parseDaneaXLSX(buffer);
+      } else {
+        const text = new TextDecoder('utf-8').decode(buffer);
+        products = parseDaneaCSV(text);
+      }
     }
 
-    if (!csvContent || csvContent.trim() === '') {
+    if (!products || products.length === 0) {
       return NextResponse.json(
-        { error: 'Bad Request', message: 'Empty CSV content' },
-        { status: 400 }
-      );
-    }
-
-    log.info('Received Danea sync request');
-
-    // Parse CSV
-    const products = parseDaneaCSV(csvContent);
-    
-    if (products.length === 0) {
-      return NextResponse.json(
-        { 
-          error: 'Parse Error', 
-          message: 'No valid products found in CSV. Check column names match Danea format.' 
+        {
+          error: 'Parse Error',
+          message: 'Nessun prodotto valido trovato nel file. Verifica che il file abbia l\'intestazione corretta (es. "Cod.", "Descrizione", "Produttore").',
         },
         { status: 400 }
       );
     }
 
-    log.info(`Parsed ${products.length} products from CSV`);
+    log.info(`Parsed ${products.length} products from file`);
 
     // Get options from query params
     const url = new URL(request.url);

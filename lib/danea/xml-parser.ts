@@ -155,6 +155,7 @@ function convertToProduct(xmlProduct: DaneaXMLProduct): ParsedProduct | null {
   
   return {
     daneaCode: xmlProduct.Code.trim(),
+    supplierCode: xmlProduct.SupplierCode?.trim() || null,
     title: xmlProduct.Description?.trim() || xmlProduct.Code.trim(),
     description,
     category: xmlProduct.Category?.trim() || null,

@@ -21,11 +21,15 @@ export interface DaneaProduct {
   stockStatus: string;
   supplierPrice: string;
   supplier: string;
+  /** Codice del produttore/fornitore (es. "4933451900" per Milwaukee) — usato come SKU in Shopify */
+  supplierCode: string;
 }
 
 // Parsed and normalized product ready for Shopify
 export interface ParsedProduct {
   daneaCode: string;
+  /** Codice catalogo del produttore (es. "4933451900" Milwaukee). Usato come SKU in Shopify. */
+  supplierCode: string | null;
   title: string;
   description: string | null;
   category: string | null;
