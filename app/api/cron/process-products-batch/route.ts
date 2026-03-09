@@ -1,23 +1,24 @@
 /**
- * Endpoint per processare i prodotti in batch senza QStash
- * Processa i prodotti uno alla volta chiamando direttamente il worker
- * 
+ * Endpoint per accodare prodotti in batch su QStash con delay distribuito
+ *
  * POST /api/cron/process-products-batch
  * Body: { startIndex?: number, batchSize?: number }
- * 
- * SECURITY HARDENING (Phase 1):
- * - Removed hardcoded CRON_SECRET
- * - Uses centralized env validation from lib/env.ts
- * - Uses VERCEL_URL for dynamic base URL
+ *
+ * Ogni prodotto viene pubblicato su QStash con delay = (startIndex + localIndex) * 30s
+ * in modo che prodotti di batch diversi non collidano e restino sotto i 15 RPM di Gemini.
+ *
+ * L'endpoint risponde immediatamente (< 5s) con la lista dei job accodati.
+ * L'effettivo processing avviene in modo asincrono tramite il worker /api/workers/regenerate-product.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { env, optionalEnv } from '@/lib/env';
+import { env, optionalEnv, fromShopifyGid } from '@/lib/env';
+import { queueProductEnrichment, EnrichmentJob } from '@/lib/queue';
 
-const SHOPIFY_STORE = 'autonord-service.myshopify.com';
-const SHOPIFY_ACCESS_TOKEN = env.SHOPIFY_ADMIN_ACCESS_TOKEN;
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
 function getBaseUrl(request?: Request): string {
-  // Prefer to derive from incoming request (works both locally and in production)
   if (request) {
     return new URL(request.url).origin;
   }
@@ -35,14 +36,18 @@ interface ShopifyProduct {
       node: {
         sku: string | null;
         barcode: string | null;
+        price: string;
       };
     }>;
   };
+  images: {
+    edges: Array<{ node: { id: string } }>;
+  };
 }
 
-// Funzione per ottenere tutti i prodotti da Shopify
 async function getAllProducts(): Promise<ShopifyProduct[]> {
-  const url = `https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`;
+  const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN || 'autonord-service.myshopify.com';
+  const url = `https://${shopDomain}/admin/api/2024-01/graphql.json`;
   const products: ShopifyProduct[] = [];
   let cursor: string | null = null;
   let hasNextPage = true;
@@ -67,6 +72,14 @@ async function getAllProducts(): Promise<ShopifyProduct[]> {
                   node {
                     sku
                     barcode
+                    price
+                  }
+                }
+              }
+              images(first: 1) {
+                edges {
+                  node {
+                    id
                   }
                 }
               }
@@ -80,16 +93,13 @@ async function getAllProducts(): Promise<ShopifyProduct[]> {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+        'X-Shopify-Access-Token': env.SHOPIFY_ADMIN_ACCESS_TOKEN,
       },
-      body: JSON.stringify({
-        query,
-        variables: { cursor },
-      }),
+      body: JSON.stringify({ query, variables: { cursor } }),
     });
 
     const result = await response.json();
-    
+
     if (result.data?.products?.edges) {
       for (const edge of result.data.products.edges) {
         products.push(edge.node);
@@ -104,67 +114,30 @@ async function getAllProducts(): Promise<ShopifyProduct[]> {
   return products;
 }
 
-// Funzione per processare un singolo prodotto
-async function processProduct(product: ShopifyProduct, baseUrl: string): Promise<{ success: boolean; error?: string }> {
-  const payload = {
-    productId: product.id,
-    title: product.title,
-    vendor: product.vendor,
-    productType: product.productType,
-    sku: product.variants.edges[0]?.node.sku || null,
-    barcode: product.variants.edges[0]?.node.barcode || null,
-    tags: product.tags,
-  };
-
-  try {
-    const response = await fetch(`${baseUrl}/api/workers/regenerate-product`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${env.CRON_SECRET}`,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const result = await response.json();
-    return { success: result.success, error: result.error };
-  } catch (e: any) {
-    return { success: false, error: e?.message || 'Unknown error' };
-  }
-}
-
-// Funzione per attendere
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 export async function GET() {
   return NextResponse.json({
     message: 'Use POST to start batch processing',
     endpoint: '/api/cron/process-products-batch',
     params: {
       startIndex: 'Index to start from (default: 0)',
-      batchSize: 'Number of products to process (default: 10)',
+      batchSize: 'Number of products to queue (default: 10)',
     },
   });
 }
 
 export async function POST(request: NextRequest) {
   try {
-    // Verifica autorizzazione con CRON_SECRET da env
     const authHeader = request.headers.get('authorization');
     if (authHeader !== `Bearer ${env.CRON_SECRET}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Parametri
     const body = await request.json().catch(() => ({}));
-    const startIndex = body.startIndex || 0;
-    const batchSize = body.batchSize || 10; // Default 10 prodotti per batch
+    const startIndex: number = body.startIndex || 0;
+    const batchSize: number = body.batchSize || 10;
 
-    // Ottieni tutti i prodotti da Shopify
     const allProducts = await getAllProducts();
-    
+
     if (allProducts.length === 0) {
       return NextResponse.json({
         success: false,
@@ -172,40 +145,49 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Seleziona il batch da processare
     const endIndex = Math.min(startIndex + batchSize, allProducts.length);
     const productsToProcess = allProducts.slice(startIndex, endIndex);
 
-    const results: Array<{ title: string; success: boolean; error?: string }> = [];
+    const baseUrl = getBaseUrl(request);
+
+    // Queue each product to QStash with a globally-offset delay so batches don't collide.
+    // delay = (startIndex + localIndex) * 30s ensures 30s between every two consecutive workers,
+    // keeping Gemini usage well under 15 RPM regardless of batch boundaries.
+    const results: Array<{ title: string; success: boolean; error?: string; delaySeconds?: number }> = [];
     let processed = 0;
     let failed = 0;
 
-    // Derive base URL from request so it works in both local dev and production
-    const baseUrl = getBaseUrl(request);
-
-    // Processa ogni prodotto con un delay di 5 secondi tra uno e l'altro
     for (let i = 0; i < productsToProcess.length; i++) {
       const product = productsToProcess[i];
+      const globalIndex = startIndex + i;
+      const delaySeconds = globalIndex * 30;
 
-      console.log(`Processing [${startIndex + i + 1}/${allProducts.length}]: ${product.title}`);
+      const job: EnrichmentJob = {
+        productId: fromShopifyGid(product.id),
+        productGid: product.id,
+        title: product.title,
+        vendor: product.vendor || '',
+        sku: product.variants.edges[0]?.node.sku || '',
+        price: product.variants.edges[0]?.node.price || '0',
+        productType: product.productType || '',
+        tags: product.tags || [],
+        hasImages: product.images.edges.length > 0,
+        receivedAt: new Date().toISOString(),
+      };
 
-      const result = await processProduct(product, baseUrl);
-      
+      const result = await queueProductEnrichment(job, baseUrl, { delaySeconds });
+
       results.push({
         title: product.title,
-        success: result.success,
-        error: result.error,
+        success: result.queued,
+        error: result.queued ? undefined : result.error,
+        delaySeconds,
       });
 
-      if (result.success) {
+      if (result.queued) {
         processed++;
       } else {
         failed++;
-      }
-
-      // Attendi 5 secondi tra ogni prodotto (tranne l'ultimo)
-      if (i < productsToProcess.length - 1) {
-        await sleep(5000);
       }
     }
 
@@ -213,7 +195,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Batch processed: ${processed} success, ${failed} failed`,
+      message: `Batch queued: ${processed} scheduled, ${failed} failed`,
       summary: {
         totalProducts: allProducts.length,
         batchStart: startIndex,
@@ -227,7 +209,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error processing batch:', error);
+    console.error('[process-products-batch] Error:', error);
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

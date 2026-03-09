@@ -50,20 +50,24 @@ export interface BlogResearchJob {
 /**
  * Queue a product for enrichment processing
  * Returns immediately, processing happens asynchronously
+ *
+ * @param options.delaySeconds - Delay in seconds before QStash delivers the job to the worker.
+ *   Use `index * 30` for staggered bulk enrichment to avoid Gemini rate-limit storms
+ *   (each product needs ~5-7 Gemini calls; 30s gap keeps throughput under 15 RPM).
  */
 export async function queueProductEnrichment(
   job: EnrichmentJob,
-  baseUrl: string
+  baseUrl: string,
+  options?: { delaySeconds?: number }
 ): Promise<{ messageId: string; queued: true } | { error: string; queued: false }> {
   try {
     const client = getQStashClient();
-    
+
     const result = await client.publishJSON({
       url: `${baseUrl}/api/workers/regenerate-product`,
       body: job,
       retries: 3,
-      // Delay between retries (in seconds)
-      // QStash will retry with exponential backoff
+      ...(options?.delaySeconds ? { delay: options.delaySeconds } : {}),
     });
 
     log.info(`[Queue] Product ${job.productId} queued for enrichment. MessageId: ${result.messageId}`);

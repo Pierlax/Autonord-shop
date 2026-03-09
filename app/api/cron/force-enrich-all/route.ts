@@ -77,9 +77,12 @@ export async function GET(request: NextRequest) {
     // VERCEL_URL points to preview deployments which may not have latest code
     const baseUrl = 'https://autonord-shop.vercel.app';
 
-    // Queue each product for enrichment
+    // Queue each product for enrichment with staggered delivery.
+    // Each product uses ~5-7 Gemini calls; 30s gap keeps throughput under 15 RPM.
+    // QStash publishes are fast (~50ms each) so Promise.all is fine here —
+    // the `delay` field controls *when QStash delivers* to the worker, not when we publish.
     const results = await Promise.all(
-      products.map(async (product: any) => {
+      products.map(async (product: any, index: number) => {
         const job: EnrichmentJob = {
           productId: String(product.id),
           productGid: `gid://shopify/Product/${product.id}`,
@@ -94,13 +97,14 @@ export async function GET(request: NextRequest) {
         };
 
         try {
-          const result = await queueProductEnrichment(job, baseUrl);
+          const result = await queueProductEnrichment(job, baseUrl, { delaySeconds: index * 30 });
           return {
             productId: product.id,
             title: product.title,
             hasImages: job.hasImages,
             currentTags: product.tags,
             queued: result.queued,
+            delaySeconds: index * 30,
             messageId: result.queued ? result.messageId : undefined,
           };
         } catch (error) {
@@ -108,6 +112,7 @@ export async function GET(request: NextRequest) {
             productId: product.id,
             title: product.title,
             queued: false,
+            delaySeconds: index * 30,
             error: error instanceof Error ? error.message : 'Unknown error',
           };
         }
