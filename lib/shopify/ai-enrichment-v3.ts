@@ -842,12 +842,17 @@ async function generateWithLLMV3(
       throw new Error('Empty response from LLM');
     }
 
-    const cleanedContent = content
+    // Strip markdown code fences, then find the outermost JSON object
+    const stripped = content
       .replace(/```json\n?/g, '')
       .replace(/```\n?/g, '')
       .trim();
 
-    const parsed = JSON.parse(cleanedContent) as EnrichedProductData;
+    // Gemini sometimes wraps JSON in extra prose — extract the first {...} block
+    const jsonMatch = stripped.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : stripped;
+
+    const parsed = JSON.parse(jsonStr) as EnrichedProductData;
 
     // Validate structure
     if (!parsed.description || !Array.isArray(parsed.pros) || !Array.isArray(parsed.cons) || !Array.isArray(parsed.faqs)) {
