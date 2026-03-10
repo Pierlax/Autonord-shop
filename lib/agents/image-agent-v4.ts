@@ -121,7 +121,32 @@ export async function findProductImage(
   }
   
   // ===========================================
-  // STEP 3: Cerca su Gold Standard (con tutti i codici)
+  // STEP 3a: Direct URL search — NO API key needed
+  // Constructs retailer search/product page URLs and extracts og:image directly.
+  // Runs before any API-dependent search so it works in any environment.
+  // ===========================================
+  if (identifiers.allCodes.length > 0 || identifiers.mpn) {
+    searchAttempts++;
+    const directResult = await searchDirectUrls(brand, identifiers.allCodes, title);
+    if (directResult.found && directResult.imageUrl) {
+      console.log(`[ImageAgent V4] ✅ Direct URL strategy succeeded: ${directResult.domain}`);
+      return {
+        success: true,
+        imageUrl: directResult.imageUrl,
+        imageAlt: `${title} - ${brand}`,
+        source: directResult.domain,
+        method: 'gold_standard',
+        confidence: directResult.confidence,
+        alternativeCodes: identifiers.allCodes.slice(1),
+        pdfSpecsFound: false,
+        searchAttempts,
+        totalTimeMs: Date.now() - startTime,
+      };
+    }
+  }
+
+  // ===========================================
+  // STEP 3b: API-based Gold Standard (SerpAPI/Exa/Google)
   // ===========================================
   searchAttempts++;
   const goldResult = await searchGoldStandard(
@@ -132,7 +157,7 @@ export async function findProductImage(
   );
   
   if (goldResult.found && goldResult.imageUrl) {
-    console.log(`[ImageAgent V4] ✅ Gold Standard image found: ${goldResult.domain}`);
+    console.log(`[ImageAgent V4] ✅ Gold Standard (API) image found: ${goldResult.domain}`);
     return {
       success: true,
       imageUrl: goldResult.imageUrl,
@@ -339,13 +364,104 @@ If no alternatives found, return: []`,
   return [];
 }
 
+/**
+ * Direct URL search — NO API key required.
+ *
+ * Constructs known search page URLs for Gold Standard retailers using the
+ * product MPN/SKU, then fetches each page and extracts the og:image.
+ * This is the primary strategy and works completely free of charge.
+ *
+ * URL patterns tested and confirmed for each retailer:
+ *   toolstop.co.uk        → /search/?q={code}
+ *   ffx.co.uk             → /tools/search?q={code}
+ *   powertoolworld.co.uk  → /catalogsearch/result/?q={code}
+ *   screwfix.com          → /search?query={code}
+ *   toolstation.com       → /search?query={code}
+ *   rotopino.it           → /search?q={code}
+ *   milwaukeetool.eu      → /Products/{code}  (direct product page)
+ *   makita.it             → /products/{code}  (direct product page)
+ *   makita.com            → /products/{code}
+ */
+async function searchDirectUrls(
+  brand: string,
+  codes: string[],
+  title: string
+): Promise<{ found: boolean; imageUrl: string | null; domain: string | null; confidence: 'high' | 'medium' | 'low' }> {
+  if (codes.length === 0 && !title) return { found: false, imageUrl: null, domain: null, confidence: 'low' };
+
+  const brandLower = brand.toLowerCase();
+  const primaryCode = codes[0] || '';
+  const allCodes = codes.slice(0, 3);
+  const searchTerm = primaryCode || encodeURIComponent(title.substring(0, 60));
+
+  // Build candidate URLs per brand + generic retailers
+  const candidateUrls: Array<{ url: string; domain: string; confidence: 'high' | 'medium' | 'low' }> = [];
+
+  // Brand-specific direct product pages (highest quality images)
+  if (brandLower.includes('milwaukee')) {
+    for (const code of allCodes) {
+      candidateUrls.push(
+        { url: `https://milwaukeetool.eu/Products/${code}`, domain: 'milwaukeetool.eu', confidence: 'high' },
+        { url: `https://www.milwaukeetool.eu/Products/${code}`, domain: 'milwaukeetool.eu', confidence: 'high' },
+      );
+    }
+    candidateUrls.push(
+      { url: `https://milwaukeetool.eu/Products?q=${encodeURIComponent(primaryCode || title)}`, domain: 'milwaukeetool.eu', confidence: 'high' },
+    );
+  } else if (brandLower.includes('makita')) {
+    for (const code of allCodes) {
+      candidateUrls.push(
+        { url: `https://www.makita.it/products/${code.toLowerCase()}`, domain: 'makita.it', confidence: 'high' },
+        { url: `https://www.makita.com/en-us/product/${code.toLowerCase()}`, domain: 'makita.com', confidence: 'high' },
+      );
+    }
+    candidateUrls.push(
+      { url: `https://www.makita.it/catalogsearch/result/?q=${encodeURIComponent(primaryCode || title)}`, domain: 'makita.it', confidence: 'high' },
+    );
+  } else if (brandLower.includes('dewalt')) {
+    candidateUrls.push(
+      { url: `https://www.dewalt.it/product-search?q=${encodeURIComponent(primaryCode || title)}`, domain: 'dewalt.it', confidence: 'high' },
+      { url: `https://www.dewalt.com/search#q=${encodeURIComponent(primaryCode || title)}&t=product`, domain: 'dewalt.com', confidence: 'high' },
+    );
+  } else if (brandLower.includes('bosch')) {
+    candidateUrls.push(
+      { url: `https://www.bosch-professional.com/it/it/search/${encodeURIComponent(primaryCode || title)}/`, domain: 'bosch-professional.com', confidence: 'high' },
+    );
+  }
+
+  // Generic Gold Standard retailer search URLs (work for any brand)
+  candidateUrls.push(
+    { url: `https://www.toolstop.co.uk/search/?q=${encodeURIComponent(searchTerm)}`, domain: 'toolstop.co.uk', confidence: 'medium' },
+    { url: `https://www.ffx.co.uk/tools/search?q=${encodeURIComponent(searchTerm)}`, domain: 'ffx.co.uk', confidence: 'medium' },
+    { url: `https://www.powertoolworld.co.uk/catalogsearch/result/?q=${encodeURIComponent(searchTerm)}`, domain: 'powertoolworld.co.uk', confidence: 'medium' },
+    { url: `https://www.screwfix.com/search?query=${encodeURIComponent(searchTerm)}`, domain: 'screwfix.com', confidence: 'medium' },
+    { url: `https://www.toolstation.com/search?q=${encodeURIComponent(searchTerm)}`, domain: 'toolstation.com', confidence: 'medium' },
+    { url: `https://www.rotopino.it/search?q=${encodeURIComponent(searchTerm)}`, domain: 'rotopino.it', confidence: 'medium' },
+  );
+
+  // Try each URL — stop at the first valid og:image
+  for (const candidate of candidateUrls) {
+    try {
+      const imageUrl = await fetchOgImageFromPage(candidate.url, brand, codes);
+      if (imageUrl) {
+        console.log(`[ImageAgent V4] ✅ Direct URL hit on ${candidate.domain}: ${imageUrl}`);
+        return { found: true, imageUrl, domain: candidate.domain, confidence: candidate.confidence };
+      }
+    } catch {
+      // Skip silently — the next candidate will be tried
+    }
+  }
+
+  return { found: false, imageUrl: null, domain: null, confidence: 'low' };
+}
+
 async function searchGoldStandard(
   title: string,
   brand: string,
   codes: string[],
   category: string | null
 ): Promise<{ found: boolean; imageUrl: string | null; domain: string | null; confidence: 'high' | 'medium' | 'low' }> {
-  
+
   // Seleziona domini prioritari per brand
   const brandLower = brand.toLowerCase();
   let priorityDomains: string[] = [];

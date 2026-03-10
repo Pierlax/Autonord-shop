@@ -108,7 +108,14 @@ function transformProduct(adminProduct: any): Product {
     variants: {
       edges: variants.map((v: any) => ({ node: v })),
     },
-    featuredImage: images[0] || null,
+    featuredImage: adminProduct.featuredImage
+      ? {
+          url: adminProduct.featuredImage.url,
+          altText: adminProduct.featuredImage.altText || adminProduct.title,
+          width: 800,
+          height: 800,
+        }
+      : (images[0] || null),
     images: {
       edges: images.map((img: any) => ({ node: img })),
     },
