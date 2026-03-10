@@ -123,26 +123,24 @@ export async function findProductImage(
   // ===========================================
   // STEP 3a: Direct URL search — NO API key needed
   // Constructs retailer search/product page URLs and extracts og:image directly.
-  // Runs before any API-dependent search so it works in any environment.
+  // Always runs — falls back to title when no MPN/codes are available.
   // ===========================================
-  if (identifiers.allCodes.length > 0 || identifiers.mpn) {
-    searchAttempts++;
-    const directResult = await searchDirectUrls(brand, identifiers.allCodes, title);
-    if (directResult.found && directResult.imageUrl) {
-      console.log(`[ImageAgent V4] ✅ Direct URL strategy succeeded: ${directResult.domain}`);
-      return {
-        success: true,
-        imageUrl: directResult.imageUrl,
-        imageAlt: `${title} - ${brand}`,
-        source: directResult.domain,
-        method: 'gold_standard',
-        confidence: directResult.confidence,
-        alternativeCodes: identifiers.allCodes.slice(1),
-        pdfSpecsFound: false,
-        searchAttempts,
-        totalTimeMs: Date.now() - startTime,
-      };
-    }
+  searchAttempts++;
+  const directResult = await searchDirectUrls(brand, identifiers.allCodes, title);
+  if (directResult.found && directResult.imageUrl) {
+    console.log(`[ImageAgent V4] ✅ Direct URL strategy succeeded: ${directResult.domain}`);
+    return {
+      success: true,
+      imageUrl: directResult.imageUrl,
+      imageAlt: `${title} - ${brand}`,
+      source: directResult.domain,
+      method: 'gold_standard',
+      confidence: directResult.confidence,
+      alternativeCodes: identifiers.allCodes.slice(1),
+      pdfSpecsFound: false,
+      searchAttempts,
+      totalTimeMs: Date.now() - startTime,
+    };
   }
 
   // ===========================================
@@ -260,16 +258,18 @@ function extractIdentifiers(
   
   // Estrai MPN da titolo o SKU
   const mpnPatterns = [
-    /\b(493\d{7})\b/,           // Milwaukee EU: 4932xxxxxxx
-    /\b(48-\d{2}-\d{4})\b/,     // Milwaukee US: 48-xx-xxxx
-    /\b(49-\d{2}-\d{4})\b/,     // Milwaukee US: 49-xx-xxxx
-    /\b([A-Z]{1,3}\d{4,6}[A-Z]?)\b/i,  // Makita: DHP486Z, etc
+    /\b(493\d{7})\b/,                            // Milwaukee EU numeric: 4932471068
+    /\b(48-\d{2}-\d{4})\b/,                      // Milwaukee US: 48-32-4006
+    /\b(49-\d{2}-\d{4})\b/,                      // Milwaukee US: 49-32-4006
+    /\b((?:M12|M18|M28)\s*[A-Z]{2,}[A-Z0-9\-]*)/i,  // Milwaukee model: M12 FCIWF12G3-0, M18 FPD2
+    /\b([A-Z]{2,4}\d{3,6}[A-Z]{0,2})\b/i,       // Makita/DeWalt: DHP486Z, DCD796, GBH2-28
+    /\b([A-Z]{1,3}\d{4,6}[A-Z]?)\b/i,           // Generic: legacy fallback
   ];
-  
+
   for (const pattern of mpnPatterns) {
     const match = title.match(pattern) || sku?.match(pattern);
     if (match) {
-      mpn = match[1];
+      mpn = match[1].trim();
       break;
     }
   }
