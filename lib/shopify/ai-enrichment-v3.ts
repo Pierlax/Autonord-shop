@@ -575,12 +575,19 @@ function extractRAGEvidence(ragResult: UniversalRAGResult): RAGEvidence {
 
   const data = ragResult.data;
 
+  // Markers that identify mock/fake search results — skip these entirely
+  const MOCK_MARKERS = ['[MOCK DATA]', 'simulated search result', 'Configure a search API key', 'mock-result-'];
+
+  function isMockSnippet(text: string): boolean {
+    return MOCK_MARKERS.some(m => text.includes(m));
+  }
+
   // Extract evidence snippets
   if (data.evidence && Array.isArray(data.evidence)) {
     for (const item of data.evidence) {
       const text = item.content || item.text || item.snippet || '';
       const source = item.source || item.sourceType || 'unknown';
-      if (text && typeof text === 'string' && text.length > 5) {
+      if (text && typeof text === 'string' && text.length > 5 && !isMockSnippet(text)) {
         evidence.snippets.push({
           text,
           source,
@@ -599,11 +606,11 @@ function extractRAGEvidence(ragResult: UniversalRAGResult): RAGEvidence {
       if (Array.isArray(value)) {
         for (const item of value) {
           const text = typeof item === 'string' ? item : (item?.content || item?.text || item?.snippet || '');
-          if (text && typeof text === 'string' && text.length > 5) {
+          if (text && typeof text === 'string' && text.length > 5 && !isMockSnippet(text)) {
             evidence.snippets.push({ text, source: key });
           }
         }
-      } else if (typeof value === 'string' && value.length > 20) {
+      } else if (typeof value === 'string' && value.length > 20 && !isMockSnippet(value)) {
         evidence.snippets.push({ text: value, source: key });
       }
     }
@@ -628,11 +635,11 @@ function extractRAGEvidence(ragResult: UniversalRAGResult): RAGEvidence {
     );
   }
 
-  // Conflicts
+  // Conflicts (also filter mock data)
   if (data.conflicts && Array.isArray(data.conflicts)) {
-    evidence.conflicts = data.conflicts.map((c: any) =>
-      typeof c === 'string' ? c : (c.description || c.field || JSON.stringify(c))
-    );
+    evidence.conflicts = data.conflicts
+      .map((c: any) => typeof c === 'string' ? c : (c.description || c.field || JSON.stringify(c)))
+      .filter((c: string) => !isMockSnippet(c));
   }
 
   return evidence;
@@ -664,6 +671,17 @@ function extractQAFacts(qaResult: TwoPhaseQAResult): QAFacts {
     }
   }
 
+  // Sanitize QA verdict: if TwoPhaseQA couldn't form a verdict (no real data),
+  // replace with empty string so V3 doesn't copy the negative phrase into the description.
+  const rawVerdict = qaResult.complexQA.recommendation.verdict || '';
+  const NEGATIVE_VERDICT_MARKERS = [
+    'Non è possibile', 'Impossibile formulare', 'Dati insufficienti',
+    'non ho dati', 'senza dati', 'non disponibile', 'Valutazione in corso',
+  ];
+  const verdict = NEGATIVE_VERDICT_MARKERS.some(m => rawVerdict.toLowerCase().includes(m.toLowerCase()))
+    ? ''
+    : rawVerdict;
+
   return {
     verifiedSpecs,
     unverifiedSpecs,
@@ -671,7 +689,7 @@ function extractQAFacts(qaResult: TwoPhaseQAResult): QAFacts {
     weaknesses: qaResult.complexQA.comparison.weaknesses,
     idealFor: qaResult.complexQA.suitability.idealFor,
     notIdealFor: qaResult.complexQA.suitability.notIdealFor,
-    verdict: qaResult.complexQA.recommendation.verdict,
+    verdict,
     verdictConfidence: qaResult.complexQA.recommendation.confidence,
     caveats: qaResult.complexQA.recommendation.caveats,
   };
@@ -690,11 +708,15 @@ function buildEnhancedPromptV3(
 ): string {
   const sku = product.variants[0]?.sku || 'N/A';
   
+  // Helper: replace ASCII double-quote with double-prime to prevent JSON injection
+  // when Gemini copies spec values (e.g. 1/2") verbatim into the JSON output.
+  const sanitizeForPrompt = (str: string) => str.replace(/"/g, '″');
+
   // === SECTION 1: Verified specs from TwoPhaseQA ===
   let specsSection: string;
   if (qaFacts && qaFacts.verifiedSpecs.length > 0) {
     specsSection = `## SPECIFICHE TECNICHE VERIFICATE (da TwoPhaseQA - fatti atomici verificati)
-${qaFacts.verifiedSpecs.map(s => `- ${s.question}: **${s.answer}** (fonte: ${s.source})`).join('\n')}`;
+${qaFacts.verifiedSpecs.map(s => `- ${s.question}: **${sanitizeForPrompt(s.answer)}** (fonte: ${s.source})`).join('\n')}`;
   } else {
     specsSection = '## SPECIFICHE TECNICHE\nNessuna specifica verificata disponibile da TwoPhaseQA.';
   }
@@ -702,10 +724,10 @@ ${qaFacts.verifiedSpecs.map(s => `- ${s.question}: **${s.answer}** (fonte: ${s.s
   // === SECTION 2: Unverified specs (use with caution) ===
   let unverifiedSection = '';
   if (qaFacts && qaFacts.unverifiedSpecs.length > 0) {
-    unverifiedSection = `\n## ⚠️ DATI NON COMPLETAMENTE VERIFICATI (usa con cautela)
-${qaFacts.unverifiedSpecs.map(s => `- ${s.question}: ${s.answer} (confidence: ${s.confidence}, fonte: ${s.source})`).join('\n')}
+    unverifiedSection = `\n## ⚠️ DATI PARZIALMENTE VERIFICATI (usa, ma con qualifica)
+${qaFacts.unverifiedSpecs.map(s => `- ${s.question}: ${sanitizeForPrompt(s.answer)} (confidence: ${s.confidence}, fonte: ${s.source})`).join('\n')}
 
-IMPORTANTE: Per questi dati, scrivi "contattaci per conferma" invece di presentarli come certi.`;
+NOTA: Puoi usare questi dati nella descrizione, ma qualificali con "circa" o "tipicamente" invece di presentarli come valori esatti.`;
   }
 
   // === SECTION 3: RAG evidence (real web search snippets) ===
@@ -723,23 +745,23 @@ ${s.text.substring(0, 500)}`).join('\n\n')}`;
     qaReasoningSection = `\n## ANALISI RAGIONATA (da TwoPhaseQA)
 
 ### Punti di forza (basati su fatti verificati):
-${qaFacts.strengths.length > 0 
-  ? qaFacts.strengths.map(s => `- ${s}`).join('\n')
+${qaFacts.strengths.length > 0
+  ? qaFacts.strengths.map(s => `- ${sanitizeForPrompt(s)}`).join('\n')
   : '- Nessun punto di forza specifico identificato'}
 
 ### Punti deboli (basati su fatti verificati):
 ${qaFacts.weaknesses.length > 0
-  ? qaFacts.weaknesses.map(w => `- ${w}`).join('\n')
+  ? qaFacts.weaknesses.map(w => `- ${sanitizeForPrompt(w)}`).join('\n')
   : '- Nessun punto debole specifico identificato'}
 
 ### Ideale per:
-${qaFacts.idealFor.length > 0 ? qaFacts.idealFor.map(i => `- ${i}`).join('\n') : '- Non specificato'}
+${qaFacts.idealFor.length > 0 ? qaFacts.idealFor.map(i => `- ${sanitizeForPrompt(i)}`).join('\n') : '- Non specificato'}
 
 ### NON ideale per:
-${qaFacts.notIdealFor.length > 0 ? qaFacts.notIdealFor.map(n => `- ${n}`).join('\n') : '- Non specificato'}
+${qaFacts.notIdealFor.length > 0 ? qaFacts.notIdealFor.map(n => `- ${sanitizeForPrompt(n)}`).join('\n') : '- Non specificato'}
 
-### Verdetto esperto: ${qaFacts.verdict} (confidence: ${qaFacts.verdictConfidence})
-${qaFacts.caveats.length > 0 ? `Avvertenze: ${qaFacts.caveats.join('; ')}` : ''}`;
+### Verdetto esperto: ${sanitizeForPrompt(qaFacts.verdict)} (confidence: ${qaFacts.verdictConfidence})
+${qaFacts.caveats.length > 0 ? `Avvertenze: ${qaFacts.caveats.map(c => sanitizeForPrompt(c)).join('; ')}` : ''}`;
   }
 
   // === SECTION 5: Benchmark context ===
@@ -777,14 +799,18 @@ ${kgContext.relatedUseCases.length > 0
     conflictsWarning = `\n## ⚠️ CONFLITTI NEI DATI - ATTENZIONE
 ${ragEvidence.conflicts.map(c => `- ${c}`).join('\n')}
 
-IMPORTANTE: Per questi dati in conflitto, scrivi "contattaci per conferma" invece di inventare.`;
+IMPORTANTE: Per questi dati in conflitto, usa la qualifica "circa" o "tipicamente" invece di presentarli come valori esatti.`;
   }
+
+  // Sanitize title: replace bare double-quotes (e.g. 1/2") with double-prime (″)
+  // to prevent Gemini from embedding unescaped quotes inside JSON string values
+  const safeTitle = product.title.replace(/"/g, '″');
 
   return `Genera contenuti per questo prodotto usando SOLO i dati verificati che ti fornisco.
 Questi dati provengono da ricerca web REALE (UniversalRAG) e verifica fatti (TwoPhaseQA).
 NON inventare dati. Se un'informazione non è presente, non includerla.
 
-**Titolo:** ${product.title}
+**Titolo:** ${safeTitle}
 **Brand:** ${brand}
 **SKU:** ${sku}
 **Tipo prodotto:** ${product.product_type || 'Elettroutensile'}
@@ -802,9 +828,11 @@ ${conflictsWarning}
 1. Usa le specifiche tecniche SOLO se verificate da TwoPhaseQA
 2. Integra i punti di forza/debolezza del QA nei pro/contro
 3. Usa i dati RAG reali per arricchire la descrizione con dettagli concreti
-4. Per dati incerti o non verificati, suggerisci di contattare Autonord
+4. Se i dati tecnici specifici non sono disponibili, descrivi i benefici TIPICI della categoria (Knowledge Graph) — NON commentare mai la mancanza di dati
 5. Usa il contesto del Knowledge Graph per i mestieri e casi d'uso
 6. Collega ogni specifica a un beneficio lavorativo concreto (JTBD)
+7. MAI usare "questo prodotto", "questo articolo", "questo utensile" — usa sempre il nome del prodotto o una perifrasi (es. "la chiodatrice", "l'avvitatore", "il trapano")
+8. CRITICO: Non usare MAI il carattere " (virgolette doppie) all'interno dei valori stringa del JSON — non come segno pollici (scrivi ″ o "pollici"), non come virgolette citazione (scrivi « »). Il carattere " è riservato SOLO per la struttura JSON.
 
 Rispondi SOLO con JSON valido:
 {
@@ -848,11 +876,78 @@ async function generateWithLLMV3(
       .replace(/```\n?/g, '')
       .trim();
 
-    // Gemini sometimes wraps JSON in extra prose — extract the first {...} block
-    const jsonMatch = stripped.match(/\{[\s\S]*\}/);
-    const jsonStr = jsonMatch ? jsonMatch[0] : stripped;
+    // Gemini sometimes wraps JSON in extra prose — extract the first complete {...} block.
+    // Use a greedy match to get the LAST closing brace (handles nested objects).
+    const jsonStart = stripped.indexOf('{');
+    const jsonEnd = stripped.lastIndexOf('}');
+    const jsonStr = jsonStart !== -1 && jsonEnd > jsonStart
+      ? stripped.slice(jsonStart, jsonEnd + 1)
+      : stripped;
 
-    const parsed = JSON.parse(jsonStr) as EnrichedProductData;
+    let parsed: EnrichedProductData;
+    try {
+      parsed = JSON.parse(jsonStr) as EnrichedProductData;
+    } catch (parseError) {
+      // Attempt to repair unescaped double-quotes inside JSON string values.
+      // Gemini sometimes writes Italian quotation marks or inch specs as bare " characters.
+      // Strategy: scan character by character. Inside a string value, any " that is NOT
+      // followed by a JSON structural token (:, ,, ], }, whitespace+structural) is treated
+      // as an inline quote and replaced with the Unicode double-prime ″ (U+2033).
+      log.error('[AI-V3] JSON parse failed. LLM output preview:', content.substring(0, 300));
+      log.info('[AI-V3] Attempting smart JSON repair...');
+
+      function repairUnescapedQuotes(s: string): string {
+        let result = '';
+        let inString = false;
+        let escape = false;
+        for (let i = 0; i < s.length; i++) {
+          const c = s[i];
+          if (escape) {
+            result += c;
+            escape = false;
+            continue;
+          }
+          if (c === '\\' && inString) {
+            result += c;
+            escape = true;
+            continue;
+          }
+          if (c === '"') {
+            if (!inString) {
+              inString = true;
+              result += c;
+            } else {
+              // We're inside a string. Is this " the closing quote or an inline quote?
+              // Look ahead: skip whitespace (spaces, tabs, newlines), then check next char.
+              let j = i + 1;
+              while (j < s.length && /\s/.test(s[j])) j++;
+              const nextCh = j < s.length ? s[j] : '';
+              if (nextCh === ':' || nextCh === ',' || nextCh === ']' || nextCh === '}' || nextCh === '"' || nextCh === '') {
+                // Structural token follows — this is the closing quote
+                inString = false;
+                result += c;
+              } else {
+                // Non-structural character follows — this is an inline quote, replace with ″
+                result += '″';
+              }
+            }
+          } else {
+            result += c;
+          }
+        }
+        return result;
+      }
+
+      const repaired = repairUnescapedQuotes(jsonStr);
+      try {
+        parsed = JSON.parse(repaired) as EnrichedProductData;
+        log.info('[AI-V3] JSON repair succeeded');
+      } catch (repairError) {
+        const repairErrMsg = repairError instanceof Error ? repairError.message : String(repairError);
+        log.error(`[AI-V3] JSON repair also failed: ${repairErrMsg}`);
+        throw parseError;
+      }
+    }
 
     // Validate structure
     if (!parsed.description || !Array.isArray(parsed.pros) || !Array.isArray(parsed.cons) || !Array.isArray(parsed.faqs)) {
@@ -875,6 +970,7 @@ async function generateWithLLMV3(
   } catch (error) {
     const errMsg = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     log.error('[AI-V3] Generation Error:', errMsg);
+    log.error('[AI-V3] Failure type:', error instanceof SyntaxError ? 'JSON_PARSE' : error instanceof Error && error.message.includes('Invalid response') ? 'VALIDATION' : 'LLM_CALL');
 
     // Record error
     getMetricsStore().recordError({

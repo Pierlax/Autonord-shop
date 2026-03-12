@@ -35,15 +35,14 @@ const log = loggers.shopify;
 /**
  * Primary model — override via GOOGLE_AI_MODEL env var.
  * Check available models: https://aistudio.google.com/models
- * Common options: gemini-2.5-flash-preview-05-20, gemini-2.5-pro-preview-05-06
  */
-const PRIMARY_MODEL = process.env.GOOGLE_AI_MODEL || 'gemini-2.5-flash-preview-05-20';
+const PRIMARY_MODEL = process.env.GOOGLE_AI_MODEL || 'gemini-2.5-flash';
 
 /**
  * Lite model — override via GOOGLE_AI_LITE_MODEL env var.
  * Used for lightweight tasks (classification, fact extraction).
  */
-const LITE_MODEL = process.env.GOOGLE_AI_LITE_MODEL || 'gemini-2.5-flash-preview-05-20';
+const LITE_MODEL = process.env.GOOGLE_AI_LITE_MODEL || 'gemini-2.5-flash';
 
 /** Rate limit: max requests per minute (Gemini free tier = 15 RPM) */
 const MAX_REQUESTS_PER_MINUTE = 15;

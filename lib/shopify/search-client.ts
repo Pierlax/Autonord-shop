@@ -497,8 +497,94 @@ export async function searchProductImages(
     }
   }
 
+  // Free fallback: Bing image search HTML scraping (no API key required)
+  try {
+    const results = await searchImagesWithBing(query, domainFilter, maxResults);
+    if (results.length > 0) {
+      log.info(`[SearchClient] Image search: ${results.length} results via bing-scrape`);
+      return results;
+    }
+  } catch (e) {
+    log.error('[SearchClient] Bing image scraping failed:', e);
+  }
+
   log.info('[SearchClient] No image search provider available — set SERPAPI_API_KEY or GOOGLE_SEARCH_API_KEY for direct image search');
   return [];
+}
+
+/**
+ * Free Bing image search fallback — no API key required.
+ *
+ * Fetches Bing Images HTML and extracts full image URLs from the embedded JSON
+ * blobs in `<a class="iusc">` anchor `m` attributes.
+ * Format: m={"murl":"https://...","turl":"...","t":"..."}
+ *
+ * Domain filtering is achieved via site: operators in the query, just like
+ * the SerpAPI / Google providers.
+ */
+async function searchImagesWithBing(
+  query: string,
+  domainFilter: string[] | undefined,
+  maxResults: number
+): Promise<ImageSearchResult[]> {
+  const searchQuery = domainFilter && domainFilter.length > 0
+    ? `${query} (${domainFilter.map(d => `site:${d}`).join(' OR ')})`
+    : query;
+
+  const params = new URLSearchParams({
+    q: searchQuery,
+    form: 'HDRSC2',
+    first: '1',
+    count: String(Math.min(maxResults * 3, 30)), // fetch extra to account for filtering
+  });
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  const response = await fetch(`https://www.bing.com/images/search?${params.toString()}`, {
+    signal: controller.signal,
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8',
+      'Accept': 'text/html,application/xhtml+xml',
+    },
+  });
+  clearTimeout(timeoutId);
+
+  if (!response.ok) {
+    throw new Error(`Bing image search HTTP ${response.status}`);
+  }
+
+  const rawHtml = await response.text();
+
+  // Bing encodes JSON data with HTML entities (&quot; → "). Decode first.
+  const html = rawHtml
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&#39;/g, "'");
+
+  const results: ImageSearchResult[] = [];
+
+  // Extract full image URLs from Bing's embedded JSON blobs
+  // Each <a class="iusc"> has m={"murl":"https://...","turl":"...","purl":"page_url",...}
+  const murlRegex = /"murl":"(https?:[^"]+)"/g;
+  const linkRegex = /"purl":"(https?:[^"]+)"/g;
+  const murlMatches = [...html.matchAll(murlRegex)];
+  const purlMatches = [...html.matchAll(linkRegex)];
+
+  for (let i = 0; i < murlMatches.length && results.length < maxResults; i++) {
+    const imageUrl = murlMatches[i][1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+    const pageUrl = purlMatches[i] ? purlMatches[i][1].replace(/\\u0026/g, '&').replace(/\\\//g, '/') : '';
+    if (!imageUrl.startsWith('http')) continue;
+    results.push({
+      imageUrl,
+      sourcePageUrl: pageUrl,
+      domain: extractDomain(pageUrl || imageUrl),
+      provider: 'serpapi', // reuse type for compatibility
+    });
+  }
+
+  return results;
 }
 
 async function searchImagesWithSerpApi(
