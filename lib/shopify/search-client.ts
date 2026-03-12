@@ -569,8 +569,11 @@ async function searchImagesWithBing(
   // Each <a class="iusc"> has m={"murl":"https://...","turl":"...","purl":"page_url",...}
   const murlRegex = /"murl":"(https?:[^"]+)"/g;
   const linkRegex = /"purl":"(https?:[^"]+)"/g;
-  const murlMatches = [...html.matchAll(murlRegex)];
-  const purlMatches = [...html.matchAll(linkRegex)];
+  const murlMatches: RegExpExecArray[] = [];
+  const purlMatches: RegExpExecArray[] = [];
+  let _m: RegExpExecArray | null;
+  while ((_m = murlRegex.exec(html)) !== null) murlMatches.push(_m);
+  while ((_m = linkRegex.exec(html)) !== null) purlMatches.push(_m);
 
   for (let i = 0; i < murlMatches.length && results.length < maxResults; i++) {
     const imageUrl = murlMatches[i][1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
