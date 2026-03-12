@@ -40,6 +40,8 @@ export interface EnrichmentJob {
   tags: string[];
   hasImages: boolean;
   receivedAt: string;
+  /** EAN/barcode — passed to ImageAgent for precise image lookup */
+  barcode?: string | null;
 }
 
 export interface BlogResearchJob {

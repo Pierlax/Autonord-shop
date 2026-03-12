@@ -429,15 +429,9 @@ async function searchDirectUrls(
     );
   }
 
-  // Generic Gold Standard retailer search URLs (work for any brand)
-  candidateUrls.push(
-    { url: `https://www.toolstop.co.uk/search/?q=${encodeURIComponent(searchTerm)}`, domain: 'toolstop.co.uk', confidence: 'medium' },
-    { url: `https://www.ffx.co.uk/tools/search?q=${encodeURIComponent(searchTerm)}`, domain: 'ffx.co.uk', confidence: 'medium' },
-    { url: `https://www.powertoolworld.co.uk/catalogsearch/result/?q=${encodeURIComponent(searchTerm)}`, domain: 'powertoolworld.co.uk', confidence: 'medium' },
-    { url: `https://www.screwfix.com/search?query=${encodeURIComponent(searchTerm)}`, domain: 'screwfix.com', confidence: 'medium' },
-    { url: `https://www.toolstation.com/search?q=${encodeURIComponent(searchTerm)}`, domain: 'toolstation.com', confidence: 'medium' },
-    { url: `https://www.rotopino.it/search?q=${encodeURIComponent(searchTerm)}`, domain: 'rotopino.it', confidence: 'medium' },
-  );
+  // NOTE: Generic retailer SEARCH pages are intentionally excluded here.
+  // Search result pages return the site logo as og:image, not a product photo.
+  // Product images from generic retailers are found via API search in Step 3b (searchGoldStandard).
 
   // Try each URL — stop at the first valid og:image
   for (const candidate of candidateUrls) {
@@ -599,7 +593,7 @@ async function fetchOgImageFromPage(
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     const response = await fetch(pageUrl, {
       signal: controller.signal,
@@ -707,13 +701,21 @@ function isValidImageUrl(url: string): boolean {
   if (!url || !url.startsWith('http')) return false;
   if (isBlockedDomain(url)) return false;
   const lower = url.toLowerCase();
+  // Reject SVG — almost always logos or icons, never product photos
+  if (lower.endsWith('.svg') || lower.includes('.svg?')) return false;
   if (
     lower.includes('placeholder') ||
     lower.includes('no-image') ||
     lower.includes('noimage') ||
     lower.includes('default') ||
     lower.includes('/logo') ||
+    lower.includes('-logo') ||
+    lower.includes('_logo') ||
+    lower.includes('/icon') ||
+    lower.includes('-icon') ||
+    lower.includes('halo') ||
     lower.includes('banner') ||
+    lower.includes('sprite') ||
     // Reject social media tiles hosted on brand CDNs (e.g. /MediaLibrary/Facebook/tile.jpg)
     lower.includes('/facebook/') ||
     lower.includes('/twitter/') ||
@@ -725,6 +727,8 @@ function isValidImageUrl(url: string): boolean {
     lower.includes('-tile.png') ||
     lower.includes('-tile.webp')
   ) return false;
+  // Must have a recognizable image extension
+  if (!/\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(lower)) return false;
   return true;
 }
 

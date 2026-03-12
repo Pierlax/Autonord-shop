@@ -103,7 +103,9 @@ async function triggerAIEnrichment(
   productTitle: string,
   vendor: string,
   productType: string,
-  baseUrl: string
+  baseUrl: string,
+  supplierCode?: string | null,
+  barcode?: string | null
 ): Promise<void> {
   try {
     const job: EnrichmentJob = {
@@ -111,12 +113,14 @@ async function triggerAIEnrichment(
       productGid: `gid://shopify/Product/${shopifyId}`,
       title: productTitle || `Prodotto ${daneaCode}`,
       vendor: vendor || 'Sconosciuto',
-      sku: daneaCode,
+      // Use supplierCode (catalog code) as SKU when available
+      sku: supplierCode || daneaCode,
       price: '0',
       productType: productType || 'Elettroutensile',
       tags: ['danea-sync', 'auto-enrich'],
       hasImages: false,
       receivedAt: new Date().toISOString(),
+      barcode: barcode ?? null,
     };
 
     const result = await queueProductEnrichment(job, baseUrl);
@@ -206,6 +210,8 @@ export async function POST(request: NextRequest) {
     const syncedProducts: Array<{
       shopifyId: string;
       daneaCode: string;
+      supplierCode: string | null;
+      barcode: string | null;
       title: string;
       vendor: string;
       productType: string;
@@ -227,6 +233,8 @@ export async function POST(request: NextRequest) {
             syncedProducts.push({
               shopifyId: result.shopifyId,
               daneaCode: result.daneaCode,
+              supplierCode: product?.supplierCode ?? null,
+              barcode: product?.barcode ?? null,
               title: product?.title || result.daneaCode,
               vendor: product?.manufacturer || 'Sconosciuto',
               productType: product?.category || 'Elettroutensile',
@@ -252,6 +260,8 @@ export async function POST(request: NextRequest) {
             syncedProducts.push({
               shopifyId: result.shopifyId,
               daneaCode: product.daneaCode,
+              supplierCode: product.supplierCode ?? null,
+              barcode: product.barcode ?? null,
               title: product.title || product.daneaCode,
               vendor: product.manufacturer || 'Sconosciuto',
               productType: product.category || 'Elettroutensile',
@@ -306,7 +316,9 @@ export async function POST(request: NextRequest) {
           product.title,
           product.vendor,
           product.productType,
-          baseUrl
+          baseUrl,
+          product.supplierCode,
+          product.barcode
         )
       );
       

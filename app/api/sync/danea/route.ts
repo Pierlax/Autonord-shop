@@ -35,7 +35,7 @@ function getBaseUrl(request: NextRequest): string {
  * @param delaySeconds - Staggered delay to avoid Gemini rate-limit storms
  */
 async function triggerAIEnrichment(
-  product: { shopifyId: string; daneaCode: string; supplierCode: string | null; title: string; vendor: string; productType: string },
+  product: { shopifyId: string; daneaCode: string; supplierCode: string | null; barcode: string | null; title: string; vendor: string; productType: string },
   baseUrl: string,
   delaySeconds: number
 ): Promise<void> {
@@ -52,6 +52,7 @@ async function triggerAIEnrichment(
       tags: ['danea-sync', 'auto-enrich'],
       hasImages: false,
       receivedAt: new Date().toISOString(),
+      barcode: product.barcode,
     };
 
     const result = await queueProductEnrichment(job, baseUrl, { delaySeconds });
@@ -226,6 +227,7 @@ export async function POST(request: NextRequest) {
           shopifyId: r.shopifyId!,
           daneaCode: r.daneaCode,
           supplierCode: parsed?.supplierCode ?? null,
+          barcode: parsed?.barcode ?? null,
           title: parsed?.title ?? r.daneaCode,
           vendor: parsed?.manufacturer ?? 'Sconosciuto',
           productType: parsed?.category ?? 'Elettroutensile',
