@@ -13,9 +13,58 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseDaneaCSV, syncProductsToShopify } from '@/lib/danea';
 import { parseDaneaXLSX, isXLSXBuffer } from '@/lib/danea/xlsx-parser';
+import { queueProductEnrichment, EnrichmentJob } from '@/lib/queue';
+import { ParsedProduct } from '@/lib/danea/types';
 import { loggers } from '@/lib/logger';
 
 const log = loggers.sync;
+
+/**
+ * Determine the base URL for QStash callbacks.
+ */
+function getBaseUrl(request: NextRequest): string {
+  if (process.env.NEXT_PUBLIC_BASE_URL) {
+    return process.env.NEXT_PUBLIC_BASE_URL;
+  }
+  return 'https://autonord-shop.vercel.app';
+}
+
+/**
+ * Queue AI enrichment for a single synced product.
+ * Non-blocking: if QStash fails, the sync is still considered successful.
+ * @param delaySeconds - Staggered delay to avoid Gemini rate-limit storms
+ */
+async function triggerAIEnrichment(
+  product: { shopifyId: string; daneaCode: string; supplierCode: string | null; title: string; vendor: string; productType: string },
+  baseUrl: string,
+  delaySeconds: number
+): Promise<void> {
+  try {
+    const job: EnrichmentJob = {
+      productId: product.shopifyId,
+      productGid: `gid://shopify/Product/${product.shopifyId}`,
+      title: product.title || `Prodotto ${product.daneaCode}`,
+      vendor: product.vendor || 'Sconosciuto',
+      // Use supplierCode (catalog code) as SKU; fall back to daneaCode if missing
+      sku: product.supplierCode || product.daneaCode,
+      price: '0',
+      productType: product.productType || 'Elettroutensile',
+      tags: ['danea-sync', 'auto-enrich'],
+      hasImages: false,
+      receivedAt: new Date().toISOString(),
+    };
+
+    const result = await queueProductEnrichment(job, baseUrl, { delaySeconds });
+
+    if (result.queued) {
+      log.info(`[Danea→AI] ${product.daneaCode} (Shopify: ${product.shopifyId}) queued. MsgId: ${result.messageId}, delay: ${delaySeconds}s`);
+    } else {
+      log.warn(`[Danea→AI] Failed to queue ${product.daneaCode}: ${result.error}`);
+    }
+  } catch (error) {
+    log.error(`[Danea→AI] Error queuing enrichment for ${product.daneaCode}:`, error);
+  }
+}
 
 // Verify sync secret for security
 // Accepts SYNC_SECRET (dedicated) or CRON_SECRET (shared admin secret)
@@ -163,6 +212,36 @@ export async function POST(request: NextRequest) {
     const result = await syncProductsToShopify(products, { onlyEcommerce, offset, limit });
 
     log.info(`Batch done: ${result.created} created, ${result.updated} updated, ${result.failed} failed, hasMore=${result.hasMore}`);
+
+    // =========================================================================
+    // Auto-Enrichment: queue AI pipeline for every successfully synced product
+    // Mirrors the XML path behaviour — no waiting for the nightly cron.
+    // Staggered delay (index × 30 s) prevents Gemini rate-limit storms.
+    // =========================================================================
+    const syncedProducts = result.results
+      .filter(r => r.success && r.shopifyId)
+      .map(r => {
+        const parsed: ParsedProduct | undefined = products.find(p => p.daneaCode === r.daneaCode);
+        return {
+          shopifyId: r.shopifyId!,
+          daneaCode: r.daneaCode,
+          supplierCode: parsed?.supplierCode ?? null,
+          title: parsed?.title ?? r.daneaCode,
+          vendor: parsed?.manufacturer ?? 'Sconosciuto',
+          productType: parsed?.category ?? 'Elettroutensile',
+        };
+      });
+
+    if (syncedProducts.length > 0) {
+      const baseUrl = getBaseUrl(request);
+      log.info(`[Danea→AI] Queueing enrichment for ${syncedProducts.length} products (staggered 30 s each)...`);
+      const enrichPromises = syncedProducts.map((p, index) =>
+        triggerAIEnrichment(p, baseUrl, index * 30)
+      );
+      const settled = await Promise.allSettled(enrichPromises);
+      const queued = settled.filter(r => r.status === 'fulfilled').length;
+      log.info(`[Danea→AI] Enrichment queued: ${queued}/${syncedProducts.length}`);
+    }
 
     return NextResponse.json({
       success: true,

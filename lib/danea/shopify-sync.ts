@@ -304,8 +304,11 @@ function toShopifyProduct(product: ParsedProduct): ShopifyProductInput {
  */
 export async function syncSingleProduct(product: ParsedProduct): Promise<ProductSyncResult> {
   try {
-    // Check if product exists by SKU
-    const existing = await findProductBySku(product.daneaCode);
+    // Use supplierCode (catalog code) as the primary lookup key — it's what we write
+    // as Shopify SKU in toShopifyProduct(). Fall back to daneaCode only if supplierCode
+    // is absent (so old products created before this convention are still found).
+    const skuForLookup = product.supplierCode || product.daneaCode;
+    const existing = await findProductBySku(skuForLookup);
     const shopifyProduct = toShopifyProduct(product);
 
     if (existing) {
@@ -427,39 +430,68 @@ export async function syncProductsToShopify(
 }
 
 /**
- * Get all products from Shopify (for comparison/audit)
+ * Get all products from Shopify (for comparison/audit).
+ * Uses GraphQL cursor pagination to retrieve the full catalog, not just the
+ * first 250 results that the REST endpoint returns.
  */
+// Shape returned by the getProducts GraphQL query (used only in getShopifyProducts)
+interface GetProductsQueryResult {
+  products: {
+    edges: Array<{
+      node: {
+        id: string;
+        title: string;
+        variants: { edges: Array<{ node: { sku: string } }> };
+      };
+    }>;
+    pageInfo: { hasNextPage: boolean; endCursor: string };
+  };
+}
+
 export async function getShopifyProducts(): Promise<Array<{ id: number; sku: string; title: string }>> {
   const allProducts: Array<{ id: number; sku: string; title: string }> = [];
-  let pageInfo: string | null = null;
-  
-  do {
-    const endpoint = pageInfo 
-      ? `/products.json?limit=250&page_info=${pageInfo}`
-      : '/products.json?limit=250&fields=id,title,variants';
-    
-    const response = await shopifyAdminRequest<{ 
-      products: Array<{ 
-        id: number; 
-        title: string;
-        variants: Array<{ sku: string }> 
-      }> 
-    }>(endpoint);
+  let cursor: string | null = null;
 
-    for (const product of response.products) {
-      const sku = product.variants?.[0]?.sku || '';
-      allProducts.push({
-        id: product.id,
-        sku,
-        title: product.title,
-      });
+  const query = `
+    query getProducts($cursor: String) {
+      products(first: 250, after: $cursor) {
+        edges {
+          node {
+            id
+            title
+            variants(first: 1) {
+              edges {
+                node {
+                  sku
+                }
+              }
+            }
+          }
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  `;
+
+  do {
+    const data: GetProductsQueryResult = await shopifyGraphQLRequest<GetProductsQueryResult>(query, { cursor });
+
+    for (const edge of data.products.edges) {
+      const id = parseInt(edge.node.id.split('/').pop() || '0', 10);
+      const sku = edge.node.variants.edges[0]?.node.sku || '';
+      allProducts.push({ id, sku, title: edge.node.title });
     }
 
-    // TODO: Handle pagination with Link header
-    pageInfo = null; // For now, just get first page
-    
-  } while (pageInfo);
+    cursor = data.products.pageInfo.hasNextPage
+      ? data.products.pageInfo.endCursor
+      : null;
 
+  } while (cursor);
+
+  log.info(`getShopifyProducts: fetched ${allProducts.length} products total`);
   return allProducts;
 }
 
