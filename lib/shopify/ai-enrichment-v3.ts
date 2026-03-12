@@ -896,7 +896,7 @@ async function generateWithLLMV3(
       log.error('[AI-V3] JSON parse failed. LLM output preview:', content.substring(0, 300));
       log.info('[AI-V3] Attempting smart JSON repair...');
 
-      function repairUnescapedQuotes(s: string): string {
+      const repairUnescapedQuotes = (s: string): string => {
         let result = '';
         let inString = false;
         let escape = false;
@@ -936,7 +936,7 @@ async function generateWithLLMV3(
           }
         }
         return result;
-      }
+      };
 
       const repaired = repairUnescapedQuotes(jsonStr);
       try {
