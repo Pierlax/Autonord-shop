@@ -1,5 +1,5 @@
 // Vercel Pro: Allow up to 300 seconds for AI pipeline
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 /**
  * Worker Regenerate Product - V5.1 (Fix Architetturale: Integrità Flusso RAG)
