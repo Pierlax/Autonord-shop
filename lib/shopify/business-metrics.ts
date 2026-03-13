@@ -577,7 +577,7 @@ export function aggregateMetricsFromArrays(
       // Deserialize Date fields (Redis stores ISO strings)
       const g = item as Record<string, unknown>;
       store.recordGenerationRaw({
-        ...(g as ContentGenerationMetrics),
+        ...(g as unknown as ContentGenerationMetrics),
         timestamp: new Date(g['timestamp'] as string),
       });
     }
@@ -586,7 +586,7 @@ export function aggregateMetricsFromArrays(
     if (item && typeof item === 'object') {
       const e = item as Record<string, unknown>;
       store.recordErrorRaw({
-        ...(e as ErrorMetrics),
+        ...(e as unknown as ErrorMetrics),
         timestamp: new Date(e['timestamp'] as string),
       });
     }
