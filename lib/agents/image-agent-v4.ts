@@ -401,11 +401,15 @@ async function searchDirectUrls(
   if (brandLower.includes('milwaukee')) {
     for (const code of allCodes) {
       candidateUrls.push(
+        // Italian site first — avoids geolocation redirects to non-Italian locales
+        { url: `https://milwaukeetool.it/Products/${code}`, domain: 'milwaukeetool.it', confidence: 'high' },
+        { url: `https://www.milwaukeetool.it/Products/${code}`, domain: 'milwaukeetool.it', confidence: 'high' },
         { url: `https://milwaukeetool.eu/Products/${code}`, domain: 'milwaukeetool.eu', confidence: 'high' },
         { url: `https://www.milwaukeetool.eu/Products/${code}`, domain: 'milwaukeetool.eu', confidence: 'high' },
       );
     }
     candidateUrls.push(
+      { url: `https://milwaukeetool.it/Products?q=${encodeURIComponent(primaryCode || title)}`, domain: 'milwaukeetool.it', confidence: 'high' },
       { url: `https://milwaukeetool.eu/Products?q=${encodeURIComponent(primaryCode || title)}`, domain: 'milwaukeetool.eu', confidence: 'high' },
     );
   } else if (brandLower.includes('makita')) {
@@ -601,6 +605,8 @@ async function fetchOgImageFromPage(
         // Identify as Googlebot so retailers don't block the request
         'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
         'Accept': 'text/html,application/xhtml+xml',
+        // Prefer Italian/English content to avoid non-Italian locale redirects (e.g. hu.milwaukeetool.eu)
+        'Accept-Language': 'it-IT,it;q=0.9,en-GB;q=0.7,en;q=0.5',
       },
     });
     clearTimeout(timeoutId);
@@ -727,6 +733,16 @@ function isValidImageUrl(url: string): boolean {
     lower.includes('-tile.png') ||
     lower.includes('-tile.webp')
   ) return false;
+  // Reject locale-specific images (e.g. _hu-hu.png, -de-de.jpg, _pl-pl.webp).
+  // These come from country-redirected brand sites and may show the wrong product
+  // variant or carry locale-specific text overlays irrelevant for Italian e-commerce.
+  const localeMarkers = [
+    '-hu-hu', '_hu-hu', '-de-de', '_de-de', '-pl-pl', '_pl-pl',
+    '-fr-fr', '_fr-fr', '-ru-ru', '_ru-ru', '-cs-cz', '_cs-cz',
+    '-nl-nl', '_nl-nl', '-sk-sk', '_sk-sk', '-ro-ro', '_ro-ro',
+    '-pt-pt', '_pt-pt', '-es-es', '_es-es', '-sv-se', '_sv-se',
+  ];
+  if (localeMarkers.some(m => lower.includes(m))) return false;
   // Must have a recognizable image extension
   if (!/\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(lower)) return false;
   return true;
