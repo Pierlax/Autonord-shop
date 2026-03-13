@@ -1,17 +1,15 @@
 /**
  * Search Client - Unified Web Search Engine for RAG Pipeline
- * 
+ *
  * Provides a single `performWebSearch()` function that abstracts over
  * multiple search providers with automatic fallback:
- * 
- *   1. SerpAPI (preferred — best snippet quality)
- *   2. Exa.ai (neural search — great for technical content)
- *   3. Google Custom Search (reliable fallback)
- *   4. Mock (dev mode — no API key needed)
- * 
- * The provider is selected automatically based on which API keys are
- * configured in environment variables (via lib/env.ts).
- * 
+ *
+ *   1. Google Custom Search (if GOOGLE_SEARCH_API_KEY + GOOGLE_SEARCH_CX configured)
+ *   2. Bing HTML scraping (free — no API key required)
+ *   3. Mock (dev mode — no API key needed)
+ *
+ * SerpAPI and Exa have been removed (free plan limits exhausted).
+ *
  * Usage:
  *   import { performWebSearch } from './search-client';
  *   const results = await performWebSearch('Milwaukee M18 FUEL specs', ['milwaukeetool.eu']);
@@ -36,7 +34,7 @@ export interface SearchResult {
   /** Domain of the result (e.g., 'milwaukeetool.eu') */
   domain: string;
   /** Which search provider returned this result */
-  provider: 'serpapi' | 'exa' | 'google' | 'mock';
+  provider: 'google' | 'bing' | 'mock';
 }
 
 export interface SearchOptions {
@@ -48,7 +46,7 @@ export interface SearchOptions {
   region?: string;
 }
 
-type SearchProvider = 'serpapi' | 'exa' | 'google' | 'mock';
+type SearchProvider = 'google' | 'bing' | 'mock';
 
 // =============================================================================
 // PROVIDER DETECTION
@@ -56,19 +54,14 @@ type SearchProvider = 'serpapi' | 'exa' | 'google' | 'mock';
 
 /**
  * Detects which search provider to use based on available API keys.
- * Priority: SerpAPI > Exa > Google Custom Search > Mock
+ * Priority: Google Custom Search > Bing scraping > Mock
  */
 function detectProvider(): SearchProvider {
-  if (optionalEnv.SERPAPI_API_KEY) {
-    return 'serpapi';
-  }
-  if (optionalEnv.EXA_API_KEY) {
-    return 'exa';
-  }
   if (optionalEnv.GOOGLE_SEARCH_API_KEY && optionalEnv.GOOGLE_SEARCH_CX) {
     return 'google';
   }
-  return 'mock';
+  // Bing scraping is always available — no API key required
+  return 'bing';
 }
 
 // =============================================================================
@@ -77,25 +70,14 @@ function detectProvider(): SearchProvider {
 
 /**
  * Performs a web search using the best available provider.
- * 
+ *
  * Supports domain filtering via the `domainFilter` parameter, which
- * restricts results to the specified domains (using `site:` operators
- * for SerpAPI/Google, or `includeDomains` for Exa).
- * 
+ * restricts results to the specified domains (using `site:` operators).
+ *
  * @param query - The search query string
  * @param domainFilter - Optional list of domains to restrict results to
  * @param options - Optional search configuration
  * @returns Array of SearchResult objects
- * 
- * @example
- *   // Search with domain restriction
- *   const results = await performWebSearch(
- *     'Milwaukee M18 FUEL 2767-20 specifications',
- *     ['milwaukeetool.eu', 'milwaukeetool.com', 'acmetools.com']
- *   );
- * 
- *   // Search without domain restriction
- *   const results = await performWebSearch('Milwaukee M18 FUEL review');
  */
 export async function performWebSearch(
   query: string,
@@ -105,155 +87,36 @@ export async function performWebSearch(
   const provider = detectProvider();
   const maxResults = options.maxResults ?? 10;
   const language = options.language ?? 'it';
-  const region = options.region ?? 'it';
 
   log.info(`[SearchClient] Provider: ${provider}, Query: "${query.substring(0, 80)}...", Domains: ${domainFilter?.length || 'all'}`);
 
+  // Try Google Custom Search first (if configured)
+  if (optionalEnv.GOOGLE_SEARCH_API_KEY && optionalEnv.GOOGLE_SEARCH_CX) {
+    try {
+      const results = await searchWithGoogle(query, domainFilter, maxResults, language);
+      if (results.length > 0) {
+        log.info(`[SearchClient] Returned ${results.length} results via google`);
+        return results;
+      }
+    } catch (error) {
+      log.error('[SearchClient] Google Custom Search failed:', error);
+    }
+  }
+
+  // Bing HTML scraping — free, no API key required
   try {
-    let results: SearchResult[];
-
-    switch (provider) {
-      case 'serpapi':
-        results = await searchWithSerpApi(query, domainFilter, maxResults, language, region);
-        break;
-      case 'exa':
-        results = await searchWithExa(query, domainFilter, maxResults);
-        break;
-      case 'google':
-        results = await searchWithGoogle(query, domainFilter, maxResults, language);
-        break;
-      case 'mock':
-      default:
-        results = generateMockResults(query, domainFilter, maxResults);
-        break;
+    const results = await searchWithBing(query, domainFilter, maxResults);
+    if (results.length > 0) {
+      log.info(`[SearchClient] Returned ${results.length} results via bing`);
+      return results;
     }
-
-    log.info(`[SearchClient] Returned ${results.length} results via ${provider}`);
-    return results;
-
   } catch (error) {
-    log.error(`[SearchClient] ${provider} search failed:`, error);
-
-    // Attempt fallback to next available provider
-    const fallbackResult = await attemptFallback(provider, query, domainFilter, maxResults, language, region);
-    if (fallbackResult.length > 0) {
-      return fallbackResult;
-    }
-
-    // Last resort: return mock results so the pipeline doesn't crash
-    log.info('[SearchClient] All providers failed, returning mock results');
-    return generateMockResults(query, domainFilter, maxResults);
-  }
-}
-
-// =============================================================================
-// SERPAPI PROVIDER
-// =============================================================================
-
-async function searchWithSerpApi(
-  query: string,
-  domainFilter: string[] | undefined,
-  maxResults: number,
-  language: string,
-  region: string
-): Promise<SearchResult[]> {
-  const apiKey = optionalEnv.SERPAPI_API_KEY;
-  if (!apiKey) throw new Error('SERPAPI_API_KEY not configured');
-
-  // Build query with site: operators for domain filtering
-  const searchQuery = domainFilter && domainFilter.length > 0
-    ? `${query} (${domainFilter.map(d => `site:${d}`).join(' OR ')})`
-    : query;
-
-  const params = new URLSearchParams({
-    q: searchQuery,
-    api_key: apiKey,
-    num: String(maxResults),
-    hl: language,
-    gl: region,
-    engine: 'google',
-  });
-
-  const response = await fetch(`https://serpapi.com/search.json?${params.toString()}`);
-
-  if (!response.ok) {
-    throw new Error(`SerpAPI HTTP ${response.status}: ${response.statusText}`);
+    log.error('[SearchClient] Bing search failed:', error);
   }
 
-  const data = await response.json();
-  const results: SearchResult[] = [];
-
-  if (data.organic_results) {
-    for (const item of data.organic_results) {
-      results.push({
-        title: item.title || '',
-        link: item.link || '',
-        snippet: item.snippet || '',
-        domain: extractDomain(item.link || ''),
-        provider: 'serpapi',
-      });
-    }
-  }
-
-  return results.slice(0, maxResults);
-}
-
-// =============================================================================
-// EXA PROVIDER
-// =============================================================================
-
-async function searchWithExa(
-  query: string,
-  domainFilter: string[] | undefined,
-  maxResults: number
-): Promise<SearchResult[]> {
-  const apiKey = optionalEnv.EXA_API_KEY;
-  if (!apiKey) throw new Error('EXA_API_KEY not configured');
-
-  const body: Record<string, any> = {
-    query,
-    type: 'neural',
-    useAutoprompt: true,
-    numResults: maxResults,
-    contents: {
-      text: { maxCharacters: 500 },
-    },
-  };
-
-  // Exa supports includeDomains natively
-  if (domainFilter && domainFilter.length > 0) {
-    body.includeDomains = domainFilter;
-  }
-
-  const response = await fetch('https://api.exa.ai/search', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Exa API HTTP ${response.status}: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  const results: SearchResult[] = [];
-
-  if (data.results) {
-    for (const item of data.results) {
-      results.push({
-        title: item.title || '',
-        link: item.url || '',
-        snippet: item.text || item.highlight || '',
-        domain: extractDomain(item.url || ''),
-        provider: 'exa',
-      });
-    }
-  }
-
-  return results.slice(0, maxResults);
+  // Last resort: mock results so the pipeline never crashes
+  log.info('[SearchClient] All providers failed, returning mock results');
+  return generateMockResults(query, domainFilter, maxResults);
 }
 
 // =============================================================================
@@ -311,24 +174,104 @@ async function searchWithGoogle(
 }
 
 // =============================================================================
-// MOCK PROVIDER (DEV MODE)
+// BING HTML SCRAPING (FREE — no API key)
 // =============================================================================
 
 /**
- * Generates realistic mock results for development/testing.
+ * Fetches Bing search results by scraping the HTML response.
+ * No API key required. Results may be less rich than Google CSE but
+ * are completely free and reliable for technical product queries.
+ */
+async function searchWithBing(
+  query: string,
+  domainFilter: string[] | undefined,
+  maxResults: number
+): Promise<SearchResult[]> {
+  const searchQuery = domainFilter && domainFilter.length > 0
+    ? `${query} (${domainFilter.map(d => `site:${d}`).join(' OR ')})`
+    : query;
+
+  const params = new URLSearchParams({
+    q: searchQuery,
+    count: String(Math.min(maxResults * 2, 20)),
+    setlang: 'IT',
+    cc: 'IT',
+  });
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+  const response = await fetch(`https://www.bing.com/search?${params.toString()}`, {
+    signal: controller.signal,
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8',
+      'Accept': 'text/html,application/xhtml+xml',
+    },
+  });
+  clearTimeout(timeoutId);
+
+  if (!response.ok) {
+    throw new Error(`Bing search HTTP ${response.status}`);
+  }
+
+  const html = await response.text();
+  const results: SearchResult[] = [];
+
+  // Extract results from Bing's HTML structure
+  // Each result is in <li class="b_algo"><h2><a href="...">title</a></h2><p class="b_lineclamp...">snippet</p></li>
+  const resultBlocks = html.match(/<li class="b_algo"[\s\S]*?<\/li>/g) || [];
+
+  for (const block of resultBlocks) {
+    if (results.length >= maxResults) break;
+
+    // Extract URL
+    const linkMatch = block.match(/<h2><a[^>]+href="([^"]+)"/);
+    if (!linkMatch) continue;
+    const link = linkMatch[1];
+    if (!link.startsWith('http')) continue;
+
+    // Extract title
+    const titleMatch = block.match(/<h2><a[^>]+>([^<]+)<\/a>/);
+    const title = titleMatch ? titleMatch[1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>') : '';
+
+    // Extract snippet
+    const snippetMatch = block.match(/<p[^>]*class="[^"]*b_lineclamp[^"]*"[^>]*>([\s\S]*?)<\/p>/);
+    const snippet = snippetMatch
+      ? snippetMatch[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim()
+      : '';
+
+    results.push({
+      title,
+      link,
+      snippet,
+      domain: extractDomain(link),
+      provider: 'bing',
+    });
+  }
+
+  return results;
+}
+
+// =============================================================================
+// MOCK PROVIDER (LAST RESORT)
+// =============================================================================
+
+/**
+ * Generates realistic mock results when all providers fail.
  * Returns structured data that mimics real search results so the
- * downstream pipeline (adapter, QA) can process them normally.
+ * downstream pipeline can process them without crashing.
  */
 function generateMockResults(
   query: string,
   domainFilter: string[] | undefined,
   maxResults: number
 ): SearchResult[] {
-  log.info('[SearchClient] Using MOCK provider — set SERPAPI_API_KEY, EXA_API_KEY, or GOOGLE_SEARCH_API_KEY for real results');
+  log.info('[SearchClient] Using MOCK provider — configure GOOGLE_SEARCH_API_KEY for real results');
 
   const mockDomains = domainFilter && domainFilter.length > 0
     ? domainFilter
-    : ['milwaukeetool.eu', 'acmetools.com', 'protoolreviews.com'];
+    : ['toolstop.co.uk', 'acmetools.com', 'protoolreviews.com'];
 
   const results: SearchResult[] = [];
 
@@ -337,64 +280,13 @@ function generateMockResults(
     results.push({
       title: `[MOCK] ${query} — ${domain}`,
       link: `https://${domain}/mock-result-${i + 1}`,
-      snippet: `[MOCK DATA] This is a simulated search result for "${query}" from ${domain}. ` +
-        `In production, this would contain real product specifications, reviews, or technical data. ` +
-        `Configure a search API key (SERPAPI_API_KEY, EXA_API_KEY, or GOOGLE_SEARCH_API_KEY) to enable real web search.`,
+      snippet: `[MOCK DATA] Simulated result for "${query}" from ${domain}. Configure GOOGLE_SEARCH_API_KEY for real web search.`,
       domain,
       provider: 'mock',
     });
   }
 
   return results;
-}
-
-// =============================================================================
-// FALLBACK LOGIC
-// =============================================================================
-
-/**
- * Attempts to use the next available provider when the primary one fails.
- */
-async function attemptFallback(
-  failedProvider: SearchProvider,
-  query: string,
-  domainFilter: string[] | undefined,
-  maxResults: number,
-  language: string,
-  region: string
-): Promise<SearchResult[]> {
-  const fallbackOrder: SearchProvider[] = ['serpapi', 'exa', 'google'];
-  
-  for (const provider of fallbackOrder) {
-    if (provider === failedProvider) continue;
-
-    try {
-      switch (provider) {
-        case 'serpapi':
-          if (optionalEnv.SERPAPI_API_KEY) {
-            log.info(`[SearchClient] Falling back to ${provider}`);
-            return await searchWithSerpApi(query, domainFilter, maxResults, language, region);
-          }
-          break;
-        case 'exa':
-          if (optionalEnv.EXA_API_KEY) {
-            log.info(`[SearchClient] Falling back to ${provider}`);
-            return await searchWithExa(query, domainFilter, maxResults);
-          }
-          break;
-        case 'google':
-          if (optionalEnv.GOOGLE_SEARCH_API_KEY && optionalEnv.GOOGLE_SEARCH_CX) {
-            log.info(`[SearchClient] Falling back to ${provider}`);
-            return await searchWithGoogle(query, domainFilter, maxResults, language);
-          }
-          break;
-      }
-    } catch (error) {
-      log.error(`[SearchClient] Fallback ${provider} also failed:`, error);
-    }
-  }
-
-  return [];
 }
 
 // =============================================================================
@@ -447,7 +339,7 @@ export interface ImageSearchResult {
   /** Image height in pixels (if available) */
   height?: number;
   /** Which search provider returned this result */
-  provider: 'serpapi' | 'google';
+  provider: 'google' | 'bing';
 }
 
 /**
@@ -457,10 +349,8 @@ export interface ImageSearchResult {
  * direct image file URLs (.jpg, .png, .webp) ready to be used as Shopify image sources.
  *
  * Supported providers:
- * - SerpAPI: uses `engine=google_images` → returns high-quality direct image URLs
  * - Google Custom Search: uses `searchType=image` → returns image URLs
- * - No mock fallback: returns [] when no provider is configured (avoids fake URLs
- *   that would cause Shopify upload failures)
+ * - Bing image search: free HTML scraping — no API key required
  *
  * @param query      - Product search query (e.g., "Milwaukee M18 FUEL 4933464590")
  * @param domainFilter - Optional list of domains to restrict image search to
@@ -471,20 +361,7 @@ export async function searchProductImages(
   domainFilter?: string[],
   maxResults: number = 5
 ): Promise<ImageSearchResult[]> {
-  // Try SerpAPI Google Images (best quality — returns original CDN URLs)
-  if (optionalEnv.SERPAPI_API_KEY) {
-    try {
-      const results = await searchImagesWithSerpApi(query, domainFilter, maxResults);
-      if (results.length > 0) {
-        log.info(`[SearchClient] Image search: ${results.length} results via serpapi`);
-        return results;
-      }
-    } catch (e) {
-      log.error('[SearchClient] SerpAPI image search failed:', e);
-    }
-  }
-
-  // Try Google Custom Search with image mode
+  // Try Google Custom Search with image mode (if configured)
   if (optionalEnv.GOOGLE_SEARCH_API_KEY && optionalEnv.GOOGLE_SEARCH_CX) {
     try {
       const results = await searchImagesWithGoogle(query, domainFilter, maxResults);
@@ -508,7 +385,7 @@ export async function searchProductImages(
     log.error('[SearchClient] Bing image scraping failed:', e);
   }
 
-  log.info('[SearchClient] No image search provider available — set SERPAPI_API_KEY or GOOGLE_SEARCH_API_KEY for direct image search');
+  log.info('[SearchClient] No image search provider returned results');
   return [];
 }
 
@@ -519,8 +396,7 @@ export async function searchProductImages(
  * blobs in `<a class="iusc">` anchor `m` attributes.
  * Format: m={"murl":"https://...","turl":"...","t":"..."}
  *
- * Domain filtering is achieved via site: operators in the query, just like
- * the SerpAPI / Google providers.
+ * Domain filtering is achieved via site: operators in the query.
  */
 async function searchImagesWithBing(
   query: string,
@@ -583,59 +459,8 @@ async function searchImagesWithBing(
       imageUrl,
       sourcePageUrl: pageUrl,
       domain: extractDomain(pageUrl || imageUrl),
-      provider: 'serpapi', // reuse type for compatibility
+      provider: 'bing',
     });
-  }
-
-  return results;
-}
-
-async function searchImagesWithSerpApi(
-  query: string,
-  domainFilter: string[] | undefined,
-  maxResults: number
-): Promise<ImageSearchResult[]> {
-  const apiKey = optionalEnv.SERPAPI_API_KEY;
-  if (!apiKey) throw new Error('SERPAPI_API_KEY not configured');
-
-  const searchQuery = domainFilter && domainFilter.length > 0
-    ? `${query} (${domainFilter.map(d => `site:${d}`).join(' OR ')})`
-    : query;
-
-  const params = new URLSearchParams({
-    q: searchQuery,
-    api_key: apiKey,
-    engine: 'google_images',
-    num: String(Math.min(maxResults, 10)),
-  });
-
-  const response = await fetch(`https://serpapi.com/search.json?${params.toString()}`);
-  if (!response.ok) {
-    throw new Error(`SerpAPI Images HTTP ${response.status}: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  const results: ImageSearchResult[] = [];
-
-  if (data.images_results) {
-    for (const item of data.images_results) {
-      // Prefer original (full-size) over thumbnail
-      const rawUrl: string | undefined = item.original || item.thumbnail;
-      if (!rawUrl) continue;
-      // Decode HTML entities that SerpAPI occasionally encodes in URLs
-      const imageUrl = rawUrl.replace(/&amp;/g, '&');
-      // Prefer original dimensions; fall back to thumbnail only if original is missing
-      // (item.original_width/height may be undefined for thumbnail-only results)
-      results.push({
-        imageUrl,
-        sourcePageUrl: item.link || '',
-        domain: extractDomain(item.link || imageUrl),
-        width: item.original_width,
-        height: item.original_height,
-        provider: 'serpapi',
-      });
-      if (results.length >= maxResults) break;
-    }
   }
 
   return results;

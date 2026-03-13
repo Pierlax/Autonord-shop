@@ -31,9 +31,7 @@ pnpm lint
 | `CRON_SECRET` | Yes | Auth token for cron/worker endpoints |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Yes | Google Gemini API key (primary AI engine) |
 | `ANTHROPIC_API_KEY` | No | ~~Deprecated~~ — Was used for Claude, now replaced by Gemini |
-| `SERPAPI_API_KEY` | No | SerpAPI for web search (preferred) |
-| `EXA_API_KEY` | No | Exa.ai for neural search (fallback) |
-| `GOOGLE_SEARCH_API_KEY` | No | Google Custom Search (fallback) |
+| `GOOGLE_SEARCH_API_KEY` | No | Google Custom Search (primary web search — 100 free queries/day) |
 | `GOOGLE_SEARCH_CX` | No | Google Custom Search engine ID |
 | `UPSTASH_REDIS_REST_URL` | No | Upstash Redis for RAG cache (production) |
 | `UPSTASH_REDIS_REST_TOKEN` | No | Upstash Redis auth token |
@@ -160,7 +158,7 @@ QStash / Cron Job
 The search client automatically selects the best available provider:
 
 ```
-SerpAPI (SERPAPI_API_KEY) → Exa (EXA_API_KEY) → Google (GOOGLE_SEARCH_API_KEY) → Mock
+Google Custom Search (GOOGLE_SEARCH_API_KEY) → Bing HTML scraping (free) → Mock
 ```
 
 If the primary provider fails, it falls back to the next available one. If all fail, mock results are returned so the pipeline never crashes.

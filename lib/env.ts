@@ -45,10 +45,6 @@ interface OptionalEnv {
   SHOPIFY_WEBHOOK_SECRET?: string;
   /** Upstash QStash token for async job queuing */
   QSTASH_TOKEN?: string;
-  /** SerpAPI key for image/web search */
-  SERPAPI_API_KEY?: string;
-  /** Exa API key for semantic search */
-  EXA_API_KEY?: string;
   /** Google Custom Search API key */
   GOOGLE_SEARCH_API_KEY?: string;
   /** Google Custom Search engine ID */
