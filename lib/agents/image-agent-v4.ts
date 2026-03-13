@@ -918,11 +918,13 @@ const ALL_TRUSTED_DOMAINS = new Set([
   ...GOLD_STANDARD_DOMAINS.eu,
 ]);
 
+const ALL_TRUSTED_DOMAINS_ARRAY = Array.from(ALL_TRUSTED_DOMAINS);
+
 function isTrustedDomain(url: string): boolean {
   try {
     const hostname = new URL(url).hostname.replace(/^www\./, '');
     return ALL_TRUSTED_DOMAINS.has(hostname) ||
-      [...ALL_TRUSTED_DOMAINS].some(d => hostname.endsWith('.' + d) || hostname === d);
+      ALL_TRUSTED_DOMAINS_ARRAY.some(d => hostname.endsWith('.' + d) || hostname === d);
   } catch {
     return false;
   }
