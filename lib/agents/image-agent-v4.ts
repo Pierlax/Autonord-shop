@@ -399,19 +399,11 @@ async function searchDirectUrls(
 
   // Brand-specific direct product pages (highest quality images)
   if (brandLower.includes('milwaukee')) {
-    for (const code of allCodes) {
-      candidateUrls.push(
-        // Italian site first — avoids geolocation redirects to non-Italian locales
-        { url: `https://milwaukeetool.it/Products/${code}`, domain: 'milwaukeetool.it', confidence: 'high' },
-        { url: `https://www.milwaukeetool.it/Products/${code}`, domain: 'milwaukeetool.it', confidence: 'high' },
-        { url: `https://milwaukeetool.eu/Products/${code}`, domain: 'milwaukeetool.eu', confidence: 'high' },
-        { url: `https://www.milwaukeetool.eu/Products/${code}`, domain: 'milwaukeetool.eu', confidence: 'high' },
-      );
-    }
-    candidateUrls.push(
-      { url: `https://milwaukeetool.it/Products?q=${encodeURIComponent(primaryCode || title)}`, domain: 'milwaukeetool.it', confidence: 'high' },
-      { url: `https://milwaukeetool.eu/Products?q=${encodeURIComponent(primaryCode || title)}`, domain: 'milwaukeetool.eu', confidence: 'high' },
-    );
+    // NOTE: milwaukeetool.eu / milwaukeetool.it are intentionally excluded.
+    // Those sites geo-redirect based on server IP (Vercel → Hungarian, French, etc.)
+    // producing locale-specific pages that may map the EU article number to the wrong
+    // product. Milwaukee images are handled reliably by searchGoldStandard via SerpAPI
+    // (toolstop.co.uk, acmetools.com, ohiopowertool.com have stable Milwaukee catalogs).
   } else if (brandLower.includes('makita')) {
     for (const code of allCodes) {
       candidateUrls.push(
