@@ -913,6 +913,8 @@ function normalizeBrand(vendor: string): string {
   const brandMap: Record<string, string> = {
     'milwaukee tool': 'Milwaukee',
     'milwaukee electric tool': 'Milwaukee',
+    'techtronic industries': 'Milwaukee', // TTI owns Milwaukee brand
+    'techtronic': 'Milwaukee',
     'makita corporation': 'Makita',
     'dewalt industrial': 'DeWalt',
     'robert bosch': 'Bosch',

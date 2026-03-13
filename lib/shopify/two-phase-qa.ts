@@ -240,22 +240,29 @@ Rispondi SOLO con JSON valido, senza testo prima o dopo:
   ]
 }`;
 
-  const result = await generateTextSafe({
-    system: 'Sei un tecnico esperto di attrezzature e macchinari professionali. Rispondi SOLO con JSON valido, nessun testo aggiuntivo.',
-    prompt,
-    maxTokens: 2000,
-    temperature: 0.1,
-    useLiteModel: true,
-  });
+  let resultText = '';
+  try {
+    const result = await generateTextSafe({
+      system: 'Sei un tecnico esperto di attrezzature e macchinari professionali. Rispondi SOLO con JSON valido, nessun testo aggiuntivo.',
+      prompt,
+      maxTokens: 2000,
+      temperature: 0.1,
+      useLiteModel: true,
+    });
+    resultText = result.text;
+  } catch (err) {
+    log.error('[TwoPhaseQA] Phase 1 generateTextSafe failed:', err);
+    return { specs: {}, rawFacts: [], extractionTime: Date.now() - startTime };
+  }
 
   // Parse JSON response
   let parsed: { facts: Array<{ question: string; answer: string; source: string; confidence: string }> };
   try {
-    const jsonMatch = result.text.match(/\{[\s\S]*\}/);
+    const jsonMatch = resultText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON found');
     parsed = JSON.parse(jsonMatch[0]);
   } catch {
-    log.error('Failed to parse Simple QA response:', result.text);
+    log.error('Failed to parse Simple QA response:', resultText);
     parsed = { facts: [] };
   }
 
@@ -371,18 +378,30 @@ Rispondi in formato JSON:
   }
 }`;
 
-  const result = await generateTextSafe({
-    system: 'Sei un esperto tecnico di attrezzature e macchinari professionali. Rispondi SOLO con JSON valido, nessun testo aggiuntivo.',
-    prompt,
-    maxTokens: 2000,
-    temperature: 0.4,
-    useLiteModel: true,
-  });
+  let resultText = '';
+  try {
+    const result = await generateTextSafe({
+      system: 'Sei un esperto tecnico di attrezzature e macchinari professionali. Rispondi SOLO con JSON valido, nessun testo aggiuntivo.',
+      prompt,
+      maxTokens: 2000,
+      temperature: 0.4,
+      useLiteModel: true,
+    });
+    resultText = result.text;
+  } catch (err) {
+    log.error('[TwoPhaseQA] Phase 2 generateTextSafe failed:', err);
+    return {
+      suitability: { idealFor: [], notIdealFor: [], reasoning: '' },
+      comparison: { vsCategory: 'nella media', strengths: [], weaknesses: [] },
+      recommendation: { verdict: '', confidence: 'low', caveats: [] },
+      reasoningTime: Date.now() - startTime,
+    };
+  }
 
   // Parse JSON response
   let parsed: any;
   try {
-    const jsonMatch = result.text.match(/\{[\s\S]*\}/);
+    const jsonMatch = resultText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON found');
     const raw = JSON.parse(jsonMatch[0]);
     parsed = {
@@ -391,7 +410,7 @@ Rispondi in formato JSON:
       ...raw.recommendation,
     };
   } catch {
-    log.error('Failed to parse Complex QA response:', result.text);
+    log.error('Failed to parse Complex QA response:', resultText);
     // Return defaults
     return {
       suitability: {
@@ -437,6 +456,8 @@ Rispondi in formato JSON:
 // Main Two-Phase QA Function
 // ============================================================================
 
+const SOURCE_DATA_MAX_CHARS = 30_000;
+
 export async function runTwoPhaseQA(
   productData: {
     title: string;
@@ -449,17 +470,42 @@ export async function runTwoPhaseQA(
 ): Promise<TwoPhaseQAResult> {
   const totalStartTime = Date.now();
 
-  log.info(`[TwoPhaseQA] Starting for ${productData.sku}`);
+  // Truncate sourceData to avoid overwhelming Gemini context window
+  const truncatedData = {
+    ...productData,
+    sourceData: productData.sourceData
+      ? productData.sourceData.slice(0, SOURCE_DATA_MAX_CHARS)
+      : undefined,
+  };
 
-  // Phase 1: Simple QA - Extract atomic facts
+  log.info(`[TwoPhaseQA] Starting for ${productData.sku} (sourceData: ${productData.sourceData?.length ?? 0} chars → truncated to ${truncatedData.sourceData?.length ?? 0})`);
+
+  // Phase 1: Simple QA - Extract atomic facts (independent, never blocks Phase 2)
   log.info(`[TwoPhaseQA] Phase 1: Extracting atomic facts...`);
-  const simpleQA = await extractAtomicFacts(productData);
-  log.info(`[TwoPhaseQA] Phase 1 complete: ${simpleQA.rawFacts.filter(f => f.verified).length} verified facts`);
+  let simpleQA: SimpleQAResult;
+  try {
+    simpleQA = await extractAtomicFacts(truncatedData);
+    log.info(`[TwoPhaseQA] Phase 1 complete: ${simpleQA.rawFacts.filter(f => f.verified).length} verified facts`);
+  } catch (err) {
+    log.error(`[TwoPhaseQA] Phase 1 failed for ${productData.sku}:`, err);
+    simpleQA = { specs: {}, rawFacts: [], extractionTime: 0 };
+  }
 
-  // Phase 2: Complex QA - Relational reasoning
+  // Phase 2: Complex QA - Relational reasoning (runs even if Phase 1 failed)
   log.info(`[TwoPhaseQA] Phase 2: Performing complex reasoning...`);
-  const complexQA = await performComplexReasoning(productData, simpleQA);
-  log.info(`[TwoPhaseQA] Phase 2 complete: confidence=${complexQA.recommendation.confidence}`);
+  let complexQA: ComplexQAResult;
+  try {
+    complexQA = await performComplexReasoning(truncatedData, simpleQA);
+    log.info(`[TwoPhaseQA] Phase 2 complete: confidence=${complexQA.recommendation.confidence}`);
+  } catch (err) {
+    log.error(`[TwoPhaseQA] Phase 2 failed for ${productData.sku}:`, err);
+    complexQA = {
+      suitability: { idealFor: [], notIdealFor: [], reasoning: '' },
+      comparison: { vsCategory: 'nella media', strengths: [], weaknesses: [] },
+      recommendation: { verdict: '', confidence: 'low', caveats: [] },
+      reasoningTime: 0,
+    };
+  }
 
   return {
     simpleQA,
