@@ -32,8 +32,6 @@ import { getBrandConfig } from './product-sources';
 import {
   FactProvenanceTracker,
   generateContentProvenance,
-  formatProvenanceDisplay,
-  generateProvenanceReport,
   ContentProvenance,
   SourceAttribution,
 } from './provenance-tracking';
@@ -212,28 +210,35 @@ function enrichWithKnowledgeGraph(
 // PROVENANCE TRACKING (Refactored to use RAG + QA data)
 // =============================================================================
 
+interface ProvenanceTrackingResult {
+  tracker: FactProvenanceTracker;
+  qaFactIds: string[];
+  contentProvenance: ContentProvenance;
+}
+
 /**
  * Builds provenance from RAG evidence and QA verified facts.
- * No longer depends on the old product-research module.
+ * Returns the tracker instance so callers can append generation steps later.
  */
 function trackProvenanceFromRAGandQA(
   productId: string,
   productName: string,
   ragResult: UniversalRAGResult,
   qaResult: TwoPhaseQAResult | null,
-): ContentProvenance {
+): ProvenanceTrackingResult {
   const tracker = new FactProvenanceTracker();
+  const qaFactIds: string[] = [];
 
   // Register facts from QA verified facts (highest quality)
   if (qaResult) {
     for (const fact of qaResult.simpleQA.rawFacts) {
       if (fact.answer !== 'NON TROVATO') {
-        const sourceType: SourceAttribution['type'] = fact.confidence === 'high' 
-          ? 'official' 
-          : fact.confidence === 'medium' 
-            ? 'retailer' 
+        const sourceType: SourceAttribution['type'] = fact.confidence === 'high'
+          ? 'official'
+          : fact.confidence === 'medium'
+            ? 'retailer'
             : 'generated';
-        
+
         const factId = tracker.registerFact(
           fact.question,
           fact.answer,
@@ -248,27 +253,39 @@ function trackProvenanceFromRAGandQA(
         if (fact.verified) {
           tracker.verifyFact(factId, 'qa_verified');
         }
+        qaFactIds.push(factId);
       }
     }
   }
 
-  // Register facts from RAG evidence
+  // Register facts from RAG evidence (already fused by UniversalRAG)
   if (ragResult.success && ragResult.data?.evidence && Array.isArray(ragResult.data.evidence)) {
     for (const item of ragResult.data.evidence) {
       const sourceLabel = item.source || item.sourceType || 'UniversalRAG';
       const content = item.content || item.text || item.snippet || '';
-      
+
       if (content && typeof content === 'string' && content.length > 10) {
-        tracker.registerFact(
+        const primarySource: SourceAttribution = {
+          name: sourceLabel,
+          type: mapRagSourceToAttribution(sourceLabel),
+          reliability: item.confidence ? parseFloat(item.confidence) / 100 : 0.7,
+          extractedAt: new Date(),
+        };
+        const ragFactId = tracker.registerFact(
           `RAG Evidence (${sourceLabel})`,
           content.substring(0, 200),
-          {
-            name: sourceLabel,
-            type: mapRagSourceToAttribution(sourceLabel),
-            reliability: item.confidence ? parseFloat(item.confidence) / 100 : 0.7,
-            extractedAt: new Date(),
-          }
+          primarySource
         );
+        // Evidence items that carry a confidence score came through fusion — record it
+        if (item.confidence) {
+          const conf = parseFloat(item.confidence);
+          tracker.updateAfterFusion(
+            ragFactId,
+            content.substring(0, 200),
+            isNaN(conf) ? 70 : conf,
+            [primarySource]
+          );
+        }
       }
     }
   }
@@ -289,11 +306,11 @@ function trackProvenanceFromRAGandQA(
     }
   }
 
-  return generateContentProvenance(
-    productId,
-    productName,
-    tracker.getAllFacts()
-  );
+  return {
+    tracker,
+    qaFactIds,
+    contentProvenance: generateContentProvenance(productId, productName, tracker.getAllFacts()),
+  };
 }
 
 function mapRagSourceToAttribution(source: string): SourceAttribution['type'] {
@@ -435,22 +452,29 @@ export async function generateProductContentV3(
   // Step 3: Track provenance from RAG + QA data
   log.info('[AI-V3] Step 3: Tracking provenance from RAG + QA...');
   const fusionStart = Date.now();
-  const provenance = trackProvenanceFromRAGandQA(productId, product.title, ragResult, qaResult);
+  const provenanceResult = trackProvenanceFromRAGandQA(productId, product.title, ragResult, qaResult);
   timings.fusion = Date.now() - fusionStart;
-  
+
   // Step 4: Generate safety log
   const safetyLog = generateSafetyLogFromRAGandQA(product.title, ragResult, qaResult);
   log.info('[AI-V3] Safety log generated');
-  
+
   // Step 5: Build enhanced prompt with REAL data from RAG + QA + KG
   const userPrompt = buildEnhancedPromptV3(product, brand, ragEvidence, qaFacts, kgContext);
-  
+
   // Step 6: Generate content with LLM
   log.info('[AI-V3] Step 6: Generating content with LLM (using RAG+QA context)...');
   const llmStart = Date.now();
   const content = await generateWithLLMV3(userPrompt, ragEvidence, qaFacts);
   timings.llm = Date.now() - llmStart;
-  
+
+  // Step 6.5: Extend provenance chain with generation step
+  // Each QA fact that fed the prompt now has a record of what the LLM produced from it
+  for (const factId of provenanceResult.qaFactIds) {
+    provenanceResult.tracker.updateAfterGeneration(factId, content.description, 'gemini-2.0-flash');
+  }
+  const provenance = generateContentProvenance(productId, product.title, provenanceResult.tracker.getAllFacts());
+
   // Step 7: Verification (placeholder for now)
   const verificationStart = Date.now();
   // TODO: Add verification step
@@ -1065,9 +1089,6 @@ export function formatDescriptionAsHtmlV3(data: EnrichedProductDataV3): string {
   </div>`
     : '';
 
-  // Provenance display
-  const provenanceHtml = formatProvenanceDisplay(data.provenance);
-
   // Data quality indicator
   const qualityBadge = data.dataQuality.specsVerified
     ? '<span class="quality-badge verified">✓ Dati verificati</span>'
@@ -1109,9 +1130,8 @@ export function formatDescriptionAsHtmlV3(data: EnrichedProductDataV3): string {
   
   <p class="content-note">
     <small>
-      ${qualityBadge} | 
-      ${provenanceHtml} |
-      Contenuto curato dal team tecnico di Autonord Service. 
+      ${qualityBadge} |
+      Contenuto curato dal team tecnico di Autonord Service.
       <a href="/contact">Contattaci</a> per domande.
     </small>
   </p>

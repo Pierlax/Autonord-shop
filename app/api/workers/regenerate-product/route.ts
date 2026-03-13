@@ -57,6 +57,7 @@ import {
 import { ShopifyProductWebhookPayload } from '@/lib/shopify/webhook-types';
 import { findProductImage, ImageAgentV4Result } from '@/lib/agents/image-agent-v4';
 import { validateAndCorrect, CleanedContent } from '@/lib/agents/taya-police';
+import { formatProvenanceDisplay } from '@/lib/shopify/provenance-tracking';
 
 // =============================================================================
 // CONFIG (from centralized env)
@@ -417,6 +418,12 @@ async function updateShopifyProductWithMetafields(
                 key: 'image_confidence',
                 type: 'single_line_text_field',
                 value: imageResult.confidence,
+              },
+              {
+                namespace: METAFIELD_NAMESPACE,
+                key: 'trust_badge',
+                type: 'multi_line_text_field',
+                value: formatProvenanceDisplay(enrichedData.provenance),
               },
             ],
           },
@@ -903,7 +910,7 @@ export async function POST(request: NextRequest) {
         faqsCount: validationResult.content.faqs.length,
         accessoriesCount: enrichedData.accessories.length,
         tayaViolationsFixed: validationResult.violations.length,
-        metafieldsCreated: 13,
+        metafieldsCreated: 14,
         imageUploadMethod: imageResult.success ? 'staged_with_fallback' : 'none',
         parallelSteps: 'TwoPhaseQA+ImageAgent',
       },

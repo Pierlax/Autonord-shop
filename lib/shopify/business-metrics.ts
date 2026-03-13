@@ -12,9 +12,53 @@
  * - Operational efficiency
  */
 
+import { waitUntil } from '@vercel/functions';
 import { loggers } from '@/lib/logger';
+import { optionalEnv } from '@/lib/env';
 
 const log = loggers.shopify;
+
+// ============================================================================
+// Redis Persistence (Upstash REST API — no extra package needed)
+// ============================================================================
+
+const REDIS_KEYS = {
+  generations: 'metrics:generations',
+  errors: 'metrics:errors',
+} as const;
+
+const REDIS_MAX_ENTRIES = 500;
+
+async function redisCommand(command: unknown[]): Promise<unknown> {
+  const url = optionalEnv.UPSTASH_REDIS_REST_URL;
+  const token = optionalEnv.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(command),
+    });
+    const data = await resp.json() as { result: unknown };
+    return data.result;
+  } catch {
+    return null;
+  }
+}
+
+async function redisPersist(key: string, data: object): Promise<void> {
+  await redisCommand(['LPUSH', key, JSON.stringify(data)]);
+  await redisCommand(['LTRIM', key, '0', String(REDIS_MAX_ENTRIES - 1)]);
+}
+
+export async function redisLoadAll(key: string): Promise<unknown[]> {
+  const result = await redisCommand(['LRANGE', key, '0', '-1']);
+  if (!Array.isArray(result)) return [];
+  return result.map((item) => {
+    try { return typeof item === 'string' ? JSON.parse(item) : item; }
+    catch { return null; }
+  }).filter(Boolean);
+}
 
 // ============================================================================
 // Types
@@ -148,7 +192,7 @@ export interface BusinessImpactReport {
 }
 
 // ============================================================================
-// Metrics Storage (In-memory for now, can be persisted to DB)
+// Metrics Storage (in-memory cache + Redis persistence)
 // ============================================================================
 
 class MetricsStore {
@@ -163,16 +207,37 @@ class MetricsStore {
   recordGeneration(metrics: ContentGenerationMetrics): void {
     this.generationMetrics.push(metrics);
     log.info(`[BusinessMetrics] Recorded generation for ${metrics.productName}`);
+    // waitUntil keeps the Vercel Lambda alive until Redis write completes
+    waitUntil(
+      redisPersist(REDIS_KEYS.generations, metrics).catch((err) =>
+        log.error('[BusinessMetrics] Redis persist (generation) failed:', String(err))
+      )
+    );
   }
 
   recordError(metrics: ErrorMetrics): void {
     this.errorMetrics.push(metrics);
     log.info(`[BusinessMetrics] Recorded ${metrics.errorType} error for ${metrics.productId}`);
+    waitUntil(
+      redisPersist(REDIS_KEYS.errors, metrics).catch((err) =>
+        log.error('[BusinessMetrics] Redis persist (error) failed:', String(err))
+      )
+    );
   }
 
   recordFeedback(metrics: UserFeedbackMetrics): void {
     this.feedbackMetrics.push(metrics);
     log.info(`[BusinessMetrics] Recorded ${metrics.feedbackType} feedback for ${metrics.productId}`);
+  }
+
+  /** In-memory only — used when reconstructing from Redis data (no re-persist) */
+  recordGenerationRaw(metrics: ContentGenerationMetrics): void {
+    this.generationMetrics.push(metrics);
+  }
+
+  /** In-memory only — used when reconstructing from Redis data (no re-persist) */
+  recordErrorRaw(metrics: ErrorMetrics): void {
+    this.errorMetrics.push(metrics);
   }
 
   // ============================================================================
@@ -494,6 +559,42 @@ export function createGenerationMetrics(
     officialSourcesPercent: provenance.officialPercent,
     verifiedFactsPercent: provenance.verifiedPercent,
   };
+}
+
+/**
+ * Aggregate metrics loaded from Redis (raw unknown[] arrays).
+ * Used by the /api/admin/metrics endpoint to reconstruct a report
+ * from persisted data across multiple serverless invocations.
+ */
+export function aggregateMetricsFromArrays(
+  rawGenerations: unknown[],
+  rawErrors: unknown[],
+): BusinessImpactReport {
+  const store = new MetricsStore();
+
+  for (const item of rawGenerations) {
+    if (item && typeof item === 'object') {
+      // Deserialize Date fields (Redis stores ISO strings)
+      const g = item as Record<string, unknown>;
+      store.recordGenerationRaw({
+        ...(g as ContentGenerationMetrics),
+        timestamp: new Date(g['timestamp'] as string),
+      });
+    }
+  }
+  for (const item of rawErrors) {
+    if (item && typeof item === 'object') {
+      const e = item as Record<string, unknown>;
+      store.recordErrorRaw({
+        ...(e as ErrorMetrics),
+        timestamp: new Date(e['timestamp'] as string),
+      });
+    }
+  }
+
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  return store.generateBusinessImpactReport(thirtyDaysAgo, now, 'Ultimi 30 giorni');
 }
 
 /**

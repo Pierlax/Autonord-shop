@@ -314,11 +314,9 @@ export { parseEnrichedData as getEnrichedData };
 
 // Provenance Tracking (Hallucination Control)
 export {
-  ProvenanceGraphBuilder,
   FactProvenanceTracker,
   generateContentProvenance,
   formatProvenanceDisplay,
-  generateProvenanceReport,
   type FactProvenance,
   type ContentProvenance,
   type SourceAttribution,

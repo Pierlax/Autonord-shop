@@ -12,6 +12,7 @@
     "@ai-sdk/google": "^3.0.21",
     "@anthropic-ai/sdk": "^0.71.2",
     "@upstash/qstash": "^2.8.4",
+    "@vercel/functions": "^1.4.0",
     "ai": "^6.0.73",
     "clsx": "^2.1.0",
     "lucide-react": "^0.363.0",

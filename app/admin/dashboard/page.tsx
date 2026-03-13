@@ -45,6 +45,28 @@ interface AdminDashboardData {
   pipeline: PipelineInfo;
 }
 
+interface AIMetricsSummary {
+  productsEnriched: number;
+  timeSavedHours: number;
+  costSavingsEstimate: number;
+  qualityScore: number;
+  errorRate: number;
+}
+
+interface AIMetricsReport {
+  reportPeriod: string;
+  summary: AIMetricsSummary;
+  generationMetrics: {
+    averageGenerationTimeMs: number;
+    averageConfidence: number;
+    averageSourcesUsed: number;
+    totalConflictsDetected: number;
+    totalErrors: number;
+    errorsByType: Record<string, number>;
+    timeSavedPercent: number;
+  };
+}
+
 interface TestResult {
   success: boolean;
   product?: {
@@ -162,6 +184,114 @@ function StatCard({ label, value, sublabel, color }: { label: string; value: str
       <div className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">{label}</div>
       <div className={`text-3xl font-bold ${color}`}>{value}</div>
       {sublabel && <div className="text-gray-500 text-xs mt-1">{sublabel}</div>}
+    </div>
+  );
+}
+
+// =============================================================================
+// AI METRICS PANEL
+// =============================================================================
+
+function AIMetricsPanel({ secret }: { secret: string }) {
+  const [report, setReport] = useState<AIMetricsReport | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [noData, setNoData] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/admin/metrics?secret=${secret}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.success && data.report?.summary?.productsEnriched > 0) {
+          setReport(data.report as AIMetricsReport);
+        } else {
+          setNoData(true);
+        }
+      })
+      .catch(() => setNoData(true))
+      .finally(() => setLoading(false));
+  }, [secret]);
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+          Metriche AI Pipeline
+        </h2>
+        {report && (
+          <span className="text-gray-600 text-xs">{report.reportPeriod}</span>
+        )}
+      </div>
+
+      {loading && (
+        <div className="flex items-center gap-2 text-gray-500 text-sm py-4">
+          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          Caricamento metriche...
+        </div>
+      )}
+
+      {!loading && noData && (
+        <div className="text-gray-600 text-sm py-4 text-center">
+          Nessuna metrica disponibile — i dati appariranno dopo il primo arricchimento con Redis configurato.
+        </div>
+      )}
+
+      {!loading && report && (
+        <>
+          {/* KPI row */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+            <div className="bg-gray-950 rounded-lg p-3 text-center">
+              <div className="text-2xl font-bold text-emerald-400">{report.summary.productsEnriched}</div>
+              <div className="text-gray-500 text-xs mt-0.5">Arricchiti</div>
+            </div>
+            <div className="bg-gray-950 rounded-lg p-3 text-center">
+              <div className="text-2xl font-bold text-blue-400">{report.summary.qualityScore}<span className="text-sm font-normal text-gray-500">/100</span></div>
+              <div className="text-gray-500 text-xs mt-0.5">Quality Score</div>
+            </div>
+            <div className="bg-gray-950 rounded-lg p-3 text-center">
+              <div className="text-2xl font-bold text-violet-400">{Math.round(report.generationMetrics.averageConfidence)}<span className="text-sm font-normal text-gray-500">%</span></div>
+              <div className="text-gray-500 text-xs mt-0.5">Confidence media</div>
+            </div>
+            <div className="bg-gray-950 rounded-lg p-3 text-center">
+              <div className="text-2xl font-bold text-amber-400">{report.summary.timeSavedHours}h</div>
+              <div className="text-gray-500 text-xs mt-0.5">Tempo risparmiato</div>
+            </div>
+            <div className="bg-gray-950 rounded-lg p-3 text-center">
+              <div className={`text-2xl font-bold ${report.summary.errorRate > 10 ? 'text-red-400' : 'text-gray-300'}`}>
+                {report.summary.errorRate}<span className="text-sm font-normal text-gray-500">%</span>
+              </div>
+              <div className="text-gray-500 text-xs mt-0.5">Error rate</div>
+            </div>
+          </div>
+
+          {/* Detail row */}
+          <div className="grid grid-cols-3 gap-3 text-xs text-gray-500">
+            <div>Tempo medio generazione: <span className="text-gray-300">{Math.round(report.generationMetrics.averageGenerationTimeMs / 1000)}s</span></div>
+            <div>Fonti medie/prodotto: <span className="text-gray-300">{report.generationMetrics.averageSourcesUsed.toFixed(1)}</span></div>
+            <div>Risparmio stimato: <span className="text-emerald-400">€{report.summary.costSavingsEstimate}</span></div>
+          </div>
+
+          {/* Errors by type */}
+          {report.generationMetrics.totalErrors > 0 && (
+            <details className="mt-3">
+              <summary className="text-red-400 text-xs cursor-pointer hover:text-red-300">
+                {report.generationMetrics.totalErrors} errori negli ultimi 30 giorni
+              </summary>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {Object.entries(report.generationMetrics.errorsByType)
+                  .filter(([, count]) => count > 0)
+                  .map(([type, count]) => (
+                    <span key={type} className="px-2 py-1 bg-red-500/10 border border-red-500/20 rounded text-red-400 text-xs">
+                      {type}: {count}
+                    </span>
+                  ))}
+              </div>
+            </details>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -439,6 +569,11 @@ function DashboardContent({ secret }: { secret: string }) {
             </div>
             <p className="text-gray-500 text-sm">{data.pipeline.description}</p>
           </div>
+        </section>
+
+        {/* Section 3b: AI Metrics */}
+        <section>
+          <AIMetricsPanel secret={secret} />
         </section>
 
         {/* Section 4: Test Enrichment */}
