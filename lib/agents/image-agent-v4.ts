@@ -910,24 +910,44 @@ Return JSON: {"found": true/false, "imageUrl": "direct URL", "domain": "domain"}
   return { found: false, imageUrl: null, domain: null };
 }
 
+// Flat set of all trusted domains — images outside this list are rejected in searchWeb
+const ALL_TRUSTED_DOMAINS = new Set([
+  ...GOLD_STANDARD_DOMAINS.official,
+  ...GOLD_STANDARD_DOMAINS.uk,
+  ...GOLD_STANDARD_DOMAINS.usa,
+  ...GOLD_STANDARD_DOMAINS.eu,
+]);
+
+function isTrustedDomain(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, '');
+    return ALL_TRUSTED_DOMAINS.has(hostname) ||
+      [...ALL_TRUSTED_DOMAINS].some(d => hostname.endsWith('.' + d) || hostname === d);
+  } catch {
+    return false;
+  }
+}
+
 async function searchWeb(
   title: string,
   brand: string,
   codes: string[],
   category: string | null
 ): Promise<{ found: boolean; imageUrl: string | null; domain: string | null }> {
-  
-  const searchQuery = codes[0] 
-    ? `${brand} ${codes[0]} product image`
-    : `${brand} ${title} product image`;
-  
+
+  const searchQuery = codes[0]
+    ? `${brand} ${codes[0]} product image site:toolstop.co.uk OR site:ffx.co.uk OR site:screwfix.com OR site:acmetools.com OR site:rotopino.it`
+    : `${brand} ${title} product image site:toolstop.co.uk OR site:ffx.co.uk OR site:acmetools.com`;
+
   try {
-    // STEP A: Direct image search — no domain filter, broader reach
+    // STEP A: Direct image search — restricted to trusted domains only
     const imageResults = await searchProductImages(searchQuery, undefined, 5);
 
     for (const imgResult of imageResults) {
       if (isBlockedDomain(imgResult.imageUrl)) continue;
       if (!isValidImageUrl(imgResult.imageUrl)) continue;
+      if (!isTrustedDomain(imgResult.imageUrl)) continue; // reject random sites
+      if (isWrongProductImage(imgResult.imageUrl, codes)) continue;
       console.log(`[ImageAgent V4] Web image search hit: ${imgResult.imageUrl}`);
       return {
         found: true,
@@ -936,49 +956,21 @@ async function searchWeb(
       };
     }
 
-    // STEP B: Web search + og:image extraction from product pages
+    // STEP B: Web search + og:image extraction — only from trusted domains
     const searchResults = await performWebSearch(searchQuery, undefined, { maxResults: 10 });
-    const validResults = searchResults.filter(r => !isBlockedDomain(r.link));
+    const validResults = searchResults.filter(r =>
+      !isBlockedDomain(r.link) && isTrustedDomain(r.link)
+    );
 
     for (const result of validResults) {
       const imageUrl = await fetchOgImageFromPage(result.link, brand, codes);
-      if (imageUrl) {
+      if (imageUrl && !isWrongProductImage(imageUrl, codes)) {
         console.log(`[ImageAgent V4] og:image from web search ${extractDomain(result.link)}: ${imageUrl}`);
         return {
           found: true,
           imageUrl,
           domain: extractDomain(result.link),
         };
-      }
-    }
-
-    // STEP C: Gemini fallback — last resort, low reliability
-    if (validResults.length > 0) {
-      const resultsSummary = validResults.slice(0, 5).map(r =>
-        `- ${r.title}: ${r.link} (${r.snippet})`
-      ).join('\n');
-
-      const aiResult = await generateTextSafe({
-        system: 'Find direct product image URLs from search results. Avoid Amazon, eBay, social media. Return ONLY valid JSON.',
-        prompt: `Find product image for ${brand} ${codes[0] || title} from:
-${resultsSummary}
-
-Return JSON: {"found": true/false, "imageUrl": "direct .jpg/.png/.webp URL", "domain": "domain"}`,
-        maxTokens: 500,
-        temperature: 0.2,
-        useLiteModel: true,
-      });
-
-      const jsonMatch = aiResult.text.match(/\{[\s\S]*?"found"[\s\S]*?\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (parsed.found && parsed.imageUrl && isValidImageUrl(parsed.imageUrl) && !isBlockedDomain(parsed.imageUrl)) {
-          return {
-            found: true,
-            imageUrl: parsed.imageUrl,
-            domain: parsed.domain || extractDomain(parsed.imageUrl),
-          };
-        }
       }
     }
   } catch (e) {
