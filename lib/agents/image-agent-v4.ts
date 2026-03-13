@@ -425,9 +425,17 @@ async function searchDirectUrls(
     );
   }
 
-  // NOTE: Generic retailer SEARCH pages are intentionally excluded here.
-  // Search result pages return the site logo as og:image, not a product photo.
-  // Product images from generic retailers are found via API search in Step 3b (searchGoldStandard).
+  // Generic UK/US retailer search pages — added as a reliable free fallback.
+  // When the query is an exact product code, many retailers' search pages contain only
+  // one result and their og:image IS the product image (not the site logo).
+  if (primaryCode) {
+    candidateUrls.push(
+      { url: `https://www.toolstop.co.uk/search?q=${encodeURIComponent(primaryCode)}`, domain: 'toolstop.co.uk', confidence: 'medium' },
+      { url: `https://www.ffx.co.uk/tools/search?q=${encodeURIComponent(primaryCode)}`, domain: 'ffx.co.uk', confidence: 'medium' },
+      { url: `https://www.powertoolworld.co.uk/catalogsearch/result/?q=${encodeURIComponent(primaryCode)}`, domain: 'powertoolworld.co.uk', confidence: 'medium' },
+      { url: `https://www.acmetools.com/search?q=${encodeURIComponent(primaryCode)}`, domain: 'acmetools.com', confidence: 'medium' },
+    );
+  }
 
   // Try each URL — stop at the first valid og:image
   for (const candidate of candidateUrls) {
@@ -484,6 +492,7 @@ async function searchGoldStandard(
     for (const imgResult of imageResults) {
       if (isBlockedDomain(imgResult.imageUrl)) continue;
       if (!isValidImageUrl(imgResult.imageUrl)) continue;
+      if (isWrongProductImage(imgResult.imageUrl, codes)) continue; // cross-code validation
       const isOfficialDomain = GOLD_STANDARD_DOMAINS.official.some(d => imgResult.domain.includes(d));
       console.log(`[ImageAgent V4] Gold Standard image search hit: ${imgResult.imageUrl}`);
       return {
@@ -506,6 +515,10 @@ async function searchGoldStandard(
       if (isBlockedDomain(result.link)) continue;
       const imageUrl = await fetchOgImageFromPage(result.link, brand, codes);
       if (imageUrl) {
+        if (isWrongProductImage(imageUrl, codes)) {
+          console.log(`[ImageAgent V4] Cross-code mismatch, skipping: ${imageUrl}`);
+          continue;
+        }
         const domain = extractDomain(result.link);
         const isOfficialDomain = GOLD_STANDARD_DOMAINS.official.some(d => domain.includes(d));
         console.log(`[ImageAgent V4] og:image extracted from ${domain}: ${imageUrl}`);
@@ -518,54 +531,116 @@ async function searchGoldStandard(
       }
     }
 
-    // STEP C: Last resort — Gemini analyzes snippets (no HTML access, low reliability)
-    if (searchResults.length > 0) {
-      const resultsSummary = searchResults.slice(0, 5).map(r =>
-        `- ${r.title}: ${r.link} (${r.snippet})`
-      ).join('\n');
-
-      const aiResult = await generateTextSafe({
-        system: 'You are an expert at finding product images from search results. Return ONLY valid JSON.',
-        prompt: `From these search results, find the best direct image URL for: ${brand} ${codes[0] || title}
-
-SEARCH RESULTS:
-${resultsSummary}
-
-RULES:
-1. The image URL must end in .jpg, .png, or .webp
-2. Prefer official brand sites and trusted retailers
-3. NO Amazon, eBay, or social media images
-
-Return JSON:
-{
-  "found": true/false,
-  "imageUrl": "direct image URL or null",
-  "domain": "source domain",
-  "confidence": "high/medium/low"
-}`,
-        maxTokens: 500,
-        temperature: 0.2,
-        useLiteModel: true,
-      });
-
-      const jsonMatch = aiResult.text.match(/\{[\s\S]*?"found"[\s\S]*?\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (parsed.found && parsed.imageUrl && isValidImageUrl(parsed.imageUrl) && !isBlockedDomain(parsed.imageUrl)) {
-          return {
-            found: true,
-            imageUrl: parsed.imageUrl,
-            domain: parsed.domain || extractDomain(parsed.imageUrl),
-            confidence: parsed.confidence || 'medium',
-          };
-        }
-      }
+    // STEP C: Gemini knowledge-based URL generation — always runs as no-API fallback.
+    // Gemini knows product image CDN patterns from training data and can suggest
+    // real URLs for well-known brands. Each candidate is validated by HTTP fetch.
+    const geminiResult = await findImageViaGeminiKnowledge(title, brand, codes);
+    if (geminiResult.found && geminiResult.imageUrl) {
+      return { found: true, imageUrl: geminiResult.imageUrl, domain: geminiResult.domain || 'unknown', confidence: 'medium' };
     }
+
   } catch (e) {
     console.log(`[ImageAgent V4] Gold Standard search error: ${e}`);
   }
 
   return { found: false, imageUrl: null, domain: null, confidence: 'low' };
+}
+
+/**
+ * Uses Gemini's training knowledge to suggest direct product image URLs,
+ * then validates each by HTTP HEAD request.
+ * Works without any search API credits.
+ */
+async function findImageViaGeminiKnowledge(
+  title: string,
+  brand: string,
+  codes: string[]
+): Promise<{ found: boolean; imageUrl: string | null; domain: string | null }> {
+  try {
+    const aiResult = await generateTextSafe({
+      system: 'You are a product image expert for professional power tools. Use your training knowledge of real CDN and retailer URLs. Return ONLY valid JSON.',
+      prompt: `Find the direct product image URL for this professional power tool using your training knowledge.
+
+Brand: ${brand}
+Product: ${title}
+Product codes: ${codes.join(', ')}
+
+Based on your knowledge, provide up to 4 candidate direct image URLs (.jpg, .png, or .webp) from:
+- Official brand CDNs (e.g. cdn.milwaukeetool.eu, cdn.makita.it, images.dewalt.com)
+- UK retailers: toolstop.co.uk, ffx.co.uk, screwfix.com, powertoolworld.co.uk
+- US retailers: acmetools.com, ohiopowertool.com, toolnut.com
+
+IMPORTANT: Provide REAL URLs you are confident exist based on your training data.
+Do NOT invent URLs — only include URLs you have strong confidence about.
+
+Return JSON:
+{
+  "candidates": [
+    { "url": "https://example.com/path/image.jpg", "domain": "example.com", "confidence": "high/medium" }
+  ]
+}`,
+      maxTokens: 600,
+      temperature: 0.1,
+      useLiteModel: false,
+    });
+
+    const jsonMatch = aiResult.text.match(/\{[\s\S]*?"candidates"[\s\S]*?\}/);
+    if (!jsonMatch) return { found: false, imageUrl: null, domain: null };
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    const candidates: Array<{ url: string; domain: string }> = parsed.candidates || [];
+
+    for (const candidate of candidates) {
+      if (!candidate.url || !isValidImageUrl(candidate.url)) continue;
+      if (isBlockedDomain(candidate.url)) continue;
+      if (isWrongProductImage(candidate.url, codes)) continue;
+
+      try {
+        const check = await fetch(candidate.url, {
+          method: 'HEAD',
+          signal: AbortSignal.timeout(5000),
+          headers: { 'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8' },
+        });
+        const contentType = check.headers.get('content-type') || '';
+        if (check.ok && contentType.startsWith('image/')) {
+          console.log(`[ImageAgent V4] ✅ Gemini knowledge image validated: ${candidate.url}`);
+          return {
+            found: true,
+            imageUrl: candidate.url,
+            domain: candidate.domain || extractDomain(candidate.url),
+          };
+        }
+      } catch {
+        // URL doesn't exist or times out — try next candidate
+      }
+    }
+  } catch (e) {
+    console.log(`[ImageAgent V4] Gemini knowledge search failed: ${e}`);
+  }
+
+  return { found: false, imageUrl: null, domain: null };
+}
+
+/**
+ * Detects if an image URL likely belongs to a different product.
+ * For Milwaukee-style EU codes (10-digit starting with 49), checks if the URL
+ * contains a numeric code that conflicts with all of our expected product codes.
+ */
+function isWrongProductImage(imageUrl: string, expectedCodes: string[]): boolean {
+  const lower = imageUrl.toLowerCase();
+  // Look for Milwaukee-style EU article numbers (10 digits starting with 49)
+  const milwaukeeCodeMatches = lower.match(/\b49\d{8}\b/g);
+  if (!milwaukeeCodeMatches) return false;
+
+  // If ANY found code matches one of our expected codes, it's the right product
+  for (const found of milwaukeeCodeMatches) {
+    if (expectedCodes.some(c => c.toLowerCase().includes(found) || found.includes(c.toLowerCase()))) {
+      return false;
+    }
+  }
+  // All found codes are different from ours — likely wrong product
+  console.log(`[ImageAgent V4] Cross-code mismatch: image has ${milwaukeeCodeMatches}, expected ${expectedCodes}`);
+  return true;
 }
 
 /**
