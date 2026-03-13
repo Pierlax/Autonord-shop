@@ -258,8 +258,12 @@ async function updateShopifyProductWithMetafields(
   enrichedData: EnrichedProductDataV3,
   cleanedContent: CleanedContent,
   imageResult: ImageAgentV4Result,
+  vendor: string,
+  productType: string,
   qaSpecs?: Record<string, string>,
-  qaVerdict?: string
+  qaVerdict?: string,
+  suitableFor?: string[],
+  notSuitableFor?: string[],
 ): Promise<{ success: boolean; error?: string }> {
   
   const url = `https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`;
@@ -327,6 +331,9 @@ async function updateShopifyProductWithMetafields(
           input: {
             id: productGid,
             descriptionHtml,
+            vendor,
+            productType,
+            status: 'ACTIVE',
             tags,
             seo: {
               title: seoTitle,
@@ -375,6 +382,42 @@ async function updateShopifyProductWithMetafields(
                 type: 'date_time',
                 value: new Date().toISOString(),
               },
+              {
+                namespace: METAFIELD_NAMESPACE,
+                key: 'accessories',
+                type: 'json',
+                value: JSON.stringify(enrichedData.accessories || []),
+              },
+              {
+                namespace: METAFIELD_NAMESPACE,
+                key: 'suitable_for',
+                type: 'list.single_line_text_field',
+                value: JSON.stringify(suitableFor || []),
+              },
+              {
+                namespace: METAFIELD_NAMESPACE,
+                key: 'not_suitable_for',
+                type: 'list.single_line_text_field',
+                value: JSON.stringify(notSuitableFor || []),
+              },
+              {
+                namespace: METAFIELD_NAMESPACE,
+                key: 'sources_used',
+                type: 'list.single_line_text_field',
+                value: JSON.stringify(enrichedData.sourcesUsed || []),
+              },
+              {
+                namespace: METAFIELD_NAMESPACE,
+                key: 'image_source',
+                type: 'single_line_text_field',
+                value: imageResult.source || '',
+              },
+              {
+                namespace: METAFIELD_NAMESPACE,
+                key: 'image_confidence',
+                type: 'single_line_text_field',
+                value: imageResult.confidence,
+              },
             ],
           },
         },
@@ -400,10 +443,13 @@ async function updateShopifyProductWithMetafields(
 
     console.log('[Worker V5] Product updated with Metafields');
 
-    // Aggiungi immagine se trovata (con ALT text SEO)
+    // Carica immagine su Shopify CDN (staged upload → più affidabile di URL esterno)
     if (imageResult.success && imageResult.imageUrl) {
-      await addProductImage(productGid, imageResult.imageUrl, imageResult.imageAlt);
+      await uploadImageStaged(productGid, imageResult.imageUrl, imageResult.imageAlt);
     }
+
+    // Pubblica il prodotto sull'Online Store (era DRAFT dalla sync iniziale)
+    await publishProductToOnlineStore(productGid);
 
     return { success: true };
     
@@ -478,6 +524,172 @@ async function addProductImage(
   }
 }
 
+/**
+ * Carica un'immagine su Shopify CDN tramite staged upload (PUT binario).
+ * Più affidabile di un URL esterno: l'immagine viene ospitata direttamente su Shopify.
+ * Fallback automatico a URL esterno se il fetch o lo staging falliscono.
+ */
+async function uploadImageStaged(
+  productGid: string,
+  imageUrl: string,
+  alt: string
+): Promise<void> {
+  const shopifyUrl = `https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`;
+
+  // Step 1: scarica l'immagine dal sito sorgente
+  let imageBuffer: ArrayBuffer;
+  let contentType: string;
+  let fileSize: number;
+  let filename: string;
+
+  try {
+    const resp = await fetch(imageUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Autonord-Bot/1.0)' },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    imageBuffer = await resp.arrayBuffer();
+    contentType = (resp.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
+    fileSize = imageBuffer.byteLength;
+    filename = (imageUrl.split('/').pop()?.split('?')[0] || 'product.jpg')
+      .replace(/[^a-zA-Z0-9._-]/g, '-');
+    if (!filename.match(/\.(jpg|jpeg|png|webp|gif)$/i)) filename += '.jpg';
+  } catch (fetchErr) {
+    console.warn(`[Worker] Fetch immagine fallito (${fetchErr}), fallback a URL esterno`);
+    await addProductImage(productGid, imageUrl, alt);
+    return;
+  }
+
+  // Step 2: crea staged upload su Shopify
+  const stagedMutation = `
+    mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+      stagedUploadsCreate(input: $input) {
+        stagedTargets { url resourceUrl parameters { name value } }
+        userErrors { field message }
+      }
+    }
+  `;
+
+  try {
+    const stagedResp = await fetch(shopifyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+      },
+      body: JSON.stringify({
+        query: stagedMutation,
+        variables: {
+          input: [{
+            filename,
+            mimeType: contentType,
+            resource: 'IMAGE',
+            fileSize: String(fileSize),
+            httpMethod: 'PUT',
+          }],
+        },
+      }),
+    });
+
+    const stagedData = await stagedResp.json();
+
+    if (stagedData.errors?.length || stagedData.data?.stagedUploadsCreate?.userErrors?.length) {
+      throw new Error(
+        stagedData.errors?.[0]?.message ||
+        stagedData.data?.stagedUploadsCreate?.userErrors?.[0]?.message ||
+        'Staged upload error'
+      );
+    }
+
+    const target = stagedData.data.stagedUploadsCreate.stagedTargets[0];
+
+    // Step 3: PUT binario all'URL pre-firmato (Google Cloud Storage)
+    await fetch(target.url, {
+      method: 'PUT',
+      body: imageBuffer,
+      headers: { 'Content-Type': contentType },
+    });
+
+    // Step 4: collega il media al prodotto usando resourceUrl Shopify
+    await addProductImage(productGid, target.resourceUrl, alt);
+    console.log(`[Worker] Immagine caricata via staged upload: ${filename} (${fileSize} bytes)`);
+
+  } catch (stagingErr) {
+    console.warn(`[Worker] Staged upload fallito (${stagingErr}), fallback a URL esterno`);
+    await addProductImage(productGid, imageUrl, alt);
+  }
+}
+
+/**
+ * Recupera l'ID della pubblicazione "Online Store" di Shopify.
+ */
+async function getOnlineStorePublicationId(): Promise<string | null> {
+  const shopifyUrl = `https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`;
+  try {
+    const resp = await fetch(shopifyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+      },
+      body: JSON.stringify({
+        query: `query { publications(first: 10) { edges { node { id name } } } }`,
+      }),
+    });
+    const data = await resp.json();
+    const edges: Array<{ node: { id: string; name: string } }> = data.data?.publications?.edges || [];
+    const onlineStore = edges.find(e => e.node.name === 'Online Store');
+    return onlineStore?.node.id || edges[0]?.node.id || null;
+  } catch (err) {
+    console.error('[Worker] Impossibile ottenere publication ID:', err);
+    return null;
+  }
+}
+
+/**
+ * Pubblica il prodotto sull'Online Store.
+ * Chiamato DOPO l'arricchimento completo — il prodotto era DRAFT dalla sync iniziale.
+ */
+async function publishProductToOnlineStore(productGid: string): Promise<void> {
+  const shopifyUrl = `https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`;
+  const publicationId = await getOnlineStorePublicationId();
+
+  if (!publicationId) {
+    console.warn('[Worker] Nessun publication ID trovato — publish saltato');
+    return;
+  }
+
+  try {
+    const resp = await fetch(shopifyUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+      },
+      body: JSON.stringify({
+        query: `
+          mutation publishablePublish($id: ID!, $input: [PublicationInput!]!) {
+            publishablePublish(id: $id, input: $input) {
+              publishable { availablePublicationsCount { count } }
+              userErrors { field message }
+            }
+          }
+        `,
+        variables: { id: productGid, input: [{ publicationId }] },
+      }),
+    });
+
+    const data = await resp.json();
+    if (data.data?.publishablePublish?.userErrors?.length > 0) {
+      console.error('[Worker] Publish errors:', data.data.publishablePublish.userErrors);
+    } else {
+      console.log(`[Worker] Prodotto pubblicato sull'Online Store: ${productGid}`);
+    }
+  } catch (err) {
+    console.error('[Worker] Publish fallito (non bloccante):', err);
+  }
+}
+
 // =============================================================================
 // MAIN HANDLER
 // =============================================================================
@@ -544,26 +756,43 @@ export async function POST(request: NextRequest) {
     }
 
     // ===========================================
-    // STEP 3: TwoPhaseQA — Fact-based specs & reasoning
+    // STEPS 3+6: TwoPhaseQA + ImageAgent V4 in PARALLELO
+    // TwoPhaseQA usa i dati RAG; ImageAgent usa solo i campi del payload
+    // → risparmio 30–60 secondi per prodotto
     // ===========================================
-    console.log('[Worker V5] Step 3: Running TwoPhaseQA (Simple QA + Complex QA)...');
-    
-    let qaResult: TwoPhaseQAResult | null = null;
-    let qaContent: ReturnType<typeof twoPhaseQAToProductContent> | null = null;
-    
-    try {
-      qaResult = await runTwoPhaseQA(adaptation.qaInput);
-      qaContent = twoPhaseQAToProductContent(qaResult);
-      
-      console.log(`[Worker V5] QA completed: ${qaResult.simpleQA.rawFacts.filter(f => f.verified).length} verified facts, confidence=${qaResult.complexQA.recommendation.confidence}`);
-    } catch (qaError) {
-      console.error('[Worker V5] TwoPhaseQA failed (non-fatal, continuing with V3 enrichment):', qaError);
-      console.error('[Worker V5] QA error details:', {
-        name: qaError instanceof Error ? qaError.name : 'unknown',
-        message: qaError instanceof Error ? qaError.message : String(qaError),
-        stack: qaError instanceof Error ? qaError.stack?.split('\n').slice(0, 5).join(' | ') : undefined,
-      });
-    }
+    console.log('[Worker V5] Steps 3+6: TwoPhaseQA + ImageAgent V4 in parallelo...');
+
+    const [qaOutput, imageResult] = await Promise.all([
+      // TwoPhaseQA (con error handling non bloccante)
+      (async () => {
+        try {
+          const result = await runTwoPhaseQA(adaptation.qaInput);
+          const content = twoPhaseQAToProductContent(result);
+          console.log(`[Worker V5] QA: ${result.simpleQA.rawFacts.filter(f => f.verified).length} verified facts, confidence=${result.complexQA.recommendation.confidence}`);
+          return {
+            qaResult: result,
+            qaContent: content,
+          };
+        } catch (qaError) {
+          console.error('[Worker V5] TwoPhaseQA failed (non-fatal):', qaError instanceof Error ? qaError.message : String(qaError));
+          return {
+            qaResult: null as TwoPhaseQAResult | null,
+            qaContent: null as ReturnType<typeof twoPhaseQAToProductContent> | null,
+          };
+        }
+      })(),
+      // ImageAgent V4
+      findProductImage(payload.title, payload.vendor, payload.sku, payload.barcode).then(result => {
+        if (result.success) {
+          console.log(`[Worker V5] Image found via ${result.method}: ${result.source} (alt: "${result.imageAlt}")`);
+        } else {
+          console.log(`[Worker V5] No image after ${result.searchAttempts} attempts: ${result.error}`);
+        }
+        return result;
+      }),
+    ]);
+
+    const { qaResult, qaContent } = qaOutput;
 
     // ===========================================
     // STEP 4: AI Enrichment V3 — Full content generation
@@ -606,28 +835,9 @@ export async function POST(request: NextRequest) {
     }
 
     // ===========================================
-    // STEP 6: ImageAgent V4 — Find product image
+    // STEP 7: Shopify — tutti i campi + immagine (staged) + publish
     // ===========================================
-    console.log('[Worker V5] Step 6: Running ImageAgent V4 (unified)...');
-    
-    const imageResult: ImageAgentV4Result = await findProductImage(
-      payload.title,
-      payload.vendor,
-      payload.sku,
-      payload.barcode
-    );
-    
-    if (imageResult.success) {
-      console.log(`[Worker V5] Image found via ${imageResult.method}: ${imageResult.source}`);
-      console.log(`[Worker V5] Image ALT: "${imageResult.imageAlt}"`);
-    } else {
-      console.log(`[Worker V5] No image after ${imageResult.searchAttempts} attempts: ${imageResult.error}`);
-    }
-
-    // ===========================================
-    // STEP 7: Save to Shopify (HTML + Metafields + Image with ALT)
-    // ===========================================
-    console.log('[Worker V5] Step 7: Updating Shopify with Metafields + Image ALT...');
+    console.log('[Worker V5] Step 7: Aggiornamento Shopify (campi, metafield, immagine, publish)...');
     
     // Normalize productId to GID format before passing to Shopify
     const productGid = toShopifyGid(payload.productId, 'Product');
@@ -637,8 +847,12 @@ export async function POST(request: NextRequest) {
       enrichedData,
       validationResult.content,
       imageResult,
+      payload.vendor,
+      payload.productType || '',
       qaContent?.specs,
-      qaContent?.verdict
+      qaContent?.verdict,
+      qaResult?.complexQA.suitability.idealFor,
+      qaResult?.complexQA.suitability.notIdealFor,
     );
 
     const totalTime = Date.now() - startTime;
@@ -689,7 +903,9 @@ export async function POST(request: NextRequest) {
         faqsCount: validationResult.content.faqs.length,
         accessoriesCount: enrichedData.accessories.length,
         tayaViolationsFixed: validationResult.violations.length,
-        metafieldsCreated: 7,
+        metafieldsCreated: 13,
+        imageUploadMethod: imageResult.success ? 'staged_with_fallback' : 'none',
+        parallelSteps: 'TwoPhaseQA+ImageAgent',
       },
     });
 

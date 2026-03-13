@@ -1,9 +1,13 @@
 /**
  * Shopify Sync Module
- * 
+ *
  * Syncs parsed Danea products to Shopify via Admin API.
  * Creates new products or updates existing ones based on SKU matching.
- * Automatically publishes products to Online Store sales channel.
+ *
+ * DRAFT-FIRST STRATEGY: tutti i prodotti vengono creati come DRAFT.
+ * La pubblicazione avviene solo dopo l'arricchimento AI completo
+ * (worker regenerate-product → publishablePublish finale).
+ * Questo evita "naked products" visibili ai clienti.
  */
 
 import { ParsedProduct, ShopifyProductInput, ProductSyncResult, SyncResult } from './types';
@@ -283,7 +287,7 @@ function toShopifyProduct(product: ParsedProduct): ShopifyProductInput {
     body_html: product.description || '',
     vendor: product.manufacturer || '',
     product_type: product.category || '',
-    status: product.ecommerce ? 'active' : 'draft',
+    status: 'draft', // sempre DRAFT: il worker pubblica dopo l'arricchimento AI
     tags: tags.join(', '),
     variants: [{
       price: product.price?.toString() || '0',
@@ -314,13 +318,9 @@ export async function syncSingleProduct(product: ParsedProduct): Promise<Product
     if (existing) {
       // Update existing product
       await updateProduct(existing.id, shopifyProduct);
-      
-      // Also ensure it's published to Online Store
-      if (product.ecommerce) {
-        await publishProductToOnlineStore(existing.id);
-      }
-      
-      log.info(`Updated product: ${product.daneaCode} (Shopify ID: ${existing.id})`);
+      // Nessun publish qui — il worker AI pubblica dopo l'arricchimento
+
+      log.info(`Updated product (DRAFT): ${product.daneaCode} (Shopify ID: ${existing.id})`);
       return {
         daneaCode: product.daneaCode,
         success: true,
@@ -330,13 +330,9 @@ export async function syncSingleProduct(product: ParsedProduct): Promise<Product
     } else {
       // Create new product
       const created = await createProduct(shopifyProduct);
-      
-      // Publish to Online Store if ecommerce flag is set
-      if (product.ecommerce) {
-        await publishProductToOnlineStore(created.id);
-      }
-      
-      log.info(`Created product: ${product.daneaCode} (Shopify ID: ${created.id})`);
+      // Nessun publish qui — il worker AI pubblica dopo l'arricchimento
+
+      log.info(`Created product (DRAFT): ${product.daneaCode} (Shopify ID: ${created.id})`);
       return {
         daneaCode: product.daneaCode,
         success: true,
