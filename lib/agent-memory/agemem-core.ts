@@ -947,7 +947,7 @@ export async function getMemoryEffectivenessReport(): Promise<{
   byRecommendation: Record<string, number>;
   topPerformers: Array<{ id: string; title: string; quality: number }>;
   needsReview: Array<{ id: string; title: string; quality: number; reason: string }>;
-} {
+}> {
   const store = await loadExtendedStore();
 
   const report = {
