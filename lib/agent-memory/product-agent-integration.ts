@@ -18,6 +18,8 @@ import {
   type MemoryEntry
 } from './agemem-core';
 
+import { optimizeContext } from './context-management';
+
 import { loggers } from '@/lib/logger';
 
 const log = loggers.memory;
@@ -104,11 +106,32 @@ export function getProductMemoryContext(product: ProductInfo): ProductMemoryCont
   });
   const verifiedFacts = verifiedFactsResults.map(r => r.entry);
   
-  // 4. Format prompt section
-  const promptSection = formatPromptSection(businessRules, crossAgentNotes, verifiedFacts);
-  
+  // 4. Build optimized prompt section via context-management (filter + summarize)
+  //    Questo garantisce un budget fisso anche con molte memorie in futuro.
+  const allEntries = [...businessRules, ...crossAgentNotes, ...verifiedFacts];
+  const keywords = [
+    product.title,
+    brand,
+    category,
+  ].filter((v): v is string => Boolean(v));
+
+  const { optimizedPrompt, stats } = optimizeContext(allEntries, {
+    query: product.title,
+    keywords,
+    maxEntries: 20,
+    maxSummaryLength: 800,
+    preserveCritical: true,
+  });
+
+  const promptSection = optimizedPrompt
+    ? `## MEMORIA AGENTI (regole, note, fatti verificati)\n\n${optimizedPrompt}`
+    : '';
+
   // 5. Create summary
-  const summary = `Found ${businessRules.length} business rules, ${crossAgentNotes.length} agent notes, ${verifiedFacts.length} verified facts`;
+  const summary = `Found ${businessRules.length} business rules, ${crossAgentNotes.length} agent notes, ${verifiedFacts.length} verified facts` +
+    (stats.originalCount > stats.afterFilter
+      ? ` (filtered to ${stats.afterFilter}, compression ${stats.compressionRatio.toFixed(1)}x)`
+      : '');
   
   log.info(`[AgeMem-ProductAgent] ${summary} for ${product.title}`);
   
@@ -120,63 +143,6 @@ export function getProductMemoryContext(product: ProductInfo): ProductMemoryCont
     summary
   };
 }
-
-/**
- * Format memory entries into a prompt section for Claude
- */
-function formatPromptSection(
-  businessRules: MemoryEntry[],
-  crossAgentNotes: MemoryEntry[],
-  verifiedFacts: MemoryEntry[]
-): string {
-  const sections: string[] = [];
-  
-  // Business Rules (MUST follow)
-  if (businessRules.length > 0) {
-    sections.push('## REGOLE AZIENDALI (OBBLIGATORIE)');
-    sections.push('Le seguenti regole DEVONO essere rispettate nella generazione del contenuto:\n');
-    
-    for (const rule of businessRules) {
-      const priority = rule.priority === 'critical' ? '🚨 CRITICO' : 
-                       rule.priority === 'high' ? '⚠️ IMPORTANTE' : '';
-      sections.push(`${priority ? priority + ' - ' : ''}"${rule.title}"`);
-      sections.push(`${rule.content}\n`);
-    }
-  }
-  
-  // Cross-Agent Notes (SHOULD consider)
-  if (crossAgentNotes.length > 0) {
-    sections.push('## NOTE DA ALTRI AGENTI');
-    sections.push('I seguenti appunti sono stati lasciati da altri agenti e dovrebbero essere considerati:\n');
-    
-    for (const note of crossAgentNotes) {
-      const source = note.source === 'blog_agent' ? '📝 Blog Agent' : note.source;
-      sections.push(`${source}: "${note.title}"`);
-      sections.push(`${note.content}\n`);
-    }
-  }
-  
-  // Verified Facts (CAN use)
-  if (verifiedFacts.length > 0) {
-    sections.push('## FATTI VERIFICATI DISPONIBILI');
-    sections.push('I seguenti fatti sono stati verificati e possono essere riutilizzati:\n');
-    
-    for (const fact of verifiedFacts) {
-      sections.push(`- ${fact.title}: ${fact.content}`);
-    }
-    sections.push('');
-  }
-  
-  if (sections.length === 0) {
-    return ''; // No memory context to include
-  }
-  
-  return sections.join('\n');
-}
-
-// ============================================================================
-// POST-GENERATION FUNCTIONS
-// ============================================================================
 
 /**
  * Store a verified fact after successful product enrichment

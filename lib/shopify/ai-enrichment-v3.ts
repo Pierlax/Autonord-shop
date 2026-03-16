@@ -55,7 +55,7 @@ import {
 // FIX: Import dei tipi RAG e QA (ora input obbligatori)
 import { UniversalRAGResult } from './universal-rag';
 import { TwoPhaseQAResult, AtomicFact } from './two-phase-qa';
-import { getProductMemoryContext } from '@/lib/agent-memory';
+import { getProductMemoryContext, recordMemoryUsage } from '@/lib/agent-memory';
 
 // =============================================================================
 // CLIENT INITIALIZATION
@@ -490,6 +490,17 @@ export async function generateProductContentV3(
   const llmStart = Date.now();
   const content = await generateWithLLMV3(userPrompt, ragEvidence, qaFacts);
   timings.llm = Date.now() - llmStart;
+
+  // Step 6.1: Feedback loop — segnala alle memorie usate che la generazione è riuscita
+  const usedMemoryIds = [
+    ...memoryContext.businessRules,
+    ...memoryContext.crossAgentNotes,
+    ...memoryContext.verifiedFacts,
+  ].map(e => e.id);
+  if (usedMemoryIds.length > 0) {
+    recordMemoryUsage({ memoryIds: usedMemoryIds, wasSuccessful: true, agentSource: 'product_agent' });
+    log.info(`[AI-V3] AgeMem feedback recorded for ${usedMemoryIds.length} memories`);
+  }
 
   // Step 6.5: Extend provenance chain with generation step
   // Each QA fact that fed the prompt now has a record of what the LLM produced from it
