@@ -487,6 +487,23 @@ export const BANNED_PHRASES = [
   'per professionisti esigenti',
   'per chi cerca il meglio',
   'per veri professionisti',
+
+  // Corporate speak (from taya-police)
+  'sinergia',
+  'ottimizzare',
+  'leverage',
+  'best practice',
+  'win-win',
+  'proattivo',
+  'scalabile',
+
+  // Additional superlatives (from taya-police)
+  'insuperabile',
+  'imbattibile',
+  'qualità eccezionale',
+  'risultati straordinari',
+  'esperienza unica',
+  'servizio impeccabile',
 ];
 
 /**

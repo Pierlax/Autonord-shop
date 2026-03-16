@@ -8,56 +8,9 @@
  */
 
 import { generateTextSafe } from '@/lib/shopify/ai-client';
+import { BANNED_PHRASES } from '@/lib/core-philosophy';
 
-// =============================================================================
-// BANNED PHRASES (from core-philosophy)
-// =============================================================================
-
-export const BANNED_PHRASES = [
-  // Generic marketing fluff
-  'leader di settore',
-  'leader del settore',
-  'soluzione a 360 gradi',
-  'eccellenza',
-  'qualità superiore',
-  'il migliore',
-  'i migliori',
-  'straordinario',
-  'eccezionale',
-  'all\'avanguardia',
-  'perfetto',
-  'alta qualità',
-  'massima qualità',
-  'questo prodotto',
-  'questo articolo',
-  
-  // Empty superlatives
-  'incredibile',
-  'fantastico',
-  'rivoluzionario',
-  'innovativo',
-  'unico nel suo genere',
-  'senza pari',
-  'impareggiabile',
-  'insuperabile',
-  'imbattibile',
-  
-  // Corporate speak
-  'sinergia',
-  'ottimizzare',
-  'leverage',
-  'best practice',
-  'win-win',
-  'proattivo',
-  'scalabile',
-  
-  // Vague claims
-  'prestazioni eccezionali',
-  'qualità eccezionale',
-  'risultati straordinari',
-  'esperienza unica',
-  'servizio impeccabile',
-];
+export { BANNED_PHRASES };
 
 // =============================================================================
 // TYPES
