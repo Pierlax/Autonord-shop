@@ -1019,18 +1019,3 @@ function extractDomain(url: string): string {
   }
 }
 
-function createErrorResult(title: string, error: string, startTime: number): ImageAgentV4Result {
-  return {
-    success: false,
-    imageUrl: null,
-    imageAlt: title,
-    source: null,
-    method: 'none',
-    confidence: 'low',
-    alternativeCodes: [],
-    pdfSpecsFound: false,
-    searchAttempts: 0,
-    totalTimeMs: Date.now() - startTime,
-    error,
-  };
-}

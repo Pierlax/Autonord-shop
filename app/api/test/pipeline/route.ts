@@ -12,6 +12,7 @@ export const maxDuration = 60;
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { env } from '@/lib/env';
 import { generateTextSafe } from '@/lib/shopify/ai-client';
 import {
   generateProductContentV3,
@@ -37,7 +38,7 @@ import {
 // =============================================================================
 
 const SHOPIFY_STORE = 'autonord-service.myshopify.com';
-const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN!;
+const SHOPIFY_ACCESS_TOKEN = env.SHOPIFY_ADMIN_ACCESS_TOKEN;
 
 // =============================================================================
 // TYPES

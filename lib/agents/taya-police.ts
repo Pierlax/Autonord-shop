@@ -272,8 +272,18 @@ Rispondi in JSON con la struttura corretta:
       .replace(/```\n?/g, '')
       .trim();
 
-    const cleaned = JSON.parse(cleanedText) as CleanedContent;
-    
+    const parsed: unknown = JSON.parse(cleanedText);
+    if (
+      typeof parsed !== 'object' || parsed === null ||
+      typeof (parsed as Record<string, unknown>).description !== 'string' ||
+      !Array.isArray((parsed as Record<string, unknown>).pros) ||
+      !Array.isArray((parsed as Record<string, unknown>).cons) ||
+      !Array.isArray((parsed as Record<string, unknown>).faqs)
+    ) {
+      throw new Error('JSON response missing required CleanedContent fields');
+    }
+    const cleaned = parsed as CleanedContent;
+
     // Validate the cleaned content doesn't have violations
     const recheck = validateContent(cleaned);
     
