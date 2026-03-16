@@ -276,71 +276,6 @@ ${PRAGMATIC_TRUTH_CORE}
 `;
 
 /**
- * Agent 3: Developer/UI
- * Focus: Information hierarchy + Scannable layouts + Clear CTAs
- */
-export const AGENT_3_DEVELOPER_DIRECTIVE = `
-${PRAGMATIC_TRUTH_CORE}
-
-### APPLICAZIONE PER SVILUPPO UI/UX
-
-**Gerarchia Informazioni (Krug) - Ordine Obbligatorio:**
-
-\`\`\`
-ABOVE THE FOLD (visibile senza scroll):
-1. Prezzo (TAYA: mai nasconderlo)
-2. Disponibilità 
-3. "Ideale per: [mestiere] che [job]" (JTBD)
-4. CTA principale
-
-SEZIONE PRINCIPALE:
-5. Pro/Contro in formato scannable
-6. "Non per te se..." (TAYA: onestà)
-7. Specifiche chiave → benefici (JTBD)
-
-BELOW THE FOLD:
-8. Specifiche complete (accordion)
-9. FAQ
-10. Prodotti correlati per stesso job
-\`\`\`
-
-❌ VIETATO:
-- Specifiche tecniche in alto, prezzo nascosto
-- "Contattaci per preventivo" invece del prezzo
-- Muri di testo senza gerarchia
-- CTA vaghi ("Scopri di più")
-
-✅ OBBLIGATORIO:
-- Prezzo grande e visibile (primo elemento dopo titolo)
-- "Ideale per: Elettricisti | Installazioni in quota"
-- Pro/Contro visibili in 3 secondi
-- CTA specifico ("Aggiungi al carrello - €459")
-
-**Principi UI Krug:**
-1. **"Don't make me think"** - L'azione successiva deve essere ovvia
-2. **"Omit needless words"** - Ogni parola deve guadagnarsi il suo spazio
-3. **"Users scan, don't read"** - Grassetti, bullet, whitespace generoso
-4. **"Conventions are friends"** - Pattern e-commerce standard
-5. **"Happy talk must die"** - Zero testo che non aggiunge valore
-
-**Principi JTBD per UI:**
-- Filtri per mestiere/job, non solo categoria prodotto
-- "Altri [mestiere] hanno comprato..." (social proof per job)
-- "Per questo lavoro serve anche..." (accessori per job)
-- Recensioni filtrabili per mestiere
-
-**Checklist Pre-Deploy:**
-- [ ] Prezzo visibile senza scroll su mobile?
-- [ ] "Ideale per..." visibile in 2 secondi?
-- [ ] "Aggiungi al carrello" è il bottone più evidente?
-- [ ] Pro/Contro leggibili in 3 secondi?
-- [ ] "Non per te se..." presente? (TAYA)
-- [ ] Ogni spec ha il beneficio lavorativo? (JTBD)
-- [ ] Zero "corporate fluff"? (TAYA)
-- [ ] Funziona con il pollice su mobile? (Krug)
-`;
-
-/**
  * Agent 4: Director/Evaluator
  * Focus: Quality gate based on the Triad Test
  */
@@ -948,12 +883,11 @@ export function runTriadTest(content: string): TriadTestResult {
  */
 export function injectPragmaticTruth(
   originalPrompt: string,
-  agentType: 'product' | 'blog' | 'developer' | 'director'
+  agentType: 'product' | 'blog' | 'director'
 ): string {
   const directives: Record<string, string> = {
     product: AGENT_1_PRODUCT_DIRECTIVE,
     blog: AGENT_2_BLOG_DIRECTIVE,
-    developer: AGENT_3_DEVELOPER_DIRECTIVE,
     director: AGENT_4_DIRECTOR_DIRECTIVE,
   };
   
@@ -971,7 +905,6 @@ export default {
   PRAGMATIC_TRUTH_CORE,
   AGENT_1_PRODUCT_DIRECTIVE,
   AGENT_2_BLOG_DIRECTIVE,
-  AGENT_3_DEVELOPER_DIRECTIVE,
   AGENT_4_DIRECTOR_DIRECTIVE,
   
   // Banned content

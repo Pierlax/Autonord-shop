@@ -8,7 +8,7 @@
  */
 
 import { generateTextSafe } from '@/lib/shopify/ai-client';
-import { BANNED_PHRASES } from '@/lib/core-philosophy';
+import { BANNED_PHRASES, runTriadTest, type TriadTestResult } from '@/lib/core-philosophy';
 
 export { BANNED_PHRASES };
 
@@ -335,15 +335,37 @@ function applySimpleReplacements(
 // =============================================================================
 
 /**
- * Full validation pipeline: validate and correct if needed
+ * Full validation pipeline: validate and correct if needed.
+ * Runs a fast Triad Test (TAYA + KRUG + JTBD) before the expensive AI call.
  */
 export async function validateAndCorrect(
   content: ContentToValidate
-): Promise<{ content: CleanedContent; wasFixed: boolean; violations: Violation[] }> {
+): Promise<{ content: CleanedContent; wasFixed: boolean; violations: Violation[]; triadScore?: TriadTestResult }> {
   console.log('[TAYA Police] 🚔 Scanning content for violations...');
-  
+
+  // Fast Triad Test (no AI call) — join all fields into a single string
+  const fullText = [
+    content.description,
+    ...content.pros,
+    ...content.cons,
+    ...content.faqs.flatMap(f => [f.question, f.answer]),
+    content.expertOpinion || '',
+  ].filter(Boolean).join('\n');
+
+  const triadScore = runTriadTest(fullText);
+  console.log(
+    `[TAYA Police] Triad scores — TAYA: ${triadScore.taya.score} KRUG: ${triadScore.krug.score} JTBD: ${triadScore.jtbd.score} → ${triadScore.overall.action}`
+  );
+  if (triadScore.krug.issues.length > 0) {
+    console.warn('[TAYA Police] KRUG issues:', triadScore.krug.issues);
+  }
+  if (triadScore.jtbd.issues.length > 0) {
+    console.warn('[TAYA Police] JTBD issues:', triadScore.jtbd.issues);
+  }
+
+  // Phrase-level validation (TAYA banned words)
   const validation = validateContent(content);
-  
+
   if (validation.isValid) {
     console.log('[TAYA Police] ✅ Content is clean');
     return {
@@ -356,23 +378,25 @@ export async function validateAndCorrect(
       },
       wasFixed: false,
       violations: [],
+      triadScore,
     };
   }
-  
+
   console.log(`[TAYA Police] ⚠️ Found ${validation.violations.length} violations`);
   for (const v of validation.violations) {
     console.log(`  - "${v.phrase}" in ${v.field}`);
   }
-  
+
   console.log('[TAYA Police] 🔧 Calling Gemini for correction...');
   const corrected = await correctContent(content, validation.violations);
-  
+
   console.log('[TAYA Police] ✅ Content corrected');
-  
+
   return {
     content: corrected,
     wasFixed: true,
     violations: validation.violations,
+    triadScore,
   };
 }
 
