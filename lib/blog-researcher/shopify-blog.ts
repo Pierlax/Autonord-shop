@@ -5,19 +5,18 @@
 
 import { ArticleDraft } from './drafting';
 import { loggers } from '@/lib/logger';
+import { env, optionalEnv } from '@/lib/env';
 
 const log = loggers.blog;
 
+const SHOPIFY_STORE = optionalEnv.SHOPIFY_SHOP_DOMAIN ?? 'autonord-service.myshopify.com';
+
 // Lazy initialization of Shopify config
 function getShopifyConfig() {
-  const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN;
-  const accessToken = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
-  
-  if (!shopDomain || !accessToken) {
-    throw new Error('SHOPIFY_SHOP_DOMAIN and SHOPIFY_ADMIN_ACCESS_TOKEN must be set');
-  }
-  
-  return { shopDomain, accessToken };
+  return {
+    shopDomain: SHOPIFY_STORE,
+    accessToken: env.SHOPIFY_ADMIN_ACCESS_TOKEN,
+  };
 }
 
 interface ShopifyBlog {
