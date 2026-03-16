@@ -473,7 +473,7 @@ export async function generateProductContentV3(
   log.info('[AI-V3] Safety log generated');
 
   // Step 4.5: Load agent memory context (business rules, cross-agent notes, verified facts)
-  const memoryContext = getProductMemoryContext({
+  const memoryContext = await getProductMemoryContext({
     title: product.title,
     vendor: brand,
     productType: product.product_type || undefined,
@@ -498,7 +498,7 @@ export async function generateProductContentV3(
     ...memoryContext.verifiedFacts,
   ].map(e => e.id);
   if (usedMemoryIds.length > 0) {
-    recordMemoryUsage({ memoryIds: usedMemoryIds, wasSuccessful: true, agentSource: 'product_agent' });
+    await recordMemoryUsage({ memoryIds: usedMemoryIds, wasSuccessful: true, agentSource: 'product_agent' });
     log.info(`[AI-V3] AgeMem feedback recorded for ${usedMemoryIds.length} memories`);
   }
 

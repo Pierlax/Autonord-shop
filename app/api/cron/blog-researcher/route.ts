@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
     
     // Step 4.5: Share insights with Product Agent via AgeMem
     log.info('[BlogResearcher] Step 4.5: Sharing insights with Product Agent via AgeMem...');
-    shareInsightsWithProductAgent(analysis.selectedTopic, articleDraft.tags);
+    await shareInsightsWithProductAgent(analysis.selectedTopic, articleDraft.tags);
 
     // Step 5: Send notification
     log.info('[BlogResearcher] Step 5: Sending notifications...');
@@ -172,10 +172,10 @@ export async function POST(request: NextRequest) {
  * Estrae brand e categorie dai tag dell'articolo e lascia note per il Product Agent.
  * Viene chiamata dopo ogni articolo generato con successo.
  */
-function shareInsightsWithProductAgent(
+async function shareInsightsWithProductAgent(
   topic: { topic: string; painPoint: string; tayaCategory: string; emotionalHook: string },
   tags: string[]
-): void {
+): Promise<void> {
   try {
     // Nomi di brand comuni nel settore utensili — usati per riconoscere tag brand
     const knownBrands = [
@@ -190,7 +190,7 @@ function shareInsightsWithProductAgent(
 
     // Se l'articolo tratta problemi noti di un brand, segnalalo al Product Agent
     if (topic.tayaCategory === 'problems' && detectedBrands.length > 0) {
-      leaveNoteForProductAgent({
+      await leaveNoteForProductAgent({
         title: `Problema noto discusso nel blog: ${topic.topic}`,
         content: `Il Blog Agent ha scritto un articolo sul problema: "${topic.painPoint}". ` +
                  `Emotional hook: "${topic.emotionalHook}". ` +
@@ -203,7 +203,7 @@ function shareInsightsWithProductAgent(
 
     // Se l'articolo è un confronto, segnala i brand coinvolti
     if (topic.tayaCategory === 'comparisons' && detectedBrands.length >= 2) {
-      leaveNoteForProductAgent({
+      await leaveNoteForProductAgent({
         title: `Confronto brand nel blog: ${topic.topic}`,
         content: `Il Blog Agent ha scritto un articolo di confronto tra brand. ` +
                  `Nelle descrizioni prodotto, evita di ripetere gli stessi confronti in modo da non creare contraddizioni con il blog.`,
@@ -220,7 +220,7 @@ function shareInsightsWithProductAgent(
     );
 
     if (detectedCategories.length > 0 && topic.painPoint) {
-      shareCategoryGuideline({
+      await shareCategoryGuideline({
         category: detectedCategories[0],
         guidelineType: 'pain_points',
         content: `Il Blog Agent ha identificato questo pain point nella categoria "${detectedCategories[0]}": "${topic.painPoint}". ` +
@@ -233,7 +233,7 @@ function shareInsightsWithProductAgent(
     if (detectedBrands.length === 0 && detectedCategories.length === 0) {
       // Nessun brand o categoria rilevata — lascia una nota generica solo per argomenti importanti
       if (topic.tayaCategory === 'problems') {
-        leaveNoteForProductAgent({
+        await leaveNoteForProductAgent({
           title: `Pain point dal blog: ${topic.topic}`,
           content: `Il Blog Agent ha identificato questo problema ricorrente tra i clienti: "${topic.painPoint}". ` +
                    `Considera di affrontare questo punto nelle descrizioni prodotto pertinenti.`,

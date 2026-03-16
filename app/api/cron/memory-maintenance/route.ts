@@ -41,14 +41,14 @@ export async function GET(request: NextRequest) {
 
   try {
     // Stato prima della manutenzione
-    const healthBefore = getMemoryHealthReport();
+    const healthBefore = await getMemoryHealthReport();
     log.info(`[MemoryMaintenance] Health before: ${healthBefore.stats.totalEntries} entries, status ${healthBefore.status}`);
 
     // Esegui manutenzione completa (cleanup expired + decay + consolidamento)
-    const report = runFullMaintenance();
+    const report = await runFullMaintenance();
 
     // Stato dopo
-    const healthAfter = getMemoryHealthReport();
+    const healthAfter = await getMemoryHealthReport();
     log.info(`[MemoryMaintenance] Health after: ${healthAfter.stats.totalEntries} entries, status ${healthAfter.status}`);
     log.info(`[MemoryMaintenance] Done in ${Date.now() - startTime}ms`);
 

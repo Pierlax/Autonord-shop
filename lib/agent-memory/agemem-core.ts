@@ -118,12 +118,20 @@ export interface UpdateMemoryInput {
 }
 
 // ============================================================================
-// STORAGE BACKEND (JSON File)
+// STORAGE BACKEND — Redis (primary) + JSON file (fallback)
+//
+// Priority:
+//   1. Upstash Redis  (UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN set)
+//   2. Local JSON file (dev / no Redis configured)
+//
+// Redis key: `agemem:v1:store`  — entire MemoryStore as JSON, no TTL.
 // ============================================================================
 
-// On Vercel the project root is read-only — use /tmp so writes don't throw.
+const REDIS_KEY = 'agemem:v1:store';
+
+// Local JSON file used as fallback and local-dev storage
 const MEMORY_FILE_PATH = process.env.VERCEL
-  ? path.join('/tmp', 'agent-memory.json')
+  ? path.join('/tmp', 'agent-memory.json')   // writable on Vercel but ephemeral
   : path.join(process.cwd(), 'data', 'agent-memory.json');
 
 interface MemoryStore {
@@ -132,50 +140,109 @@ interface MemoryStore {
   entries: MemoryEntry[];
 }
 
-function ensureDataDir(): void {
-  const dataDir = path.dirname(MEMORY_FILE_PATH);
-  if (!fs.existsSync(dataDir)) {
-    try {
-      fs.mkdirSync(dataDir, { recursive: true });
-    } catch {
-      // read-only fs — ignore
-    }
+const EMPTY_STORE = (): MemoryStore => ({
+  version: '1.0.0',
+  lastUpdated: Date.now(),
+  entries: [],
+});
+
+// ── Redis helpers (same HTTP client pattern as rag-cache.ts) ─────────────────
+
+function getRedisConfig(): { url: string; token: string } | null {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  return url && token ? { url: url.replace(/\/$/, ''), token } : null;
+}
+
+async function redisGet(key: string): Promise<string | null> {
+  const cfg = getRedisConfig();
+  if (!cfg) return null;
+  try {
+    const res = await fetch(cfg.url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${cfg.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(['GET', key]),
+    });
+    const data = await res.json() as { result?: string };
+    return data.result ?? null;
+  } catch (err) {
+    log.warn('[AgeMem] Redis GET failed:', err);
+    return null;
   }
 }
 
-function loadMemoryStore(): MemoryStore {
-  ensureDataDir();
-
-  if (!fs.existsSync(MEMORY_FILE_PATH)) {
-    const initialStore: MemoryStore = {
-      version: '1.0.0',
-      lastUpdated: Date.now(),
-      entries: []
-    };
-    try {
-      fs.writeFileSync(MEMORY_FILE_PATH, JSON.stringify(initialStore, null, 2));
-    } catch {
-      // read-only fs — return empty store without persisting
-    }
-    return initialStore;
-  }
-
+async function redisSet(key: string, value: string): Promise<void> {
+  const cfg = getRedisConfig();
+  if (!cfg) return;
   try {
-    const data = fs.readFileSync(MEMORY_FILE_PATH, 'utf-8');
-    return JSON.parse(data) as MemoryStore;
-  } catch (error) {
-    log.error('[AgeMem] Error loading memory store:', error);
-    return { version: '1.0.0', lastUpdated: Date.now(), entries: [] };
+    await fetch(cfg.url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${cfg.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(['SET', key, value]),
+    });
+  } catch (err) {
+    log.warn('[AgeMem] Redis SET failed:', err);
   }
 }
 
-function saveMemoryStore(store: MemoryStore): void {
-  ensureDataDir();
-  store.lastUpdated = Date.now();
+// ── File helpers (local dev / backup) ────────────────────────────────────────
+
+function loadFromFile(): MemoryStore {
   try {
+    const dir = path.dirname(MEMORY_FILE_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    if (!fs.existsSync(MEMORY_FILE_PATH)) return EMPTY_STORE();
+    return JSON.parse(fs.readFileSync(MEMORY_FILE_PATH, 'utf-8')) as MemoryStore;
+  } catch {
+    return EMPTY_STORE();
+  }
+}
+
+function saveToFile(store: MemoryStore): void {
+  try {
+    const dir = path.dirname(MEMORY_FILE_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(MEMORY_FILE_PATH, JSON.stringify(store, null, 2));
-  } catch (error) {
-    log.warn('[AgeMem] Could not persist memory store (read-only fs):', error);
+  } catch {
+    // read-only fs on Vercel — ignore
+  }
+}
+
+// ── Unified async load / save ─────────────────────────────────────────────────
+
+async function loadMemoryStore(): Promise<MemoryStore> {
+  const cfg = getRedisConfig();
+
+  if (cfg) {
+    const raw = await redisGet(REDIS_KEY);
+    if (raw) {
+      try {
+        return JSON.parse(raw) as MemoryStore;
+      } catch {
+        log.warn('[AgeMem] Could not parse Redis store, falling back to file');
+      }
+    }
+    // Redis configured but no data yet — try file as seed
+    const fileStore = loadFromFile();
+    if (fileStore.entries.length > 0) {
+      log.info(`[AgeMem] Seeding Redis from file (${fileStore.entries.length} entries)`);
+      await redisSet(REDIS_KEY, JSON.stringify(fileStore));
+    }
+    return fileStore;
+  }
+
+  return loadFromFile();
+}
+
+async function saveMemoryStore(store: MemoryStore): Promise<void> {
+  store.lastUpdated = Date.now();
+  const json = JSON.stringify(store);
+
+  if (getRedisConfig()) {
+    await redisSet(REDIS_KEY, json);   // primary
+    saveToFile(store);                 // local backup
+  } else {
+    saveToFile(store);
   }
 }
 
@@ -195,12 +262,12 @@ function generateId(): string {
  * - Product Agent stores verified fact for reuse
  * - Admin adds business rule
  */
-export function addMemory(input: AddMemoryInput): MemoryEntry {
-  const store = loadMemoryStore();
-  
+export async function addMemory(input: AddMemoryInput): Promise<MemoryEntry> {
+  const store = await loadMemoryStore();
+
   // Auto-generate keywords from title and content if not provided
   const autoKeywords = extractKeywords(input.title + ' ' + input.content);
-  
+
   const entry: MemoryEntry = {
     id: generateId(),
     type: input.type,
@@ -217,12 +284,12 @@ export function addMemory(input: AddMemoryInput): MemoryEntry {
     usageCount: 0,
     keywords: input.keywords || autoKeywords
   };
-  
+
   store.entries.push(entry);
-  saveMemoryStore(store);
-  
+  await saveMemoryStore(store);
+
   log.info(`[AgeMem] Added memory: ${entry.id} - "${entry.title}"`);
-  
+
   return entry;
 }
 
@@ -234,12 +301,12 @@ export function addMemory(input: AddMemoryInput): MemoryEntry {
  * - Blog Agent looks for existing insights about a brand
  * - System retrieves templates for a category
  */
-export function searchMemory(query: SearchQuery): SearchResult[] {
-  const store = loadMemoryStore();
+export async function searchMemory(query: SearchQuery): Promise<SearchResult[]> {
+  const store = await loadMemoryStore();
   const now = Date.now();
-  
+
   let results: SearchResult[] = [];
-  
+
   for (const entry of store.entries) {
     // Skip expired entries unless explicitly requested
     if (!query.includeExpired && entry.expiresAt && entry.expiresAt < now) {
@@ -318,17 +385,17 @@ export function searchMemory(query: SearchQuery): SearchResult[] {
   
   // Update usage stats for returned entries
   if (results.length > 0) {
-    const store = loadMemoryStore();
+    const storeForUpdate = await loadMemoryStore();
     for (const result of results) {
-      const entry = store.entries.find(e => e.id === result.entry.id);
+      const entry = storeForUpdate.entries.find(e => e.id === result.entry.id);
       if (entry) {
         entry.usageCount++;
         entry.lastUsedAt = Date.now();
       }
     }
-    saveMemoryStore(store);
+    await saveMemoryStore(storeForUpdate);
   }
-  
+
   return results;
 }
 
@@ -340,8 +407,8 @@ export function searchMemory(query: SearchQuery): SearchResult[] {
  * - Extend expiration
  * - Add more target filters
  */
-export function updateMemory(input: UpdateMemoryInput): MemoryEntry | null {
-  const store = loadMemoryStore();
+export async function updateMemory(input: UpdateMemoryInput): Promise<MemoryEntry | null> {
+  const store = await loadMemoryStore();
   
   const entryIndex = store.entries.findIndex(e => e.id === input.id);
   if (entryIndex === -1) {
@@ -368,18 +435,18 @@ export function updateMemory(input: UpdateMemoryInput): MemoryEntry | null {
     entry.keywords = extractKeywords(entry.title + ' ' + entry.content);
   }
   
-  saveMemoryStore(store);
-  
+  await saveMemoryStore(store);
+
   log.info(`[AgeMem] Updated memory: ${entry.id} - "${entry.title}"`);
-  
+
   return entry;
 }
 
 /**
  * DeleteMemory - Remove a memory entry
  */
-export function deleteMemory(id: string): boolean {
-  const store = loadMemoryStore();
+export async function deleteMemory(id: string): Promise<boolean> {
+  const store = await loadMemoryStore();
   
   const entryIndex = store.entries.findIndex(e => e.id === id);
   if (entryIndex === -1) {
@@ -388,40 +455,40 @@ export function deleteMemory(id: string): boolean {
   }
   
   const removed = store.entries.splice(entryIndex, 1)[0];
-  saveMemoryStore(store);
-  
+  await saveMemoryStore(store);
+
   log.info(`[AgeMem] Deleted memory: ${id} - "${removed.title}"`);
-  
+
   return true;
 }
 
 /**
  * GetMemory - Get a specific memory by ID
  */
-export function getMemory(id: string): MemoryEntry | null {
-  const store = loadMemoryStore();
-  return store.entries.find(e => e.id === id) || null;
+export async function getMemory(id: string): Promise<MemoryEntry | null> {
+  const store = await loadMemoryStore();
+  return store.entries.find(e => e.id === id) ?? null;
 }
 
 /**
  * GetAllMemories - Get all memories (for admin/debug)
  */
-export function getAllMemories(): MemoryEntry[] {
-  const store = loadMemoryStore();
+export async function getAllMemories(): Promise<MemoryEntry[]> {
+  const store = await loadMemoryStore();
   return store.entries;
 }
 
 /**
  * GetMemoryStats - Get statistics about the memory store
  */
-export function getMemoryStats(): {
+export async function getMemoryStats(): Promise<{
   totalEntries: number;
   byType: Record<string, number>;
   bySource: Record<string, number>;
   byPriority: Record<string, number>;
   expiredCount: number;
-} {
-  const store = loadMemoryStore();
+}> {
+  const store = await loadMemoryStore();
   const now = Date.now();
   
   const stats = {
@@ -534,36 +601,34 @@ function calculateRelevance(
  * Check for business rules before generating content
  * Used by Product Agent before writing descriptions
  */
-export function getBusinessRulesFor(options: {
+export async function getBusinessRulesFor(options: {
   brand?: string;
   category?: string;
   productHandle?: string;
-}): MemoryEntry[] {
-  const results = searchMemory({
+}): Promise<MemoryEntry[]> {
+  const results = await searchMemory({
     types: ['business_rule', 'content_guideline'],
     brands: options.brand ? [options.brand] : undefined,
     categories: options.category ? [options.category] : undefined,
     productHandle: options.productHandle,
     minPriority: 'medium'
   });
-  
   return results.map(r => r.entry);
 }
 
 /**
  * Get cross-agent notes (e.g., Blog Agent → Product Agent)
  */
-export function getCrossAgentNotes(options: {
+export async function getCrossAgentNotes(options: {
   forAgent: AgentSource;
   brand?: string;
   category?: string;
-}): MemoryEntry[] {
-  const results = searchMemory({
+}): Promise<MemoryEntry[]> {
+  const results = await searchMemory({
     types: ['cross_agent_note', 'brand_note', 'product_insight'],
     brands: options.brand ? [options.brand] : undefined,
     categories: options.category ? [options.category] : undefined
   });
-  
   // Filter to notes NOT from the requesting agent
   return results
     .filter(r => r.entry.source !== options.forAgent)
@@ -573,7 +638,7 @@ export function getCrossAgentNotes(options: {
 /**
  * Leave a note for another agent
  */
-export function leaveNoteForAgent(
+export async function leaveNoteForAgent(
   fromAgent: AgentSource,
   note: {
     title: string;
@@ -582,7 +647,7 @@ export function leaveNoteForAgent(
     targetCategories?: string[];
     priority?: 'critical' | 'high' | 'medium' | 'low';
   }
-): MemoryEntry {
+): Promise<MemoryEntry> {
   return addMemory({
     type: 'cross_agent_note',
     source: fromAgent,
@@ -597,7 +662,7 @@ export function leaveNoteForAgent(
 /**
  * Store a verified fact for reuse
  */
-export function storeVerifiedFact(
+export async function storeVerifiedFact(
   source: AgentSource,
   fact: {
     title: string;
@@ -606,7 +671,7 @@ export function storeVerifiedFact(
     targetCategories?: string[];
     keywords?: string[];
   }
-): MemoryEntry {
+): Promise<MemoryEntry> {
   return addMemory({
     type: 'verified_fact',
     source,
@@ -622,20 +687,19 @@ export function storeVerifiedFact(
 /**
  * Search for verified facts about a topic
  */
-export function searchVerifiedFacts(options: {
+export async function searchVerifiedFacts(options: {
   query?: string;
   brand?: string;
   category?: string;
   limit?: number;
-}): MemoryEntry[] {
-  const results = searchMemory({
+}): Promise<MemoryEntry[]> {
+  const results = await searchMemory({
     types: ['verified_fact'],
     query: options.query,
     brands: options.brand ? [options.brand] : undefined,
     categories: options.category ? [options.category] : undefined,
     limit: options.limit || 10
   });
-  
   return results.map(r => r.entry);
 }
 
@@ -679,16 +743,14 @@ interface ExtendedMemoryStore {
   feedback: MemoryFeedback[];
 }
 
-function loadExtendedStore(): ExtendedMemoryStore {
-  const store = loadMemoryStore() as ExtendedMemoryStore;
-  if (!store.feedback) {
-    store.feedback = [];
-  }
+async function loadExtendedStore(): Promise<ExtendedMemoryStore> {
+  const store = await loadMemoryStore() as ExtendedMemoryStore;
+  if (!store.feedback) store.feedback = [];
   return store;
 }
 
-function saveExtendedStore(store: ExtendedMemoryStore): void {
-  saveMemoryStore(store as MemoryStore);
+async function saveExtendedStore(store: ExtendedMemoryStore): Promise<void> {
+  await saveMemoryStore(store as MemoryStore);
 }
 
 /**
@@ -697,8 +759,8 @@ function saveExtendedStore(store: ExtendedMemoryStore): void {
  * Based on AgeMem paper's Memory Quality (MQ) metric.
  * Considers recency, usage frequency, feedback, and completeness.
  */
-export function calculateMemoryQuality(entry: MemoryEntry): MemoryQualityScore {
-  const store = loadExtendedStore();
+export async function calculateMemoryQuality(entry: MemoryEntry): Promise<MemoryQualityScore> {
+  const store = await loadExtendedStore();
   const now = Date.now();
   
   // 1. Recency score (0-1)
@@ -786,8 +848,8 @@ export function calculateMemoryQuality(entry: MemoryEntry): MemoryQualityScore {
  * 
  * Call this when a memory was successfully used in content generation.
  */
-export function markMemoryAsUseful(memoryId: string, agentSource?: AgentSource): void {
-  const store = loadExtendedStore();
+export async function markMemoryAsUseful(memoryId: string, agentSource?: AgentSource): Promise<void> {
+  const store = await loadExtendedStore();
   
   // Add feedback
   store.feedback.push({
@@ -815,22 +877,20 @@ export function markMemoryAsUseful(memoryId: string, agentSource?: AgentSource):
     }
   }
   
-  saveExtendedStore(store);
+  await saveExtendedStore(store);
   log.info(`[AgeMem] Marked memory ${memoryId} as useful`);
 }
 
 /**
  * Mark a memory as problematic (negative feedback)
- * 
- * Call this when a memory caused issues or was incorrect.
  */
-export function markMemoryAsProblematic(
-  memoryId: string, 
+export async function markMemoryAsProblematic(
+  memoryId: string,
   type: 'not_useful' | 'outdated' | 'incorrect',
   reason?: string,
   agentSource?: AgentSource
-): void {
-  const store = loadExtendedStore();
+): Promise<void> {
+  const store = await loadExtendedStore();
   
   // Add feedback
   store.feedback.push({
@@ -865,22 +925,22 @@ export function markMemoryAsProblematic(
     }
   }
   
-  saveExtendedStore(store);
+  await saveExtendedStore(store);
   log.info(`[AgeMem] Marked memory ${memoryId} as ${type}${reason ? `: ${reason}` : ''}`);
 }
 
 /**
  * Get feedback history for a memory
  */
-export function getMemoryFeedback(memoryId: string): MemoryFeedback[] {
-  const store = loadExtendedStore();
+export async function getMemoryFeedback(memoryId: string): Promise<MemoryFeedback[]> {
+  const store = await loadExtendedStore();
   return store.feedback.filter(f => f.memoryId === memoryId);
 }
 
 /**
  * Get effectiveness report for all memories
  */
-export function getMemoryEffectivenessReport(): {
+export async function getMemoryEffectivenessReport(): Promise<{
   totalMemories: number;
   withFeedback: number;
   averageQuality: number;
@@ -888,8 +948,8 @@ export function getMemoryEffectivenessReport(): {
   topPerformers: Array<{ id: string; title: string; quality: number }>;
   needsReview: Array<{ id: string; title: string; quality: number; reason: string }>;
 } {
-  const store = loadExtendedStore();
-  
+  const store = await loadExtendedStore();
+
   const report = {
     totalMemories: store.entries.length,
     withFeedback: 0,
@@ -898,11 +958,11 @@ export function getMemoryEffectivenessReport(): {
     topPerformers: [] as Array<{ id: string; title: string; quality: number }>,
     needsReview: [] as Array<{ id: string; title: string; quality: number; reason: string }>
   };
-  
+
   const qualities: Array<{ entry: MemoryEntry; quality: MemoryQualityScore }> = [];
-  
+
   for (const entry of store.entries) {
-    const quality = calculateMemoryQuality(entry);
+    const quality = await calculateMemoryQuality(entry);
     qualities.push({ entry, quality });
     
     report.byRecommendation[quality.recommendation] = 
@@ -960,22 +1020,22 @@ export function getMemoryEffectivenessReport(): {
  * - Reduce priority of old unused memories
  * - Mark very old memories for review
  */
-export function applyMemoryDecay(options: {
-  daysUntilDecay?: number;      // Days before decay starts (default: 30)
-  daysUntilArchive?: number;    // Days before suggesting archive (default: 90)
-  protectCritical?: boolean;    // Don't decay critical memories (default: true)
-} = {}): {
+export async function applyMemoryDecay(options: {
+  daysUntilDecay?: number;
+  daysUntilArchive?: number;
+  protectCritical?: boolean;
+} = {}): Promise<{
   decayed: number;
   flaggedForArchive: number;
   unchanged: number;
-} {
+}> {
   const {
     daysUntilDecay = 30,
     daysUntilArchive = 90,
     protectCritical = true
   } = options;
-  
-  const store = loadMemoryStore();
+
+  const store = await loadMemoryStore();
   const now = Date.now();
   
   let decayed = 0;
@@ -1018,9 +1078,9 @@ export function applyMemoryDecay(options: {
     }
   }
   
-  saveMemoryStore(store);
-  
+  await saveMemoryStore(store);
+
   log.info(`[AgeMem] Decay complete: ${decayed} decayed, ${flaggedForArchive} flagged for archive, ${unchanged} unchanged`);
-  
+
   return { decayed, flaggedForArchive, unchanged };
 }

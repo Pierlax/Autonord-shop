@@ -268,7 +268,7 @@ async function execute(context: SkillContext): Promise<SkillResult> {
     // =========================================================================
     // STEP 0: AgeMem — Check for critical blockers
     // =========================================================================
-    const blocker = hasCriticalBlockers({
+    const blocker = await hasCriticalBlockers({
       title: payload.title,
       vendor: payload.vendor,
       productType: payload.productType,

@@ -1,9 +1,9 @@
 /**
  * Auto-Inject Wrapper
- * 
+ *
  * Provides optional automatic injection of memory context into prompts.
  * This is a wrapper that agents can use WITHOUT modifying the RAG architecture.
- * 
+ *
  * Usage:
  * 1. Wrap your prompt with wrapPromptWithMemory()
  * 2. Memory context is automatically prepended
@@ -32,17 +32,17 @@ import {
 export interface AutoInjectConfig {
   // Agent identification
   agentSource: AgentSource;
-  
+
   // Context for filtering
   brand?: string;
   category?: string;
   productHandle?: string;
-  
+
   // Injection options
   maxMemories?: number;         // Max memories to include (default: 10)
   maxPromptLength?: number;     // Max chars for memory section (default: 800)
   includeCriticalOnly?: boolean; // Only include critical priority (default: false)
-  
+
   // What to include
   includeBusinessRules?: boolean;   // Default: true
   includeBrandNotes?: boolean;      // Default: true
@@ -54,11 +54,11 @@ export interface AutoInjectConfig {
 export interface InjectionResult {
   // The wrapped prompt with memory context
   wrappedPrompt: string;
-  
+
   // Metadata for feedback loop
   injectedMemories: MemoryEntry[];
   memoryIds: string[];
-  
+
   // Stats
   stats: {
     memoriesFound: number;
@@ -81,14 +81,14 @@ export interface MemoryUsageRecord {
 
 /**
  * Wrap a prompt with relevant memory context
- * 
+ *
  * This is the main function for automatic memory injection.
  * It searches for relevant memories, optimizes them, and prepends
  * them to your prompt.
- * 
+ *
  * @example
  * ```typescript
- * const result = wrapPromptWithMemory(
+ * const result = await wrapPromptWithMemory(
  *   "Generate a product description for Milwaukee M18 FUEL Drill",
  *   {
  *     agentSource: 'product_agent',
@@ -96,22 +96,22 @@ export interface MemoryUsageRecord {
  *     category: 'Trapani'
  *   }
  * );
- * 
- * // Use result.wrappedPrompt with Claude
- * const response = await claude.complete(result.wrappedPrompt);
- * 
+ *
+ * // Use result.wrappedPrompt with the AI
+ * const response = await generateTextSafe({ prompt: result.wrappedPrompt });
+ *
  * // Record usage for feedback loop
- * recordMemoryUsage({
+ * await recordMemoryUsage({
  *   memoryIds: result.memoryIds,
  *   wasSuccessful: true,
  *   agentSource: 'product_agent'
  * });
  * ```
  */
-export function wrapPromptWithMemory(
+export async function wrapPromptWithMemory(
   originalPrompt: string,
   config: AutoInjectConfig
-): InjectionResult {
+): Promise<InjectionResult> {
   const {
     agentSource,
     brand,
@@ -136,7 +136,7 @@ export function wrapPromptWithMemory(
   if (includeVerifiedFacts) types.push('verified_fact');
 
   // Search for relevant memories
-  const searchResults = searchMemory({
+  const searchResults = await searchMemory({
     types: types as any[],
     brands: brand ? [brand] : undefined,
     categories: category ? [category] : undefined,
@@ -178,7 +178,6 @@ export function wrapPromptWithMemory(
   const wrappedPrompt = `${memorySection}\n\n---\n\n${originalPrompt}`;
 
   // Get the IDs of memories that were actually included
-  // (We use all memories that passed the filter, as we can't know exactly which made it into the summary)
   const injectedMemories = memories.slice(0, maxMemories);
   const memoryIds = injectedMemories.map(m => m.id);
 
@@ -219,14 +218,14 @@ ${optimizedContent}`;
 
 /**
  * Record memory usage for feedback loop
- * 
+ *
  * Call this after using memories in generation to improve
  * the memory quality scoring over time.
  */
-export function recordMemoryUsage(record: MemoryUsageRecord): void {
+export async function recordMemoryUsage(record: MemoryUsageRecord): Promise<void> {
   if (record.wasSuccessful) {
     for (const memoryId of record.memoryIds) {
-      markMemoryAsUseful(memoryId, record.agentSource);
+      await markMemoryAsUseful(memoryId, record.agentSource);
     }
     log.info(`[AgeMem-AutoInject] Recorded successful usage of ${record.memoryIds.length} memories`);
   }
@@ -240,10 +239,10 @@ export function recordMemoryUsage(record: MemoryUsageRecord): void {
 
 /**
  * Wrap prompt for Product Agent
- * 
+ *
  * Pre-configured for product description generation.
  */
-export function wrapPromptForProductAgent(
+export async function wrapPromptForProductAgent(
   prompt: string,
   product: {
     title: string;
@@ -251,7 +250,7 @@ export function wrapPromptForProductAgent(
     productType?: string;
     handle?: string;
   }
-): InjectionResult {
+): Promise<InjectionResult> {
   return wrapPromptWithMemory(prompt, {
     agentSource: 'product_agent',
     brand: product.vendor,
@@ -269,17 +268,17 @@ export function wrapPromptForProductAgent(
 
 /**
  * Wrap prompt for Blog Agent
- * 
+ *
  * Pre-configured for blog content generation.
  */
-export function wrapPromptForBlogAgent(
+export async function wrapPromptForBlogAgent(
   prompt: string,
   context: {
     brand?: string;
     category?: string;
     topic?: string;
   }
-): InjectionResult {
+): Promise<InjectionResult> {
   return wrapPromptWithMemory(prompt, {
     agentSource: 'blog_agent',
     brand: context.brand,
@@ -300,10 +299,10 @@ export function wrapPromptForBlogAgent(
 
 /**
  * Create a reusable auto-inject middleware
- * 
+ *
  * Use this to create a configured wrapper that can be reused
  * across multiple prompts.
- * 
+ *
  * @example
  * ```typescript
  * const productAgentMiddleware = createAutoInjectMiddleware({
@@ -311,9 +310,9 @@ export function wrapPromptForBlogAgent(
  *   includeBusinessRules: true,
  *   includeBrandNotes: true
  * });
- * 
+ *
  * // Later, for each product:
- * const result = productAgentMiddleware(prompt, { brand: 'Milwaukee' });
+ * const result = await productAgentMiddleware(prompt, { brand: 'Milwaukee' });
  * ```
  */
 export function createAutoInjectMiddleware(
@@ -321,7 +320,7 @@ export function createAutoInjectMiddleware(
 ): (
   prompt: string,
   contextOverrides?: Partial<AutoInjectConfig>
-) => InjectionResult {
+) => Promise<InjectionResult> {
   return (prompt: string, contextOverrides?: Partial<AutoInjectConfig>) => {
     const mergedConfig: AutoInjectConfig = {
       ...baseConfig,
@@ -337,11 +336,10 @@ export function createAutoInjectMiddleware(
 
 /**
  * Wrap multiple prompts with memory context
- * 
+ *
  * Useful when processing multiple products in batch.
- * Shares memory lookup across prompts for efficiency.
  */
-export function wrapPromptsWithMemory(
+export async function wrapPromptsWithMemory(
   prompts: Array<{
     prompt: string;
     brand?: string;
@@ -349,13 +347,15 @@ export function wrapPromptsWithMemory(
     productHandle?: string;
   }>,
   baseConfig: Omit<AutoInjectConfig, 'brand' | 'category' | 'productHandle'>
-): InjectionResult[] {
-  return prompts.map(p => 
-    wrapPromptWithMemory(p.prompt, {
-      ...baseConfig,
-      brand: p.brand,
-      category: p.category,
-      productHandle: p.productHandle
-    })
+): Promise<InjectionResult[]> {
+  return Promise.all(
+    prompts.map(p =>
+      wrapPromptWithMemory(p.prompt, {
+        ...baseConfig,
+        brand: p.brand,
+        category: p.category,
+        productHandle: p.productHandle
+      })
+    )
   );
 }

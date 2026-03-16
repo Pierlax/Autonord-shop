@@ -1,9 +1,9 @@
 /**
  * AgeMem Integration for Blog Agent (Agente 2)
- * 
+ *
  * This module provides easy-to-use functions for the Blog Agent
  * to leave notes and insights for the Product Agent.
- * 
+ *
  * Usage Pattern:
  * 1. During blog research, discover insights about brands/products
  * 2. Call `leaveNoteForProductAgent()` to share insights
@@ -15,7 +15,6 @@ import {
   searchMemory,
   leaveNoteForAgent,
   type MemoryEntry,
-  type MemoryType
 } from './agemem-core';
 
 import { loggers } from '@/lib/logger';
@@ -47,13 +46,13 @@ export interface CompetitorMention {
 
 /**
  * Leave a note for the Product Agent
- * 
+ *
  * Use this when the Blog Agent discovers something that the Product Agent
  * should know when generating product descriptions.
- * 
+ *
  * @example
  * ```typescript
- * leaveNoteForProductAgent({
+ * await leaveNoteForProductAgent({
  *   title: "Milwaukee preferisce tono tecnico",
  *   content: "Dalle analisi dei contenuti Milwaukee, il brand preferisce un tono molto tecnico e professionale. Evitare linguaggio troppo commerciale.",
  *   targetBrands: ["Milwaukee"],
@@ -61,9 +60,9 @@ export interface CompetitorMention {
  * });
  * ```
  */
-export function leaveNoteForProductAgent(insight: BlogInsight): MemoryEntry {
+export async function leaveNoteForProductAgent(insight: BlogInsight): Promise<MemoryEntry> {
   log.info(`[AgeMem-BlogAgent] Leaving note for Product Agent: "${insight.title}"`);
-  
+
   return leaveNoteForAgent('blog_agent', {
     title: insight.title,
     content: insight.content,
@@ -75,13 +74,13 @@ export function leaveNoteForProductAgent(insight: BlogInsight): MemoryEntry {
 
 /**
  * Report a competitor that should not be mentioned
- * 
+ *
  * Use this when the Blog Agent identifies competitors that should
  * be avoided in product descriptions.
- * 
+ *
  * @example
  * ```typescript
- * reportCompetitorToAvoid({
+ * await reportCompetitorToAvoid({
  *   competitorName: "BrandX",
  *   context: "Competitor diretto di Milwaukee, non menzionare nei contenuti Milwaukee",
  *   recommendation: "avoid",
@@ -89,18 +88,18 @@ export function leaveNoteForProductAgent(insight: BlogInsight): MemoryEntry {
  * });
  * ```
  */
-export function reportCompetitorToAvoid(mention: CompetitorMention): MemoryEntry {
-  const priority = mention.recommendation === 'avoid' ? 'critical' : 
+export async function reportCompetitorToAvoid(mention: CompetitorMention): Promise<MemoryEntry> {
+  const priority = mention.recommendation === 'avoid' ? 'critical' :
                    mention.recommendation === 'mention_carefully' ? 'high' : 'medium';
-  
-  const actionText = mention.recommendation === 'avoid' 
-    ? 'NON MENZIONARE MAI' 
+
+  const actionText = mention.recommendation === 'avoid'
+    ? 'NON MENZIONARE MAI'
     : mention.recommendation === 'mention_carefully'
     ? 'Menzionare con cautela'
     : 'OK da menzionare';
-  
+
   log.info(`[AgeMem-BlogAgent] Reporting competitor: ${mention.competitorName} (${actionText})`);
-  
+
   return addMemory({
     type: 'business_rule',
     source: 'blog_agent',
@@ -114,16 +113,16 @@ export function reportCompetitorToAvoid(mention: CompetitorMention): MemoryEntry
 
 /**
  * Share a brand insight discovered during blog research
- * 
+ *
  * Use this when the Blog Agent learns something about a brand's
  * preferences, style, or positioning.
  */
-export function shareBrandInsight(insight: {
+export async function shareBrandInsight(insight: {
   brand: string;
   insightType: 'tone' | 'positioning' | 'target_audience' | 'key_features' | 'avoid';
   content: string;
   priority?: 'critical' | 'high' | 'medium' | 'low';
-}): MemoryEntry {
+}): Promise<MemoryEntry> {
   const typeLabels = {
     tone: 'Tono di comunicazione',
     positioning: 'Posizionamento',
@@ -131,9 +130,9 @@ export function shareBrandInsight(insight: {
     key_features: 'Caratteristiche chiave',
     avoid: 'Da evitare'
   };
-  
+
   log.info(`[AgeMem-BlogAgent] Sharing brand insight: ${insight.brand} - ${typeLabels[insight.insightType]}`);
-  
+
   return addMemory({
     type: 'brand_note',
     source: 'blog_agent',
@@ -147,16 +146,16 @@ export function shareBrandInsight(insight: {
 
 /**
  * Share a category guideline discovered during blog research
- * 
+ *
  * Use this when the Blog Agent learns something about how to
  * write content for a specific product category.
  */
-export function shareCategoryGuideline(guideline: {
+export async function shareCategoryGuideline(guideline: {
   category: string;
   guidelineType: 'structure' | 'key_specs' | 'common_questions' | 'pain_points' | 'selling_points';
   content: string;
   priority?: 'critical' | 'high' | 'medium' | 'low';
-}): MemoryEntry {
+}): Promise<MemoryEntry> {
   const typeLabels = {
     structure: 'Struttura contenuto',
     key_specs: 'Specifiche chiave',
@@ -164,9 +163,9 @@ export function shareCategoryGuideline(guideline: {
     pain_points: 'Pain points clienti',
     selling_points: 'Punti di forza'
   };
-  
+
   log.info(`[AgeMem-BlogAgent] Sharing category guideline: ${guideline.category} - ${typeLabels[guideline.guidelineType]}`);
-  
+
   return addMemory({
     type: 'content_guideline',
     source: 'blog_agent',
@@ -180,26 +179,26 @@ export function shareCategoryGuideline(guideline: {
 
 /**
  * Share a product-specific insight
- * 
+ *
  * Use this when the Blog Agent discovers something specific about
  * a product that the Product Agent should know.
  */
-export function shareProductInsight(insight: {
+export async function shareProductInsight(insight: {
   productHandle: string;
   productTitle: string;
   insightType: 'known_issue' | 'user_feedback' | 'comparison_note' | 'highlight';
   content: string;
   priority?: 'critical' | 'high' | 'medium' | 'low';
-}): MemoryEntry {
+}): Promise<MemoryEntry> {
   const typeLabels = {
     known_issue: 'Problema noto',
     user_feedback: 'Feedback utenti',
     comparison_note: 'Nota comparativa',
     highlight: 'Da evidenziare'
   };
-  
+
   log.info(`[AgeMem-BlogAgent] Sharing product insight: ${insight.productTitle} - ${typeLabels[insight.insightType]}`);
-  
+
   return addMemory({
     type: 'product_insight',
     source: 'blog_agent',
@@ -218,58 +217,58 @@ export function shareProductInsight(insight: {
 /**
  * Get existing notes about a brand before writing blog content
  */
-export function getExistingBrandNotes(brand: string): MemoryEntry[] {
-  const results = searchMemory({
+export async function getExistingBrandNotes(brand: string): Promise<MemoryEntry[]> {
+  const results = await searchMemory({
     types: ['brand_note', 'business_rule', 'cross_agent_note'],
     brands: [brand],
     limit: 10
   });
-  
+
   return results.map(r => r.entry);
 }
 
 /**
  * Get existing notes about a category before writing blog content
  */
-export function getExistingCategoryNotes(category: string): MemoryEntry[] {
-  const results = searchMemory({
+export async function getExistingCategoryNotes(category: string): Promise<MemoryEntry[]> {
+  const results = await searchMemory({
     types: ['content_guideline', 'cross_agent_note'],
     categories: [category],
     limit: 10
   });
-  
+
   return results.map(r => r.entry);
 }
 
 /**
  * Check if a competitor has already been flagged
  */
-export function isCompetitorFlagged(competitorName: string): {
+export async function isCompetitorFlagged(competitorName: string): Promise<{
   flagged: boolean;
   recommendation?: 'avoid' | 'mention_carefully' | 'ok_to_mention';
   entry?: MemoryEntry;
-} {
-  const results = searchMemory({
+}> {
+  const results = await searchMemory({
     query: competitorName,
     types: ['business_rule'],
     keywords: ['competitor', 'concorrente'],
     limit: 1
   });
-  
+
   if (results.length === 0) {
     return { flagged: false };
   }
-  
+
   const entry = results[0].entry;
   const content = entry.content.toLowerCase();
-  
+
   let recommendation: 'avoid' | 'mention_carefully' | 'ok_to_mention' = 'ok_to_mention';
   if (content.includes('non menzionare') || content.includes('avoid')) {
     recommendation = 'avoid';
   } else if (content.includes('cautela') || content.includes('carefully')) {
     recommendation = 'mention_carefully';
   }
-  
+
   return {
     flagged: true,
     recommendation,

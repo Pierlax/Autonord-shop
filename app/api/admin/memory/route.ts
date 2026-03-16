@@ -58,13 +58,13 @@ export async function GET(request: NextRequest) {
 
   // ?stats=true → restituisce solo le statistiche
   if (searchParams.get('stats') === 'true') {
-    const stats = getMemoryStats();
+    const stats = await getMemoryStats();
     return NextResponse.json({ success: true, stats });
   }
 
   // ?all=true → tutte le memorie senza filtri
   if (searchParams.get('all') === 'true') {
-    const entries = getAllMemories();
+    const entries = await getAllMemories();
     return NextResponse.json({ success: true, entries, total: entries.length });
   }
 
@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
   const minPriority = searchParams.get('minPriority') as SearchQuery['minPriority'];
   if (minPriority) query.minPriority = minPriority;
 
-  const results = searchMemory(query);
+  const results = await searchMemory(query);
 
   return NextResponse.json({
     success: true,
@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
   // Forza source = 'admin' per le chiamate da questa route
   const input: AddMemoryInput = { ...body, source: 'admin' };
 
-  const entry = addMemory(input);
+  const entry = await addMemory(input);
 
   return NextResponse.json({ success: true, entry }, { status: 201 });
 }
@@ -152,7 +152,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'Missing required field: id' }, { status: 400 });
   }
 
-  const entry = updateMemory(body);
+  const entry = await updateMemory(body);
 
   if (!entry) {
     return NextResponse.json({ error: `Memory not found: ${body.id}` }, { status: 404 });
@@ -177,7 +177,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Missing required query param: id' }, { status: 400 });
   }
 
-  const deleted = deleteMemory(id);
+  const deleted = await deleteMemory(id);
 
   if (!deleted) {
     return NextResponse.json({ error: `Memory not found: ${id}` }, { status: 404 });
