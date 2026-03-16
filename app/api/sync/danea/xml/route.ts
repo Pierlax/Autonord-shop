@@ -190,15 +190,19 @@ export async function POST(request: NextRequest) {
     } else {
       // Incremental sync: update and delete
       const results = {
-        updated: { success: 0, failed: 0 },
+        created: 0,
+        updated: 0,
+        failed: 0,
         deleted: { success: 0, failed: 0 },
+        errors: [] as string[],
       };
-      
+
       // Process updates
       for (const product of parseResult.updatedProducts) {
         const result = await syncSingleProduct(product);
         if (result.success) {
-          results.updated.success++;
+          if (result.action === 'created') results.created++;
+          else results.updated++;
           // Track for AI enrichment
           if (result.shopifyId) {
             syncedProducts.push({
@@ -212,10 +216,11 @@ export async function POST(request: NextRequest) {
             });
           }
         } else {
-          results.updated.failed++;
+          results.failed++;
+          if (result.error) results.errors.push(`${product.daneaCode}: ${result.error}`);
         }
       }
-      
+
       // Process deletions
       for (const sku of parseResult.deletedProductCodes) {
         const deleted = await deleteProductBySku(sku);
@@ -223,20 +228,27 @@ export async function POST(request: NextRequest) {
           results.deleted.success++;
         } else {
           results.deleted.failed++;
+          results.errors.push(`delete:${sku}: not found or error`);
         }
       }
-      
+
       syncResult = {
         total: parseResult.updatedProducts.length + parseResult.deletedProductCodes.length,
-        created: results.updated.success,
-        updated: 0,
-        failed: results.updated.failed + results.deleted.failed,
+        created: results.created,
+        updated: results.updated,
+        failed: results.failed + results.deleted.failed,
         skipped: 0,
         results: [],
-        errors: [] as string[],
+        errors: results.errors,
       };
-      
-      log.info('Incremental sync completed', results);
+
+      log.info('Incremental sync completed', {
+        created: results.created,
+        updated: results.updated,
+        failed: results.failed,
+        deletedOk: results.deleted.success,
+        deletedFailed: results.deleted.failed,
+      });
     }
     
     log.info('Sync completed', {

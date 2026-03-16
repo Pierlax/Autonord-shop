@@ -32,17 +32,6 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Check required environment variables
-  if (!process.env.SHOPIFY_ADMIN_ACCESS_TOKEN) {
-    return NextResponse.json(
-      {
-        error: 'Configuration Error',
-        message: 'Missing SHOPIFY_ADMIN_ACCESS_TOKEN environment variable',
-      },
-      { status: 500 }
-    );
-  }
-
   try {
     const url = new URL(request.url);
     const status = (url.searchParams.get('status') as 'any' | 'open' | 'closed') || 'any';

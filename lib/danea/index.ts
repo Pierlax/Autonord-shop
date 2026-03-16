@@ -8,5 +8,5 @@
 export { parseDaneaCSV, exportOrdersToCSV, normalizeDaneaRecord } from './csv-parser';
 export { parseDaneaXLSX, isXLSXBuffer } from './xlsx-parser';
 export { parseDaneaXML, isDaneaXML, type DaneaXMLParseResult, type DaneaSyncMode } from './xml-parser';
-export { syncProductsToShopify, syncSingleProduct } from './shopify-sync';
+export { syncProductsToShopify, syncSingleProduct, deleteProductBySku } from './shopify-sync';
 export { type DaneaProduct, type ParsedProduct, type SyncResult } from './types';

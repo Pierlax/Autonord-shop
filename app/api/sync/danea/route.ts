@@ -121,17 +121,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Check required environment variables
-  if (!process.env.SHOPIFY_ADMIN_ACCESS_TOKEN) {
-    return NextResponse.json(
-      {
-        error: 'Configuration Error',
-        message: 'Missing SHOPIFY_ADMIN_ACCESS_TOKEN environment variable',
-      },
-      { status: 500 }
-    );
-  }
-
   try {
     const contentType = request.headers.get('content-type') || '';
     let products;
