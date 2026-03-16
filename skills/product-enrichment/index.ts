@@ -34,6 +34,7 @@ import { validateAndCorrect } from '@/lib/agents/taya-police';
 import { findProductImage, type ImageAgentV4Result } from '@/lib/agents/image-agent-v4';
 import { env, toShopifyGid } from '@/lib/env';
 import { generateTextSafe } from '@/lib/shopify/ai-client';
+import { hasCriticalBlockers } from '@/lib/agent-memory';
 
 const log = createLogger('skill:product-enrichment');
 
@@ -294,6 +295,24 @@ async function execute(context: SkillContext): Promise<SkillResult> {
       vendor: payload.vendor,
       sku: payload.sku,
     });
+
+    // =========================================================================
+    // STEP 0: AgeMem — Check for critical blockers
+    // =========================================================================
+    const blocker = hasCriticalBlockers({
+      title: payload.title,
+      vendor: payload.vendor,
+      productType: payload.productType,
+    });
+    if (blocker.blocked) {
+      log.warn(`Step 0: Critical blocker — skipping enrichment for "${payload.title}": ${blocker.reasons.join(', ')}`);
+      return {
+        success: false,
+        status: 'skipped' as SkillResult['status'],
+        message: `Enrichment blocked by business rule: ${blocker.reasons.join(', ')}`,
+        durationMs: Date.now() - startMs,
+      };
+    }
 
     // =========================================================================
     // STEP 1: UniversalRAG — Research

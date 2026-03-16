@@ -121,7 +121,10 @@ export interface UpdateMemoryInput {
 // STORAGE BACKEND (JSON File)
 // ============================================================================
 
-const MEMORY_FILE_PATH = path.join(process.cwd(), 'data', 'agent-memory.json');
+// On Vercel the project root is read-only — use /tmp so writes don't throw.
+const MEMORY_FILE_PATH = process.env.VERCEL
+  ? path.join('/tmp', 'agent-memory.json')
+  : path.join(process.cwd(), 'data', 'agent-memory.json');
 
 interface MemoryStore {
   version: string;
@@ -132,23 +135,31 @@ interface MemoryStore {
 function ensureDataDir(): void {
   const dataDir = path.dirname(MEMORY_FILE_PATH);
   if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+    try {
+      fs.mkdirSync(dataDir, { recursive: true });
+    } catch {
+      // read-only fs — ignore
+    }
   }
 }
 
 function loadMemoryStore(): MemoryStore {
   ensureDataDir();
-  
+
   if (!fs.existsSync(MEMORY_FILE_PATH)) {
     const initialStore: MemoryStore = {
       version: '1.0.0',
       lastUpdated: Date.now(),
       entries: []
     };
-    fs.writeFileSync(MEMORY_FILE_PATH, JSON.stringify(initialStore, null, 2));
+    try {
+      fs.writeFileSync(MEMORY_FILE_PATH, JSON.stringify(initialStore, null, 2));
+    } catch {
+      // read-only fs — return empty store without persisting
+    }
     return initialStore;
   }
-  
+
   try {
     const data = fs.readFileSync(MEMORY_FILE_PATH, 'utf-8');
     return JSON.parse(data) as MemoryStore;
@@ -161,7 +172,11 @@ function loadMemoryStore(): MemoryStore {
 function saveMemoryStore(store: MemoryStore): void {
   ensureDataDir();
   store.lastUpdated = Date.now();
-  fs.writeFileSync(MEMORY_FILE_PATH, JSON.stringify(store, null, 2));
+  try {
+    fs.writeFileSync(MEMORY_FILE_PATH, JSON.stringify(store, null, 2));
+  } catch (error) {
+    log.warn('[AgeMem] Could not persist memory store (read-only fs):', error);
+  }
 }
 
 function generateId(): string {

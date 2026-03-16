@@ -63,7 +63,6 @@ const FILES_TO_ANALYZE = [
   'lib/shopify/ai-enrichment-v3.ts',
   'lib/core-philosophy/index.ts',
   'lib/agents/taya-police.ts',
-  'lib/shopify/product-research.ts',
   'lib/shopify/product-sources.ts',
   'app/page.tsx',
   'app/products/[handle]/page.tsx',

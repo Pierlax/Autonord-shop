@@ -63,7 +63,6 @@ import {
 } from './benchmark-loader';
 
 import {
-  buildSourceQuery,
   sourceTypeToSearchIntent,
   isWhitelistedDomain,
   getSourceConfidence,

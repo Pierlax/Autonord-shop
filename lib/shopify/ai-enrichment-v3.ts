@@ -55,6 +55,7 @@ import {
 // FIX: Import dei tipi RAG e QA (ora input obbligatori)
 import { UniversalRAGResult } from './universal-rag';
 import { TwoPhaseQAResult, AtomicFact } from './two-phase-qa';
+import { getProductMemoryContext } from '@/lib/agent-memory';
 
 // =============================================================================
 // CLIENT INITIALIZATION
@@ -471,8 +472,18 @@ export async function generateProductContentV3(
   const safetyLog = generateSafetyLogFromRAGandQA(product.title, ragResult, qaResult);
   log.info('[AI-V3] Safety log generated');
 
-  // Step 5: Build enhanced prompt with REAL data from RAG + QA + KG
-  const userPrompt = buildEnhancedPromptV3(product, brand, ragEvidence, qaFacts, kgContext);
+  // Step 4.5: Load agent memory context (business rules, cross-agent notes, verified facts)
+  const memoryContext = getProductMemoryContext({
+    title: product.title,
+    vendor: brand,
+    productType: product.product_type || undefined,
+  });
+  if (memoryContext.promptSection) {
+    log.info(`[AI-V3] AgeMem context loaded: ${memoryContext.summary}`);
+  }
+
+  // Step 5: Build enhanced prompt with REAL data from RAG + QA + KG + AgeMem
+  const userPrompt = buildEnhancedPromptV3(product, brand, ragEvidence, qaFacts, kgContext, memoryContext.promptSection);
 
   // Step 6: Generate content with LLM
   log.info('[AI-V3] Step 6: Generating content with LLM (using RAG+QA context)...');
@@ -740,7 +751,8 @@ function buildEnhancedPromptV3(
   brand: string,
   ragEvidence: RAGEvidence,
   qaFacts: QAFacts | null,
-  kgContext: EnrichedProductDataV3['knowledgeGraphContext']
+  kgContext: EnrichedProductDataV3['knowledgeGraphContext'],
+  memoryPromptSection: string = ''
 ): string {
   const sku = product.variants[0]?.sku || 'N/A';
   
@@ -852,6 +864,11 @@ IMPORTANTE: Per questi dati in conflitto, usa la qualifica "circa" o "tipicament
   // to prevent Gemini from embedding unescaped quotes inside JSON string values
   const safeTitle = product.title.replace(/"/g, '″');
 
+  // === SECTION 0: AgeMem — business rules and cross-agent notes ===
+  const memorySection = memoryPromptSection
+    ? `\n${memoryPromptSection}\n---\n`
+    : '';
+
   return `Genera contenuti per questo prodotto usando SOLO i dati verificati che ti fornisco.
 Questi dati provengono da ricerca web REALE (UniversalRAG) e verifica fatti (TwoPhaseQA).
 NON inventare dati. Se un'informazione non è presente, non includerla.
@@ -860,7 +877,7 @@ NON inventare dati. Se un'informazione non è presente, non includerla.
 **Brand:** ${brand}
 **SKU:** ${sku}
 **Tipo prodotto:** ${product.product_type || 'Elettroutensile'}
-
+${memorySection}
 ${specsSection}
 ${unverifiedSection}
 ${ragSection}
