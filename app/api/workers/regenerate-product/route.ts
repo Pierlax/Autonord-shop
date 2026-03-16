@@ -56,6 +56,7 @@ import {
 } from '@/lib/shopify/ai-enrichment-v3';
 import { ShopifyProductWebhookPayload } from '@/lib/shopify/webhook-types';
 import { findProductImage, ImageAgentV4Result } from '@/lib/agents/image-agent-v4';
+import { uploadProductImageToShopify } from '@/lib/shopify/image-upload';
 import { validateAndCorrect, CleanedContent } from '@/lib/agents/taya-police';
 import { formatProvenanceDisplay } from '@/lib/shopify/provenance-tracking';
 
@@ -452,7 +453,7 @@ async function updateShopifyProductWithMetafields(
 
     // Carica immagine su Shopify CDN (staged upload → più affidabile di URL esterno)
     if (imageResult.success && imageResult.imageUrl) {
-      await uploadImageStaged(productGid, imageResult.imageUrl, imageResult.imageAlt);
+      await uploadProductImageToShopify(productGid, imageResult.imageUrl, imageResult.imageAlt);
     }
 
     // Pubblica il prodotto sull'Online Store (era DRAFT dalla sync iniziale)
@@ -466,164 +467,6 @@ async function updateShopifyProductWithMetafields(
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
     };
-  }
-}
-
-/**
- * Adds a product image with SEO ALT text.
- * Uses imageResult.imageAlt from ImageAgentV4, with product title as fallback.
- */
-async function addProductImage(
-  productGid: string, 
-  imageUrl: string,
-  imageAlt?: string
-): Promise<void> {
-  const url = `https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`;
-  
-  // Ensure GID format
-  const normalizedGid = toShopifyGid(productGid, 'Product');
-  
-  // ALT text for SEO: use imageAlt from ImageAgent, fallback to empty string
-  const alt = imageAlt || '';
-  
-  const mutation = `
-    mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-      productCreateMedia(productId: $productId, media: $media) {
-        media { 
-          ... on MediaImage { 
-            id
-            alt
-          } 
-        }
-        mediaUserErrors { field message }
-      }
-    }
-  `;
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-      },
-      body: JSON.stringify({
-        query: mutation,
-        variables: {
-          productId: normalizedGid,
-          media: [{
-            originalSource: imageUrl,
-            alt,
-            mediaContentType: 'IMAGE',
-          }],
-        },
-      }),
-    });
-    
-    const result = await response.json();
-    if (result.data?.productCreateMedia?.mediaUserErrors?.length > 0) {
-      console.error('[Worker] Image media errors:', result.data.productCreateMedia.mediaUserErrors);
-    } else {
-      console.log(`[Worker V5] Image added with ALT="${alt}": ${imageUrl}`);
-    }
-  } catch (error) {
-    console.error('[Worker] Image add error:', error);
-  }
-}
-
-/**
- * Carica un'immagine su Shopify CDN tramite staged upload (PUT binario).
- * Più affidabile di un URL esterno: l'immagine viene ospitata direttamente su Shopify.
- * Fallback automatico a URL esterno se il fetch o lo staging falliscono.
- */
-async function uploadImageStaged(
-  productGid: string,
-  imageUrl: string,
-  alt: string
-): Promise<void> {
-  const shopifyUrl = `https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`;
-
-  // Step 1: scarica l'immagine dal sito sorgente
-  let imageBuffer: ArrayBuffer;
-  let contentType: string;
-  let fileSize: number;
-  let filename: string;
-
-  try {
-    const resp = await fetch(imageUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Autonord-Bot/1.0)' },
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    imageBuffer = await resp.arrayBuffer();
-    contentType = (resp.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
-    fileSize = imageBuffer.byteLength;
-    filename = (imageUrl.split('/').pop()?.split('?')[0] || 'product.jpg')
-      .replace(/[^a-zA-Z0-9._-]/g, '-');
-    if (!filename.match(/\.(jpg|jpeg|png|webp|gif)$/i)) filename += '.jpg';
-  } catch (fetchErr) {
-    console.warn(`[Worker] Fetch immagine fallito (${fetchErr}), fallback a URL esterno`);
-    await addProductImage(productGid, imageUrl, alt);
-    return;
-  }
-
-  // Step 2: crea staged upload su Shopify
-  const stagedMutation = `
-    mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
-      stagedUploadsCreate(input: $input) {
-        stagedTargets { url resourceUrl parameters { name value } }
-        userErrors { field message }
-      }
-    }
-  `;
-
-  try {
-    const stagedResp = await fetch(shopifyUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-      },
-      body: JSON.stringify({
-        query: stagedMutation,
-        variables: {
-          input: [{
-            filename,
-            mimeType: contentType,
-            resource: 'IMAGE',
-            fileSize: String(fileSize),
-            httpMethod: 'PUT',
-          }],
-        },
-      }),
-    });
-
-    const stagedData = await stagedResp.json();
-
-    if (stagedData.errors?.length || stagedData.data?.stagedUploadsCreate?.userErrors?.length) {
-      throw new Error(
-        stagedData.errors?.[0]?.message ||
-        stagedData.data?.stagedUploadsCreate?.userErrors?.[0]?.message ||
-        'Staged upload error'
-      );
-    }
-
-    const target = stagedData.data.stagedUploadsCreate.stagedTargets[0];
-
-    // Step 3: PUT binario all'URL pre-firmato (Google Cloud Storage)
-    await fetch(target.url, {
-      method: 'PUT',
-      body: imageBuffer,
-      headers: { 'Content-Type': contentType },
-    });
-
-    // Step 4: collega il media al prodotto usando resourceUrl Shopify
-    await addProductImage(productGid, target.resourceUrl, alt);
-    console.log(`[Worker] Immagine caricata via staged upload: ${filename} (${fileSize} bytes)`);
-
-  } catch (stagingErr) {
-    console.warn(`[Worker] Staged upload fallito (${stagingErr}), fallback a URL esterno`);
-    await addProductImage(productGid, imageUrl, alt);
   }
 }
 

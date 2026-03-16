@@ -32,6 +32,7 @@ import { generateProductContentV3, formatDescriptionAsHtmlV3, type EnrichedProdu
 import { type ShopifyProductWebhookPayload, type ShopifyVariant } from '@/lib/shopify/webhook-types';
 import { validateAndCorrect } from '@/lib/agents/taya-police';
 import { findProductImage, type ImageAgentV4Result } from '@/lib/agents/image-agent-v4';
+import { uploadProductImageToShopify } from '@/lib/shopify/image-upload';
 import { env, toShopifyGid } from '@/lib/env';
 import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { hasCriticalBlockers } from '@/lib/agent-memory';
@@ -234,9 +235,9 @@ async function updateShopifyProduct(
       return { success: false, error: json.data.productUpdate.userErrors[0].message };
     }
 
-    // Upload image if found
+    // Upload image via staged upload (CDN Shopify) — no hotlinking
     if (imageResult.success && imageResult.imageUrl) {
-      await uploadProductImage(productGid, imageResult.imageUrl, imageResult.imageAlt || '');
+      await uploadProductImageToShopify(productGid, imageResult.imageUrl, imageResult.imageAlt || '');
     }
 
     return { success: true };
@@ -245,38 +246,6 @@ async function updateShopifyProduct(
   }
 }
 
-async function uploadProductImage(productGid: string, imageUrl: string, altText: string): Promise<void> {
-  try {
-    const mutation = `
-      mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-        productCreateMedia(productId: $productId, media: $media) {
-          media { alt }
-          mediaUserErrors { field message }
-        }
-      }
-    `;
-
-    await fetch(
-      `https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-        },
-        body: JSON.stringify({
-          query: mutation,
-          variables: {
-            productId: productGid,
-            media: [{ alt: altText, mediaContentType: 'IMAGE', originalSource: imageUrl }],
-          },
-        }),
-      }
-    );
-  } catch (error) {
-    log.warn(`Failed to upload image for ${productGid}: ${error}`);
-  }
-}
 
 // =============================================================================
 // MAIN EXECUTION
