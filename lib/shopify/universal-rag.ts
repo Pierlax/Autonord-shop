@@ -23,13 +23,15 @@ import {
   getOptimizedQueries 
 } from './source-router';
 
-import { 
-  GranularityLevel, 
-  GranularityDecision, 
+import {
+  GranularityLevel,
+  GranularityDecision,
   determineGranularity,
+  detectGranularityRules,
+  adaptGranularity,
   chunkByGranularity,
   scoreChunks,
-  selectChunksWithinBudget 
+  selectChunksWithinBudget
 } from './granularity-retrieval';
 
 import { 
@@ -225,8 +227,24 @@ export class UniversalRAGPipeline {
       // Step 3: Determine granularity
       let granularityDecision: GranularityDecision | undefined;
       if (this.config.enableGranularityAware) {
+        // Base decision from enrichment type mapping
         granularityDecision = await determineGranularity(productTitle, vendor, enrichmentType);
-        this.log(state, `Granularity: ${granularityDecision.level} (max ${granularityDecision.maxTokens} tokens)`);
+
+        // Refine with rule-based detection on the actual product context
+        // e.g. if the title contains comparison words → use 'section' instead of 'paragraph'
+        const contextQuery = `${productTitle} ${vendor}`;
+        const rulesDecision = detectGranularityRules(contextQuery);
+        const levels: GranularityLevel[] = ['fact', 'sentence', 'paragraph', 'section', 'document'];
+        const baseIdx = levels.indexOf(granularityDecision.level);
+        const rulesIdx = levels.indexOf(rulesDecision.level);
+
+        if (rulesDecision.confidence >= 0.8 && rulesIdx < baseIdx) {
+          // Rules detected a finer, high-confidence granularity — prefer it
+          granularityDecision = rulesDecision;
+          this.log(state, `Granularity refined by rules: ${rulesDecision.level} (${rulesDecision.reasoning})`);
+        }
+
+        this.log(state, `Granularity: ${granularityDecision.level} (max ${granularityDecision.maxTokens} tokens, confidence: ${granularityDecision.confidence})`);
       }
       
       // Step 4: Create fusion plan
@@ -255,6 +273,20 @@ export class UniversalRAGPipeline {
         state
       );
       
+      // Step 5.5: Adapt granularity based on actual retrieved content density
+      // If content is sparse (low density) → increase granularity (fetch more context)
+      // If content is very dense (high density) → decrease granularity (trim to essentials)
+      if (granularityDecision && this.config.enableGranularityAware) {
+        const density = this.computeInformationDensity(retrievedData, productTitle, vendor);
+        const adapted = adaptGranularity(granularityDecision, 0, density);
+        if (adapted.level !== granularityDecision.level) {
+          this.log(state, `Granularity adapted: ${granularityDecision.level} → ${adapted.level} (density: ${density.toFixed(2)})`);
+          granularityDecision = adapted;
+        } else {
+          this.log(state, `Granularity stable: ${granularityDecision.level} (density: ${density.toFixed(2)})`);
+        }
+      }
+
       // Step 6: Execute fusion
       let fusionResult: FusionResult | undefined;
       if (this.config.enableProactiveFusion && fusionPlan) {
@@ -429,7 +461,7 @@ export class UniversalRAGPipeline {
     log.info(`[UniversalRAG] Retrieved ${allResults.length} total results for source ${source}`);
     
     // Transform SearchResult[] into structured retrieval data for the pipeline
-    return allResults.map(result => ({
+    const mappedResults = allResults.map(result => ({
       source,
       sourceType: source,
       intent,
@@ -440,8 +472,8 @@ export class UniversalRAGPipeline {
       url: result.link,
       domain: result.domain,
       // Confidence based on domain whitelist status
-      confidence: isWhitelistedDomain(result.link) 
-        ? getSourceConfidence(result.link) 
+      confidence: isWhitelistedDomain(result.link)
+        ? getSourceConfidence(result.link)
         : 0.5,
       // Metadata
       granularity: granularityDecision?.level || 'paragraph',
@@ -452,6 +484,12 @@ export class UniversalRAGPipeline {
         timestamp: new Date().toISOString(),
       },
     }));
+
+    // Apply granularity-aware chunking + scoring to filter content within token budget
+    if (granularityDecision && mappedResults.length > 0) {
+      return this.applyGranularityFilter(mappedResults, queries, granularityDecision);
+    }
+    return mappedResults;
   }
   
   /**
@@ -541,38 +579,75 @@ export class UniversalRAGPipeline {
     retrievedData: Map<SourceType, any[]>,
     state: PipelineState
   ): UniversalRAGResult['knowledgeGraphContext'] {
+    // Known battery systems to detect in RAG compatibility text
+    const BATTERY_SYSTEM_PATTERNS: { pattern: RegExp; systemId: string; name: string }[] = [
+      { pattern: /\bm18\b/i, systemId: 'battery_m18', name: 'Milwaukee M18' },
+      { pattern: /\bm12\b/i, systemId: 'battery_m12', name: 'Milwaukee M12' },
+      { pattern: /\blxt\b/i, systemId: 'battery_lxt', name: 'Makita LXT' },
+      { pattern: /\bflexvolt\b/i, systemId: 'battery_flexvolt', name: 'DeWalt FlexVolt' },
+      { pattern: /\b(xr|dcb)\b/i, systemId: 'battery_xr', name: 'DeWalt XR' },
+      { pattern: /\bprocore\b/i, systemId: 'battery_procore', name: 'Bosch ProCORE' },
+      { pattern: /\bnuron\b/i, systemId: 'battery_nuron', name: 'Hilti Nuron' },
+      { pattern: /\blihd\b/i, systemId: 'battery_lihd', name: 'Metabo LiHD' },
+      { pattern: /\bmulti[- ]?volt\b/i, systemId: 'battery_multivolt', name: 'HiKOKI Multi Volt' },
+    ];
+
     try {
       const kg = getKnowledgeGraph();
-      
+
       // Query existing KG knowledge
       const context = kg.enrichProductContext(productTitle, vendor, productType);
-      
-      // Extract compatibility relationships from RAG results and update KG
+
+      // Register this product in the KG so we can attach discovered relations to it
+      const brandId = vendor.toLowerCase().replace(/\s+/g, '_');
+      const categoryId = context.categoryInfo?.id.replace('category_', '');
+      const productNodeId = kg.registerDiscoveredProduct(
+        productTitle.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 60),
+        productTitle,
+        brandId,
+        categoryId
+      );
+
+      // Extract compatibility relationships from RAG text and persist them to the KG
       const compatibilityPatterns = [
-        /compatibil[ei]\s+con\s+([\w\s]+)/gi,
-        /compatible\s+with\s+([\w\s]+)/gi,
-        /funziona\s+con\s+([\w\s]+)/gi,
-        /works\s+with\s+([\w\s]+)/gi,
-        /batteria?\s+([\w\d]+)\s+compatibil/gi,
+        /compatibil[ei]\s+con\s+([\w\s]{2,40})/gi,
+        /compatible\s+with\s+([\w\s]{2,40})/gi,
+        /funziona\s+con\s+([\w\s]{2,40})/gi,
+        /works\s+with\s+([\w\s]{2,40})/gi,
+        /batteria?\s+([\w\d]{2,20})\s+compatibil/gi,
       ];
-      
+
       let relationsFound = 0;
+      let discoveredBatterySystem: string | null = null;
+
       for (const [source, items] of Array.from(retrievedData.entries())) {
         for (const item of items) {
           const text = item.content || item.text || '';
           for (const pattern of compatibilityPatterns) {
             const matches = text.matchAll(pattern);
             for (const match of matches) {
-              if (match[1] && match[1].trim().length > 2) {
-                relationsFound++;
-                // Log the relationship (KG is in-memory, updates persist for this process)
-                this.log(state, `KG: Found compatibility relation: "${match[1].trim()}" from ${source}`);
+              const compatText = match[1]?.trim();
+              if (!compatText || compatText.length < 2) continue;
+
+              relationsFound++;
+              this.log(state, `KG: Found compatibility: "${compatText}" from ${source}`);
+
+              // Identify and persist battery system — write actual edge to the KG
+              if (!discoveredBatterySystem) {
+                for (const { pattern: bp, systemId, name } of BATTERY_SYSTEM_PATTERNS) {
+                  if (bp.test(compatText)) {
+                    discoveredBatterySystem = name;
+                    kg.addRelation(productNodeId, systemId, 'uses_battery');
+                    this.log(state, `KG: Persisted uses_battery edge → ${systemId}`);
+                    break;
+                  }
+                }
               }
             }
           }
         }
       }
-      
+
       // Build cross-sell suggestions from KG
       const crossSellSuggestions: string[] = [];
       if (context.suitableForTrades.length > 0) {
@@ -586,13 +661,14 @@ export class UniversalRAGPipeline {
           }
         }
       }
-      
-      this.log(state, `KG: Brand=${context.brandInfo?.name || 'unknown'}, Category=${context.categoryInfo?.name || 'unknown'}, Trades=${context.suitableForTrades.length}, Relations found=${relationsFound}, CrossSell=${crossSellSuggestions.length}`);
-      
+
+      this.log(state, `KG: Brand=${context.brandInfo?.name || 'unknown'}, Category=${context.categoryInfo?.name || 'unknown'}, Trades=${context.suitableForTrades.length}, Relations found=${relationsFound}, CrossSell=${crossSellSuggestions.length}, BatteryDiscovered=${discoveredBatterySystem || 'none'}`);
+
       return {
         brandInfo: context.brandInfo ? JSON.stringify(context.brandInfo.properties) : null,
         categoryInfo: context.categoryInfo ? context.categoryInfo.name : null,
-        batterySystem: context.batterySystem ? context.batterySystem.name : null,
+        // Prefer RAG-discovered battery system if KG didn't resolve one from brand info
+        batterySystem: context.batterySystem ? context.batterySystem.name : discoveredBatterySystem,
         suitableForTrades: context.suitableForTrades.map(t => t.name),
         relatedUseCases: context.relatedUseCases.map(u => u.name),
         crossSellSuggestions: Array.from(new Set(crossSellSuggestions)).slice(0, 5),
@@ -610,6 +686,103 @@ export class UniversalRAGPipeline {
     }
   }
   
+  /**
+   * Apply granularity-aware chunking and scoring to filter retrieval results
+   * within the token and chunk budget determined by the granularity decision.
+   *
+   * Each result's content is split into sub-chunks at the target granularity,
+   * scored for relevance, and only the top-scoring chunks within budget are kept.
+   * Falls back to original results if filtering is too aggressive.
+   */
+  private applyGranularityFilter(
+    results: any[],
+    queries: string[],
+    decision: GranularityDecision
+  ): any[] {
+    // Extract sub-chunks from each result's content, preserving result metadata
+    const chunksWithMeta: Array<{ chunk: string; meta: any }> = [];
+
+    for (const result of results) {
+      const content = result.content || result.text || '';
+      if (!content) {
+        chunksWithMeta.push({ chunk: content, meta: result });
+        continue;
+      }
+      const subChunks = chunkByGranularity(content, decision.level);
+      if (subChunks.length === 0) {
+        chunksWithMeta.push({ chunk: content, meta: result });
+      } else {
+        for (const chunk of subChunks) {
+          chunksWithMeta.push({ chunk, meta: result });
+        }
+      }
+    }
+
+    if (chunksWithMeta.length === 0) return results;
+
+    // Score all chunks by relevance to the queries
+    const primaryQuery = queries[0] || '';
+    const keywords = queries
+      .flatMap(q => q.split(/\s+/))
+      .filter(w => w.length > 3);
+
+    const chunkTexts = chunksWithMeta.map(c => c.chunk);
+    const scored = scoreChunks(chunkTexts, primaryQuery, keywords);
+
+    // Select within token and chunk budget
+    const selected = selectChunksWithinBudget(scored, decision.maxTokens, decision.maxChunks);
+
+    // Fallback: if selection eliminated everything, return original results
+    if (selected.length === 0) return results;
+
+    // Map selected chunks back to result objects (preserving URL, domain, confidence, etc.)
+    const selectedSet = new Set(selected);
+    const seen = new Set<string>();
+    const filtered: any[] = [];
+
+    for (const { chunk, meta } of chunksWithMeta) {
+      if (selectedSet.has(chunk) && !seen.has(chunk)) {
+        seen.add(chunk);
+        filtered.push({ ...meta, content: chunk, text: chunk, _granularityFiltered: true });
+      }
+    }
+
+    log.info(`[UniversalRAG] Granularity filter (${decision.level}): ${chunksWithMeta.length} chunks → ${filtered.length} selected (budget: ${decision.maxTokens} tokens)`);
+    return filtered.length > 0 ? filtered : results;
+  }
+
+  /**
+   * Compute information density of retrieved content relative to the product.
+   * Returns a 0–1 score: 1.0 = all items mention keywords, 0.0 = none do.
+   * Used by adaptGranularity() to decide whether to expand or contract context.
+   */
+  private computeInformationDensity(
+    retrievedData: Map<SourceType, any[]>,
+    productTitle: string,
+    vendor: string
+  ): number {
+    const keywords = `${productTitle} ${vendor}`
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(w => w.length > 3);
+
+    if (keywords.length === 0) return 0.5;
+
+    let totalItems = 0;
+    let relevantItems = 0;
+
+    for (const items of Array.from(retrievedData.values())) {
+      for (const item of items) {
+        const text = (item.content || item.text || '').toLowerCase();
+        if (!text) continue;
+        totalItems++;
+        if (keywords.some(kw => text.includes(kw))) relevantItems++;
+      }
+    }
+
+    return totalItems > 0 ? relevantItems / totalItems : 0.5;
+  }
+
   /**
    * Estimate tokens from content
    */

@@ -681,6 +681,51 @@ export class PowerToolKnowledgeGraph {
   }
 
   /**
+   * Public method to add a directional relation between two nodes.
+   * Used by the RAG pipeline to persist product relationships discovered from web text.
+   * Silently skips if the from-node doesn't exist (avoids dangling edges).
+   */
+  addRelation(fromId: string, toId: string, type: EdgeType): void {
+    if (!this.graph.nodes.has(fromId) && !fromId.startsWith('product_')) return;
+    // Avoid duplicate edges
+    const exists = this.graph.edges.some(
+      e => e.from === fromId && e.to === toId && e.type === type
+    );
+    if (!exists) {
+      this.addEdge({ from: fromId, to: toId, type });
+    }
+  }
+
+  /**
+   * Register a product discovered during RAG enrichment.
+   * Idempotent: returns existing node ID if product is already in the graph.
+   * Adds manufactures + belongs_to edges automatically if the brand/category nodes exist.
+   */
+  registerDiscoveredProduct(
+    id: string,
+    name: string,
+    brandId: string,
+    categoryId?: string
+  ): string {
+    const nodeId = `product_${id}`;
+    if (!this.graph.nodes.has(nodeId)) {
+      this.addNode({
+        id: nodeId,
+        type: 'product',
+        name,
+        properties: { discoveredFromRAG: true },
+      });
+      if (this.graph.nodes.has(`brand_${brandId}`)) {
+        this.addEdge({ from: `brand_${brandId}`, to: nodeId, type: 'manufactures' });
+      }
+      if (categoryId && this.graph.nodes.has(`category_${categoryId}`)) {
+        this.addEdge({ from: nodeId, to: `category_${categoryId}`, type: 'belongs_to' });
+      }
+    }
+    return nodeId;
+  }
+
+  /**
    * Get graph statistics
    */
   getStats(): {

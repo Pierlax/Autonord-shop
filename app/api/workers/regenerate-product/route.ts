@@ -771,7 +771,16 @@ export async function POST(request: NextRequest) {
 
     const [qaOutput, imageResult] = await Promise.all([
       // TwoPhaseQA (con error handling non bloccante)
+      // Guard: skip if sourceData is too short — saves 2 LLM calls on empty RAG results
       (async () => {
+        const hasEnoughData = (adaptation.qaInput?.sourceData?.length ?? 0) > 100;
+        if (!hasEnoughData) {
+          console.log('[Worker V5] QA: skipped (insufficient sourceData)');
+          return {
+            qaResult: null as TwoPhaseQAResult | null,
+            qaContent: null as ReturnType<typeof twoPhaseQAToProductContent> | null,
+          };
+        }
         try {
           const result = await runTwoPhaseQA(adaptation.qaInput);
           const content = twoPhaseQAToProductContent(result);

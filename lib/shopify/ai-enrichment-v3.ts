@@ -182,6 +182,8 @@ export interface EnrichedProductDataV3 extends EnrichedProductData {
     batterySystem: string | null;
     suitableForTrades: string[];
     relatedUseCases: string[];
+    crossSellSuggestions: string[];  // From RAG-enriched KG (pipeline Step 6.5)
+    suggestedFeatures: string[];     // From static KG feature nodes
   };
   metrics: ContentGenerationMetrics;
 }
@@ -192,17 +194,25 @@ export interface EnrichedProductDataV3 extends EnrichedProductData {
 
 function enrichWithKnowledgeGraph(
   productName: string,
-  brand: string
+  brand: string,
+  ragKgContext?: UniversalRAGResult['knowledgeGraphContext']
 ): EnrichedProductDataV3['knowledgeGraphContext'] {
   const kg = getKnowledgeGraph();
   const context = kg.enrichProductContext(productName, brand);
 
+  // Merge cross-sell suggestions from the RAG-enriched KG context (Step 6.5)
+  // The RAG pipeline discovered these by scanning web text for compatibility patterns
+  const crossSell = Array.from(new Set(ragKgContext?.crossSellSuggestions || [])).slice(0, 5);
+
   return {
     brandInfo: context.brandInfo ? JSON.stringify(context.brandInfo.properties) : null,
     categoryInfo: context.categoryInfo ? context.categoryInfo.name : null,
-    batterySystem: context.batterySystem ? context.batterySystem.name : null,
+    // Prefer RAG-discovered battery system (extracted from actual product text) over static KG lookup
+    batterySystem: ragKgContext?.batterySystem ?? (context.batterySystem ? context.batterySystem.name : null),
     suitableForTrades: context.suitableForTrades.map(t => t.name),
     relatedUseCases: context.relatedUseCases.map(u => u.name),
+    crossSellSuggestions: crossSell,
+    suggestedFeatures: context.suggestedFeatures.map(f => f.name),
   };
 }
 
@@ -445,9 +455,11 @@ export async function generateProductContentV3(
   timings.research = Date.now() - researchStart;
   log.info(`[AI-V3] RAG evidence items: ${ragEvidence.snippets.length}, QA verified facts: ${qaFacts?.verifiedSpecs.length || 0}`);
   
-  // Step 2: Enrich with Knowledge Graph (this is local, no web calls)
-  log.info('[AI-V3] Step 2: Enriching with Knowledge Graph...');
-  const kgContext = enrichWithKnowledgeGraph(product.title, brand);
+  // Step 2: Enrich with Knowledge Graph, merging the RAG-enriched context from Step 6.5
+  // ragResult.knowledgeGraphContext contains cross-sell suggestions and battery systems
+  // discovered by scanning actual web text — richer than the static KG lookup alone
+  log.info('[AI-V3] Step 2: Enriching with Knowledge Graph (merging RAG discoveries)...');
+  const kgContext = enrichWithKnowledgeGraph(product.title, brand, ragResult.knowledgeGraphContext);
   
   // Step 3: Track provenance from RAG + QA data
   log.info('[AI-V3] Step 3: Tracking provenance from RAG + QA...');
@@ -808,14 +820,24 @@ ${kgContext.categoryInfo || 'Categoria non identificata'}
 ${kgContext.batterySystem || 'Non specificato'}
 
 ### Adatto per mestieri:
-${kgContext.suitableForTrades.length > 0 
+${kgContext.suitableForTrades.length > 0
   ? kgContext.suitableForTrades.join(', ')
   : 'Non specificato'}
 
 ### Casi d'uso correlati:
 ${kgContext.relatedUseCases.length > 0
   ? kgContext.relatedUseCases.join(', ')
-  : 'Non specificato'}`;
+  : 'Non specificato'}
+
+### Feature tecniche raccomandate per la categoria:
+${kgContext.suggestedFeatures.length > 0
+  ? kgContext.suggestedFeatures.join(', ')
+  : 'Non specificato'}
+
+### Prodotti complementari (cross-sell da RAG):
+${kgContext.crossSellSuggestions.length > 0
+  ? kgContext.crossSellSuggestions.join(', ')
+  : 'Non disponibili'}`;
 
   // === SECTION 7: Conflicts warning ===
   let conflictsWarning = '';

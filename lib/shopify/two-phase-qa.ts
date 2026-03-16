@@ -202,7 +202,15 @@ export async function extractAtomicFacts(
 ): Promise<SimpleQAResult> {
   const startTime = Date.now();
 
-  const questions = getQuestionsForCategory(productData.category || '');
+  // Use category for question selection, but fall back to product title when
+  // category is generic ('Elettroutensile') or absent — prevents asking drill
+  // questions for a generator, welder, etc.
+  const GENERIC_CATEGORIES = ['elettroutensile', 'attrezzatura professionale', ''];
+  const categoryHint = (productData.category || '').toLowerCase().trim();
+  const effectiveCategory = GENERIC_CATEGORIES.includes(categoryHint)
+    ? `${productData.title} ${productData.category || ''}`
+    : productData.category || '';
+  const questions = getQuestionsForCategory(effectiveCategory);
   const numberedQuestions = questions.map((q, i) => `${i + 1}. ${q}`).join('\n');
 
   const prompt = `Sei un tecnico esperto di attrezzature professionali. Estrai SOLO fatti verificabili dai dati forniti.
@@ -319,6 +327,7 @@ export async function performComplexReasoning(
     title: string;
     brand: string;
     category: string;
+    sourceData?: string; // RAG text — used when Phase 1 found no structured facts
   },
   simpleQA: SimpleQAResult
 ): Promise<ComplexQAResult> {
@@ -330,15 +339,22 @@ export async function performComplexReasoning(
     .map(f => `- ${f.question}: ${f.answer} (${f.confidence})`)
     .join('\n');
 
+  // When Phase 1 found no structured facts, include a truncated snippet of the
+  // raw RAG text so Phase 2 can still reason about real retrieved content
+  const hasNoFacts = factsSummary.trim().length === 0;
+  const sourceDataSection = hasNoFacts && productData.sourceData
+    ? `\nDATI AGGIUNTIVI DA RICERCA WEB (usa per contestualizzare):\n${productData.sourceData.slice(0, 3000)}`
+    : '';
+
   const prompt = `Siete il Team Tecnico di Autonord Service, con oltre 40 anni di esperienza combinata nel settore elettroutensili.
-Basandovi SOLO sui fatti verificati, fate un ragionamento approfondito.
+Basandovi sui fatti verificati (e sui dati aggiuntivi se presenti), fate un ragionamento approfondito.
 
 PRODOTTO: ${productData.title}
 BRAND: ${productData.brand}
 CATEGORIA: ${productData.category}
 
 FATTI VERIFICATI:
-${factsSummary}
+${factsSummary || '(nessun fatto strutturato disponibile — usa i dati aggiuntivi sotto)'}${sourceDataSection}
 
 ---
 
@@ -492,10 +508,19 @@ export async function runTwoPhaseQA(
   }
 
   // Phase 2: Complex QA - Relational reasoning (runs even if Phase 1 failed)
+  // Pass sourceData so Phase 2 can reason from raw text when no structured facts exist
   log.info(`[TwoPhaseQA] Phase 2: Performing complex reasoning...`);
   let complexQA: ComplexQAResult;
   try {
-    complexQA = await performComplexReasoning(truncatedData, simpleQA);
+    complexQA = await performComplexReasoning(
+      {
+        title: truncatedData.title,
+        brand: truncatedData.brand,
+        category: truncatedData.category,
+        sourceData: truncatedData.sourceData,
+      },
+      simpleQA
+    );
     log.info(`[TwoPhaseQA] Phase 2 complete: confidence=${complexQA.recommendation.confidence}`);
   } catch (err) {
     log.error(`[TwoPhaseQA] Phase 2 failed for ${productData.sku}:`, err);

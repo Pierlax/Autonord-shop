@@ -18,6 +18,12 @@
 
 import { UniversalRAGResult } from './universal-rag';
 import { loggers } from '@/lib/logger';
+import {
+  GranularityDecision,
+  chunkByGranularity,
+  scoreChunks,
+  selectChunksWithinBudget,
+} from './granularity-retrieval';
 
 const log = loggers.shopify;
 
@@ -223,6 +229,23 @@ export function adaptRagToQa(
     warnings.push(`${data.conflicts.length} data conflicts detected`);
   }
 
+  // --- Apply granularity-aware budget trimming ---
+  // Score all sections by relevance and keep only the top ones within the
+  // token budget determined by the granularity decision from the RAG pipeline.
+  const granularityDecision = ragResult.metadata?.granularityDecision;
+  if (granularityDecision && sections.length > 0) {
+    const trimmed = applyGranularityToSections(
+      sections,
+      `${productTitle} ${vendor}`,
+      granularityDecision
+    );
+    if (trimmed.length > 0) {
+      sections.length = 0;
+      sections.push(...trimmed);
+      log.info(`[RAG Adapter] Granularity applied (${granularityDecision.level}): ${trimmed.length} sections kept (budget: ${granularityDecision.maxTokens} tokens)`);
+    }
+  }
+
   // --- Build the final sourceData string ---
   const sourceData = sections.join('\n\n');
 
@@ -311,6 +334,30 @@ function extractRelevantFields(obj: any): string | null {
   }
 
   return parts.length > 0 ? parts.join('\n') : null;
+}
+
+/**
+ * Applies granularity-aware scoring and token-budget trimming to the sections
+ * array built by adaptRagToQa.
+ *
+ * Each section is already a structured evidence block (with [Source:] labels).
+ * We score all sections by keyword relevance and keep only those that fit
+ * within the token budget of the granularity decision.
+ *
+ * Uses maxChunks * 2 as the section limit (sections are larger than raw chunks).
+ * Falls back to original sections if filtering is too aggressive.
+ */
+function applyGranularityToSections(
+  sections: string[],
+  query: string,
+  decision: GranularityDecision
+): string[] {
+  const keywords = query.split(/\s+/).filter(w => w.length > 3);
+  const scored = scoreChunks(sections, query, keywords);
+  // Allow more sections than raw chunks (sections are pre-structured evidence blocks)
+  const maxSections = Math.max(decision.maxChunks * 2, 8);
+  const selected = selectChunksWithinBudget(scored, decision.maxTokens, maxSections);
+  return selected.length > 0 ? selected : sections;
 }
 
 /**
