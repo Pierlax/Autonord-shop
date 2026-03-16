@@ -42,22 +42,22 @@ export async function GET(request: NextRequest) {
   try {
     // Stato prima della manutenzione
     const healthBefore = getMemoryHealthReport();
-    log.info(`[MemoryMaintenance] Health before: ${healthBefore.totalMemories} entries, score ${healthBefore.healthScore}`);
+    log.info(`[MemoryMaintenance] Health before: ${healthBefore.stats.totalEntries} entries, status ${healthBefore.status}`);
 
     // Esegui manutenzione completa (cleanup expired + decay + consolidamento)
     const report = runFullMaintenance();
 
     // Stato dopo
     const healthAfter = getMemoryHealthReport();
-    log.info(`[MemoryMaintenance] Health after: ${healthAfter.totalMemories} entries, score ${healthAfter.healthScore}`);
+    log.info(`[MemoryMaintenance] Health after: ${healthAfter.stats.totalEntries} entries, status ${healthAfter.status}`);
     log.info(`[MemoryMaintenance] Done in ${Date.now() - startTime}ms`);
 
     return NextResponse.json({
       success: true,
       report,
       health: {
-        before: { total: healthBefore.totalMemories, score: healthBefore.healthScore },
-        after: { total: healthAfter.totalMemories, score: healthAfter.healthScore },
+        before: { total: healthBefore.stats.totalEntries, status: healthBefore.status },
+        after: { total: healthAfter.stats.totalEntries, status: healthAfter.status },
       },
       processingTime: `${Date.now() - startTime}ms`,
     });
