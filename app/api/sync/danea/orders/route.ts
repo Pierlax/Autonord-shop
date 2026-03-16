@@ -33,11 +33,11 @@ export async function GET(request: NextRequest) {
   }
 
   // Check required environment variables
-  if (!process.env.SHOPIFY_SHOP_DOMAIN || !process.env.SHOPIFY_ADMIN_ACCESS_TOKEN) {
+  if (!process.env.SHOPIFY_ADMIN_ACCESS_TOKEN) {
     return NextResponse.json(
-      { 
-        error: 'Configuration Error', 
-        message: 'Missing SHOPIFY_SHOP_DOMAIN or SHOPIFY_ADMIN_ACCESS_TOKEN environment variables' 
+      {
+        error: 'Configuration Error',
+        message: 'Missing SHOPIFY_ADMIN_ACCESS_TOKEN environment variable',
       },
       { status: 500 }
     );

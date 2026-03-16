@@ -12,9 +12,11 @@
 
 import { ParsedProduct, ShopifyProductInput, ProductSyncResult, SyncResult } from './types';
 import { loggers } from '@/lib/logger';
+import { env, optionalEnv } from '@/lib/env';
 
 const log = loggers.shopify;
 const SHOPIFY_API_VERSION = '2024-01';
+const SHOPIFY_STORE = optionalEnv.SHOPIFY_SHOP_DOMAIN ?? 'autonord-service.myshopify.com';
 
 // Rate limiting: Shopify allows 2 requests/second for Admin API
 const RATE_LIMIT_DELAY = 500; // ms between requests
@@ -27,20 +29,13 @@ async function shopifyAdminRequest<T>(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
   body?: unknown
 ): Promise<T> {
-  const domain = process.env.SHOPIFY_SHOP_DOMAIN;
-  const token = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
-
-  if (!domain || !token) {
-    throw new Error('Missing SHOPIFY_SHOP_DOMAIN or SHOPIFY_ADMIN_ACCESS_TOKEN');
-  }
-
-  const url = `https://${domain}/admin/api/${SHOPIFY_API_VERSION}${endpoint}`;
+  const url = `https://${SHOPIFY_STORE}/admin/api/${SHOPIFY_API_VERSION}${endpoint}`;
 
   const response = await fetch(url, {
     method,
     headers: {
       'Content-Type': 'application/json',
-      'X-Shopify-Access-Token': token,
+      'X-Shopify-Access-Token': env.SHOPIFY_ADMIN_ACCESS_TOKEN,
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -62,20 +57,13 @@ async function shopifyAdminRequest<T>(
  * Make authenticated GraphQL request to Shopify Admin API
  */
 async function shopifyGraphQLRequest<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
-  const domain = process.env.SHOPIFY_SHOP_DOMAIN;
-  const token = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
-
-  if (!domain || !token) {
-    throw new Error('Missing SHOPIFY_SHOP_DOMAIN or SHOPIFY_ADMIN_ACCESS_TOKEN');
-  }
-
-  const url = `https://${domain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
+  const url = `https://${SHOPIFY_STORE}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
 
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Shopify-Access-Token': token,
+      'X-Shopify-Access-Token': env.SHOPIFY_ADMIN_ACCESS_TOKEN,
     },
     body: JSON.stringify({ query, variables }),
   });
@@ -245,6 +233,26 @@ async function findProductBySku(sku: string): Promise<{ id: number; variantId: n
   } catch (error) {
     log.error('Error finding product by SKU:', error);
     return null;
+  }
+}
+
+/**
+ * Delete a product from Shopify by SKU.
+ * Uses GraphQL to find the product (no 250-item REST limit), then REST DELETE.
+ */
+export async function deleteProductBySku(sku: string): Promise<boolean> {
+  try {
+    const found = await findProductBySku(sku);
+    if (!found) {
+      log.warn(`[deleteProductBySku] Product not found for SKU: ${sku}`);
+      return false;
+    }
+    await shopifyAdminRequest(`/products/${found.id}.json`, 'DELETE');
+    log.info(`[deleteProductBySku] Deleted product ${found.id} (SKU: ${sku})`);
+    return true;
+  } catch (error) {
+    log.error(`[deleteProductBySku] Error deleting product with SKU ${sku}:`, error);
+    return false;
   }
 }
 

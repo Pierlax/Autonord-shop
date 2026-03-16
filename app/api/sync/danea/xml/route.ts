@@ -15,7 +15,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { parseDaneaXML, isDaneaXML } from '@/lib/danea/xml-parser';
-import { syncProductsToShopify, syncSingleProduct } from '@/lib/danea/shopify-sync';
+import { syncProductsToShopify, syncSingleProduct, deleteProductBySku } from '@/lib/danea/shopify-sync';
 import { queueProductEnrichment, EnrichmentJob } from '@/lib/queue';
 import { loggers } from '@/lib/logger';
 
@@ -35,62 +35,6 @@ function verifySecret(request: NextRequest): boolean {
   const url = new URL(request.url);
   const querySecret = url.searchParams.get('secret');
   return querySecret === secret;
-}
-
-// Delete product from Shopify by SKU
-async function deleteProductBySku(sku: string): Promise<boolean> {
-  const domain = process.env.SHOPIFY_SHOP_DOMAIN;
-  const token = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
-  
-  if (!domain || !token) {
-    log.error('Missing Shopify credentials');
-    return false;
-  }
-  
-  try {
-    // First, find the product by SKU
-    const searchUrl = `https://${domain}/admin/api/2024-01/products.json?fields=id,variants&limit=250`;
-    const searchResponse = await fetch(searchUrl, {
-      headers: {
-        'X-Shopify-Access-Token': token,
-        'Content-Type': 'application/json',
-      },
-    });
-    
-    if (!searchResponse.ok) {
-      log.error('Failed to search products', { sku });
-      return false;
-    }
-    
-    const { products } = await searchResponse.json();
-    
-    // Find product with matching SKU
-    for (const product of products) {
-      for (const variant of product.variants || []) {
-        if (variant.sku === sku) {
-          // Delete the product
-          const deleteUrl = `https://${domain}/admin/api/2024-01/products/${product.id}.json`;
-          const deleteResponse = await fetch(deleteUrl, {
-            method: 'DELETE',
-            headers: {
-              'X-Shopify-Access-Token': token,
-            },
-          });
-          
-          if (deleteResponse.ok) {
-            log.info('Product deleted', { sku, productId: product.id });
-            return true;
-          }
-        }
-      }
-    }
-    
-    log.warn('Product not found for deletion', { sku });
-    return false;
-  } catch (error) {
-    log.error('Error deleting product', error);
-    return false;
-  }
 }
 
 /**
