@@ -12,6 +12,7 @@
 
 import { Client } from '@upstash/qstash';
 import { loggers } from '@/lib/logger';
+import { optionalEnv } from '@/lib/env';
 
 const log = loggers.queue;
 
@@ -20,7 +21,7 @@ let qstashClient: Client | null = null;
 
 function getQStashClient(): Client {
   if (!qstashClient) {
-    const token = process.env.QSTASH_TOKEN;
+    const token = optionalEnv.QSTASH_TOKEN;
     if (!token) {
       throw new Error('QSTASH_TOKEN environment variable is not set');
     }
