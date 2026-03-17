@@ -490,16 +490,10 @@ async function searchDirectUrls(
   }
 
   // Italian retailer search pages — best for EU/Italian brands (IMER, Husqvarna, Montolit,
-  // Hikoki, Metabo, etc.) that are not well indexed by UK/US retailers.
-  // Uses title as fallback when no MPN/SKU is available.
-  const italianSearchTerm = encodeURIComponent(primaryCode || title.substring(0, 80));
-  candidateUrls.push(
-    { url: `https://www.rotopino.it/search?q=${italianSearchTerm}`, domain: 'rotopino.it', confidence: 'medium' },
-    { url: `https://www.fixami.it/search?q=${italianSearchTerm}`, domain: 'fixami.it', confidence: 'medium' },
-    { url: `https://www.misterworker.com/it/search/?q=${italianSearchTerm}`, domain: 'misterworker.com', confidence: 'medium' },
-    { url: `https://www.totalutensili.it/search?q=${italianSearchTerm}`, domain: 'totalutensili.it', confidence: 'medium' },
-    { url: `https://www.manomano.it/search/${italianSearchTerm}`, domain: 'manomano.it', confidence: 'medium' },
-  );
+  // Italian retailer search pages (rotopino, fixami, misterworker, etc.) are intentionally
+  // NOT added here — search/listing pages return an og:image for whichever product happens
+  // to be first in the results, not necessarily our product.
+  // These domains are still searched via Google in searchWeb(), which finds direct product pages.
 
   // Try each URL — stop at the first valid og:image
   for (const candidate of candidateUrls) {
@@ -791,6 +785,23 @@ async function fetchOgImageFromPage(
   if (/\.(jpg|jpeg|png|webp)(\?.*)?$/i.test(pageUrl)) {
     return isValidImageUrl(pageUrl) ? pageUrl : null;
   }
+
+  // Reject search/category/listing pages — their og:image reflects whatever product
+  // happened to be first in the results, not our specific product.
+  try {
+    const parsed = new URL(pageUrl);
+    const path = parsed.pathname.toLowerCase();
+    const query = parsed.search.toLowerCase();
+    if (
+      path.includes('/search') || path.includes('/cerca') || path.includes('/ricerca') ||
+      path.includes('/category') || path.includes('/categoria') || path.includes('/listing') ||
+      query.includes('?q=') || query.includes('&q=') || query.includes('?query=') ||
+      query.includes('search=') || query.includes('keyword=')
+    ) {
+      console.log(`[ImageAgent V4] Skipping search/category page: ${pageUrl.substring(0, 80)}`);
+      return null;
+    }
+  } catch { /* invalid URL — let fetch handle it */ }
 
   try {
     const controller = new AbortController();
