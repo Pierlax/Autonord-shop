@@ -254,10 +254,15 @@ export default async function ProductPage({ params }: Props) {
                     RICHIEDI PREVENTIVO
                   </button>
                 ) : (
-                  <AddToCartButton 
-                    variantId={product.variants.edges[0]?.node.id} 
+                  <AddToCartButton
+                    variantId={product.variants.edges[0]?.node.id}
                     available={!isOutOfStock}
                     productTitle={productTitleFormatted}
+                    variantTitle={product.variants.edges[0]?.node.title}
+                    price={product.priceRange.minVariantPrice.amount}
+                    currencyCode={product.priceRange.minVariantPrice.currencyCode}
+                    imageUrl={product.featuredImage?.url ?? null}
+                    handle={product.handle}
                   />
                 )}
               </div>
@@ -379,11 +384,15 @@ export default async function ProductPage({ params }: Props) {
 
       {/* Sticky Mobile CTA */}
       {!isB2B && (
-        <StickyMobileCTA 
+        <StickyMobileCTA
           variantId={product.variants.edges[0]?.node.id}
           available={!isOutOfStock}
           price={formattedPrice}
           productTitle={productTitleFormatted}
+          variantTitle={product.variants.edges[0]?.node.title}
+          currencyCode={product.priceRange.minVariantPrice.currencyCode}
+          imageUrl={product.featuredImage?.url ?? null}
+          handle={product.handle}
         />
       )}
     </>

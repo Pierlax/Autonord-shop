@@ -271,6 +271,26 @@ export async function getProductByHandle(handle: string): Promise<Product | unde
   return res?.product;
 }
 
+export async function createCheckoutMulti(
+  lineItems: { variantId: string; quantity: number }[]
+): Promise<string | null> {
+  const query = `
+    mutation checkoutCreate($input: CheckoutCreateInput!) {
+      checkoutCreate(input: $input) {
+        checkout { webUrl }
+        checkoutUserErrors { code field message }
+      }
+    }
+  `;
+  const res = await ShopifyData(query, { input: { lineItems } });
+  if (!res) return null;
+  if (res.checkoutCreate.checkoutUserErrors.length > 0) {
+    log.error("Checkout Errors:", res.checkoutCreate.checkoutUserErrors);
+    return null;
+  }
+  return res.checkoutCreate.checkout.webUrl;
+}
+
 export async function createCheckout(variantId: string, quantity: number): Promise<string | null> {
   const query = `
     mutation checkoutCreate($input: CheckoutCreateInput!) {

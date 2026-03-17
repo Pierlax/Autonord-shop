@@ -1,106 +1,104 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import {
-  Cart,
-  cartCreate,
-  cartLinesAdd,
-  cartLinesUpdate,
-  cartLinesRemove,
-  getCart,
-} from '@/lib/shopify/cart';
+import { createCheckoutMulti } from '@/lib/shopify';
 
 // =============================================================================
-// CONTEXT TYPE
+// TYPES
 // =============================================================================
+
+export interface CartItem {
+  variantId: string;
+  quantity: number;
+  title: string;
+  variantTitle: string;
+  price: string;         // e.g. "149.00"
+  currencyCode: string;  // e.g. "EUR"
+  imageUrl: string | null;
+  handle: string;
+}
 
 interface CartContextValue {
-  cart: Cart | null;
+  items: CartItem[];
   itemCount: number;
-  loading: boolean;
-  addItem: (variantId: string, quantity?: number) => Promise<boolean>;
-  updateItem: (lineId: string, quantity: number) => Promise<void>;
-  removeItem: (lineId: string) => Promise<void>;
+  subtotal: number;
+  checkoutLoading: boolean;
+  addItem: (item: Omit<CartItem, 'quantity'>, quantity?: number) => boolean;
+  updateQty: (variantId: string, quantity: number) => void;
+  removeItem: (variantId: string) => void;
+  checkout: () => Promise<void>;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
-
-const CART_ID_KEY = 'shopify_cart_id';
+const STORAGE_KEY = 'autonord_cart';
 
 // =============================================================================
 // PROVIDER
 // =============================================================================
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [cart, setCart] = useState<Cart | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [items, setItems] = useState<CartItem[]>([]);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
 
-  // Restore cart from localStorage on mount
+  // Hydrate from localStorage
   useEffect(() => {
-    const savedCartId = typeof window !== 'undefined' ? localStorage.getItem(CART_ID_KEY) : null;
-    if (!savedCartId) return;
-
-    getCart(savedCartId).then(existing => {
-      if (existing) {
-        setCart(existing);
-      } else {
-        // Cart expired or invalid — clear it
-        localStorage.removeItem(CART_ID_KEY);
-      }
-    });
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) setItems(JSON.parse(raw));
+    } catch { /* ignore */ }
   }, []);
 
-  const persistCart = (newCart: Cart) => {
-    setCart(newCart);
-    localStorage.setItem(CART_ID_KEY, newCart.id);
-  };
+  // Persist on every change
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  }, [items]);
 
-  const addItem = useCallback(async (variantId: string, quantity = 1): Promise<boolean> => {
-    setLoading(true);
-    try {
-      let updated: Cart | null;
-      if (cart) {
-        updated = await cartLinesAdd(cart.id, variantId, quantity);
-      } else {
-        updated = await cartCreate(variantId, quantity);
+  const addItem = useCallback((itemData: Omit<CartItem, 'quantity'>, quantity = 1): boolean => {
+    setItems(prev => {
+      const existing = prev.find(i => i.variantId === itemData.variantId);
+      if (existing) {
+        return prev.map(i =>
+          i.variantId === itemData.variantId
+            ? { ...i, quantity: i.quantity + quantity }
+            : i
+        );
       }
-      if (updated) {
-        persistCart(updated);
-        return true;
+      return [...prev, { ...itemData, quantity }];
+    });
+    return true;
+  }, []);
+
+  const updateQty = useCallback((variantId: string, quantity: number) => {
+    if (quantity <= 0) {
+      setItems(prev => prev.filter(i => i.variantId !== variantId));
+    } else {
+      setItems(prev => prev.map(i => i.variantId === variantId ? { ...i, quantity } : i));
+    }
+  }, []);
+
+  const removeItem = useCallback((variantId: string) => {
+    setItems(prev => prev.filter(i => i.variantId !== variantId));
+  }, []);
+
+  const checkout = useCallback(async () => {
+    if (items.length === 0) return;
+    setCheckoutLoading(true);
+    try {
+      const lineItems = items.map(i => ({ variantId: i.variantId, quantity: i.quantity }));
+      const url = await createCheckoutMulti(lineItems);
+      if (url) {
+        window.location.href = url;
       }
-      console.error('[Cart] addItem: API returned null — check storefront token and variant ID');
-      return false;
     } finally {
-      setLoading(false);
+      setCheckoutLoading(false);
     }
-  }, [cart]);
+  }, [items]);
 
-  const updateItem = useCallback(async (lineId: string, quantity: number) => {
-    if (!cart) return;
-    setLoading(true);
-    try {
-      const updated = await cartLinesUpdate(cart.id, lineId, quantity);
-      if (updated) persistCart(updated);
-    } finally {
-      setLoading(false);
-    }
-  }, [cart]);
-
-  const removeItem = useCallback(async (lineId: string) => {
-    if (!cart) return;
-    setLoading(true);
-    try {
-      const updated = await cartLinesRemove(cart.id, lineId);
-      if (updated) persistCart(updated);
-    } finally {
-      setLoading(false);
-    }
-  }, [cart]);
-
-  const itemCount = cart?.totalQuantity ?? 0;
+  const itemCount = items.reduce((sum, i) => sum + i.quantity, 0);
+  const subtotal = items.reduce((sum, i) => sum + parseFloat(i.price) * i.quantity, 0);
 
   return (
-    <CartContext.Provider value={{ cart, itemCount, loading, addItem, updateItem, removeItem }}>
+    <CartContext.Provider value={{ items, itemCount, subtotal, checkoutLoading, addItem, updateQty, removeItem, checkout }}>
       {children}
     </CartContext.Provider>
   );

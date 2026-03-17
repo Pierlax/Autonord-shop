@@ -5,18 +5,41 @@ import { ShoppingCart, Loader2, Check, Truck, ExternalLink } from 'lucide-react'
 import { useCart } from '@/lib/cart-context';
 import { toast } from 'sonner';
 
-export function AddToCartButton({ variantId, available, productTitle }: {
+interface AddToCartProps {
   variantId: string;
   available: boolean;
   productTitle?: string;
-}) {
-  const { addItem, loading, cart } = useCart();
+  variantTitle?: string;
+  price?: string;
+  currencyCode?: string;
+  imageUrl?: string | null;
+  handle?: string;
+}
+
+export function AddToCartButton({
+  variantId,
+  available,
+  productTitle = '',
+  variantTitle = '',
+  price = '0',
+  currencyCode = 'EUR',
+  imageUrl = null,
+  handle = '',
+}: AddToCartProps) {
+  const { addItem, itemCount } = useCart();
+  const [loading, setLoading] = useState(false);
   const [justAdded, setJustAdded] = useState(false);
 
-  const handleAddToCart = async () => {
+  const handleAddToCart = () => {
     if (!available) return;
+    setLoading(true);
 
-    const ok = await addItem(variantId);
+    const ok = addItem(
+      { variantId, title: productTitle, variantTitle, price, currencyCode, imageUrl, handle },
+      1
+    );
+
+    setLoading(false);
 
     if (ok) {
       setJustAdded(true);
@@ -40,18 +63,13 @@ export function AddToCartButton({ variantId, available, productTitle }: {
         }
       );
     } else {
-      toast.error('Impossibile aggiungere al carrello. Riprova o contattaci.');
+      toast.error('Impossibile aggiungere al carrello. Riprova.');
     }
-  };
-
-  const handleBuyNow = () => {
-    if (!cart?.checkoutUrl) return;
-    window.location.href = cart.checkoutUrl;
   };
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Primary CTA: Add to Cart */}
+      {/* Primary CTA */}
       <button
         onClick={handleAddToCart}
         disabled={!available || loading}
@@ -73,14 +91,14 @@ export function AddToCartButton({ variantId, available, productTitle }: {
           : 'AGGIUNGI AL CARRELLO'}
       </button>
 
-      {/* Secondary: Go to checkout directly (only when cart exists) */}
-      {available && cart && cart.totalQuantity > 0 && (
+      {/* Go to checkout when cart has items */}
+      {available && itemCount > 0 && (
         <button
-          onClick={handleBuyNow}
+          onClick={() => { window.location.href = '/cart'; }}
           className="w-full inline-flex items-center justify-center rounded-lg border-2 border-primary bg-transparent px-6 py-3 text-sm font-semibold text-primary hover:bg-primary/5 transition-all"
         >
           <ExternalLink className="mr-2 h-4 w-4" />
-          Acquista ora ({cart.totalQuantity} art. nel carrello)
+          Vai al carrello ({itemCount} {itemCount === 1 ? 'articolo' : 'articoli'})
         </button>
       )}
 
@@ -94,26 +112,43 @@ export function AddToCartButton({ variantId, available, productTitle }: {
 }
 
 // Sticky Mobile CTA
-export function StickyMobileCTA({ variantId, available, price, productTitle }: {
+export function StickyMobileCTA({
+  variantId,
+  available,
+  price,
+  productTitle = '',
+  variantTitle = '',
+  currencyCode = 'EUR',
+  imageUrl = null,
+  handle = '',
+}: {
   variantId: string;
   available: boolean;
   price: string;
   productTitle?: string;
+  variantTitle?: string;
+  currencyCode?: string;
+  imageUrl?: string | null;
+  handle?: string;
 }) {
-  const { addItem, loading } = useCart();
+  const { addItem } = useCart();
   const [justAdded, setJustAdded] = useState(false);
 
-  const handleAdd = async () => {
+  // Extract raw numeric price from formatted string like "€149,00"
+  const rawPrice = price.replace(/[^0-9,.]/g, '').replace(',', '.');
+
+  const handleAdd = () => {
     if (!available) return;
-    const ok = await addItem(variantId);
+    const ok = addItem(
+      { variantId, title: productTitle, variantTitle, price: rawPrice, currencyCode, imageUrl, handle },
+      1
+    );
     if (ok) {
       setJustAdded(true);
       setTimeout(() => setJustAdded(false), 2000);
       toast.success(productTitle ? `"${productTitle}" aggiunto al carrello` : 'Aggiunto al carrello!', {
         action: { label: 'Carrello', onClick: () => { window.location.href = '/cart'; } },
       });
-    } else {
-      toast.error('Impossibile aggiungere al carrello. Riprova.');
     }
   };
 
@@ -126,12 +161,10 @@ export function StickyMobileCTA({ variantId, available, price, productTitle }: {
         </div>
         <button
           onClick={handleAdd}
-          disabled={!available || loading}
+          disabled={!available}
           className="flex-1 max-w-[200px] inline-flex items-center justify-center rounded-lg bg-primary px-4 py-3 text-sm font-bold text-primary-foreground shadow hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
         >
-          {loading ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : justAdded ? (
+          {justAdded ? (
             <Check className="mr-2 h-4 w-4" />
           ) : (
             <ShoppingCart className="mr-2 h-4 w-4" />

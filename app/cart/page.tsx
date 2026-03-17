@@ -6,13 +6,9 @@ import Link from 'next/link';
 import Image from 'next/image';
 
 export default function CartPage() {
-  const { cart, itemCount, loading, updateItem, removeItem } = useCart();
+  const { items, itemCount, subtotal, checkoutLoading, updateQty, removeItem, checkout } = useCart();
 
-  const lines = cart?.lines?.edges?.map(e => e.node) ?? [];
-  const total = cart?.cost?.totalAmount;
-  const checkoutUrl = cart?.checkoutUrl;
-
-  if (itemCount === 0 && !loading) {
+  if (itemCount === 0) {
     return (
       <div className="container max-w-2xl mx-auto px-4 py-24 text-center">
         <ShoppingCart className="w-16 h-16 text-muted-foreground mx-auto mb-6" />
@@ -35,33 +31,26 @@ export default function CartPage() {
     <div className="container max-w-5xl mx-auto px-4 py-12">
       <h1 className="text-3xl font-bold mb-8">
         Carrello
-        {itemCount > 0 && (
-          <span className="ml-3 text-lg font-normal text-muted-foreground">
-            ({itemCount} {itemCount === 1 ? 'articolo' : 'articoli'})
-          </span>
-        )}
+        <span className="ml-3 text-lg font-normal text-muted-foreground">
+          ({itemCount} {itemCount === 1 ? 'articolo' : 'articoli'})
+        </span>
       </h1>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Line items */}
         <div className="lg:col-span-2 space-y-4">
-          {lines.map(line => {
-            const img = line.merchandise.product.featuredImage;
-            const unitPrice = parseFloat(line.merchandise.price.amount);
-            const currency = line.merchandise.price.currencyCode;
-            const lineTotal = (unitPrice * line.quantity).toFixed(2);
+          {items.map(item => {
+            const unitPrice = parseFloat(item.price);
+            const lineTotal = (unitPrice * item.quantity).toFixed(2);
 
             return (
-              <div
-                key={line.id}
-                className="flex gap-4 p-4 border border-border rounded-xl bg-card"
-              >
+              <div key={item.variantId} className="flex gap-4 p-4 border border-border rounded-xl bg-card">
                 {/* Image */}
                 <div className="relative w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden bg-muted">
-                  {img ? (
+                  {item.imageUrl ? (
                     <Image
-                      src={img.url}
-                      alt={img.altText ?? line.merchandise.product.title}
+                      src={item.imageUrl}
+                      alt={item.title}
                       fill
                       sizes="96px"
                       className="object-contain"
@@ -76,44 +65,40 @@ export default function CartPage() {
                 {/* Details */}
                 <div className="flex-1 min-w-0">
                   <Link
-                    href={`/products/${line.merchandise.product.handle}`}
+                    href={item.handle ? `/products/${item.handle}` : '#'}
                     className="font-semibold text-sm hover:text-primary transition-colors line-clamp-2"
                   >
-                    {line.merchandise.product.title}
+                    {item.title}
                   </Link>
-                  {line.merchandise.title !== 'Default Title' && (
-                    <p className="text-xs text-muted-foreground mt-0.5">{line.merchandise.title}</p>
+                  {item.variantTitle && item.variantTitle !== 'Default Title' && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{item.variantTitle}</p>
                   )}
                   <p className="text-xs text-muted-foreground mt-1">
-                    {unitPrice.toFixed(2)} {currency} / cad.
+                    {unitPrice.toFixed(2)} {item.currencyCode} / cad.
                   </p>
 
                   {/* Qty controls */}
                   <div className="flex items-center gap-3 mt-3">
                     <div className="flex items-center border border-border rounded-lg overflow-hidden">
                       <button
-                        onClick={() => line.quantity > 1 ? updateItem(line.id, line.quantity - 1) : removeItem(line.id)}
-                        disabled={loading}
-                        className="p-2 hover:bg-muted transition-colors disabled:opacity-50"
+                        onClick={() => updateQty(item.variantId, item.quantity - 1)}
+                        className="p-2 hover:bg-muted transition-colors"
                         aria-label="Diminuisci quantità"
                       >
                         <Minus className="w-3 h-3" />
                       </button>
-                      <span className="w-8 text-center text-sm font-medium">{line.quantity}</span>
+                      <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
                       <button
-                        onClick={() => updateItem(line.id, line.quantity + 1)}
-                        disabled={loading}
-                        className="p-2 hover:bg-muted transition-colors disabled:opacity-50"
+                        onClick={() => updateQty(item.variantId, item.quantity + 1)}
+                        className="p-2 hover:bg-muted transition-colors"
                         aria-label="Aumenta quantità"
                       >
                         <Plus className="w-3 h-3" />
                       </button>
                     </div>
-
                     <button
-                      onClick={() => removeItem(line.id)}
-                      disabled={loading}
-                      className="p-2 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
+                      onClick={() => removeItem(item.variantId)}
+                      className="p-2 text-muted-foreground hover:text-destructive transition-colors"
                       aria-label="Rimuovi dal carrello"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -123,18 +108,11 @@ export default function CartPage() {
 
                 {/* Line total */}
                 <div className="text-right flex-shrink-0">
-                  <p className="font-bold">{lineTotal} {currency}</p>
+                  <p className="font-bold">{lineTotal} {item.currencyCode}</p>
                 </div>
               </div>
             );
           })}
-
-          {loading && (
-            <div className="flex items-center justify-center py-4 text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" />
-              <span className="text-sm">Aggiornamento carrello...</span>
-            </div>
-          )}
         </div>
 
         {/* Order summary */}
@@ -144,42 +122,32 @@ export default function CartPage() {
 
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Subtotale</span>
-              <span>
-                {cart?.cost?.subtotalAmount?.amount
-                  ? `${parseFloat(cart.cost.subtotalAmount.amount).toFixed(2)} ${cart.cost.subtotalAmount.currencyCode}`
-                  : '—'}
-              </span>
+              <span>{subtotal.toFixed(2)} {items[0]?.currencyCode ?? 'EUR'}</span>
             </div>
-
             <div className="flex justify-between text-sm text-muted-foreground">
               <span>Spedizione</span>
               <span>Calcolata al checkout</span>
             </div>
-
             <div className="border-t border-border pt-4 flex justify-between font-bold text-lg">
               <span>Totale</span>
-              <span>
-                {total
-                  ? `${parseFloat(total.amount).toFixed(2)} ${total.currencyCode}`
-                  : '—'}
-              </span>
+              <span>{subtotal.toFixed(2)} {items[0]?.currencyCode ?? 'EUR'}</span>
             </div>
-
             <p className="text-xs text-muted-foreground">Prezzi IVA esclusa. IVA calcolata al checkout.</p>
 
-            {checkoutUrl ? (
-              <a
-                href={checkoutUrl}
-                className="w-full inline-flex items-center justify-center gap-2 px-6 py-4 bg-primary text-primary-foreground rounded-lg font-bold hover:bg-primary/90 transition-colors"
-              >
-                Procedi al checkout
-                <ArrowRight className="w-5 h-5" />
-              </a>
-            ) : (
-              <button disabled className="w-full px-6 py-4 bg-primary/50 text-primary-foreground rounded-lg font-bold cursor-not-allowed">
-                Procedi al checkout
-              </button>
-            )}
+            <button
+              onClick={checkout}
+              disabled={checkoutLoading}
+              className="w-full inline-flex items-center justify-center gap-2 px-6 py-4 bg-primary text-primary-foreground rounded-lg font-bold hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {checkoutLoading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <>
+                  Procedi al checkout
+                  <ArrowRight className="w-5 h-5" />
+                </>
+              )}
+            </button>
 
             <Link
               href="/products"
