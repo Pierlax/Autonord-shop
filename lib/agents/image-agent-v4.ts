@@ -504,7 +504,7 @@ async function searchDirectUrls(
   // Try each URL — stop at the first valid og:image
   for (const candidate of candidateUrls) {
     try {
-      const imageUrl = await fetchOgImageFromPage(candidate.url, brand, codes);
+      const imageUrl = await fetchOgImageFromPage(candidate.url, brand, codes, title);
       if (imageUrl) {
         console.log(`[ImageAgent V4] ✅ Direct URL hit on ${candidate.domain}: ${imageUrl}`);
         return { found: true, imageUrl, domain: candidate.domain, confidence: candidate.confidence };
@@ -601,7 +601,7 @@ async function searchGoldStandard(
 
     for (const result of searchResults) {
       if (isBlockedDomain(result.link)) continue;
-      const imageUrl = await fetchOgImageFromPage(result.link, brand, codes);
+      const imageUrl = await fetchOgImageFromPage(result.link, brand, codes, title);
       if (imageUrl) {
         if (isWrongProductImage(imageUrl, codes)) {
           console.log(`[ImageAgent V4] Cross-code mismatch, skipping: ${imageUrl}`);
@@ -732,18 +732,60 @@ function isWrongProductImage(imageUrl: string, expectedCodes: string[]): boolean
 }
 
 /**
+ * Checks whether a page title indicates that the page is about the correct product.
+ *
+ * This prevents accepting og:image from search results pages, category pages, or
+ * unrelated products returned by retailer search engines.
+ *
+ * Returns true  → page is plausibly about our product (accept the image).
+ * Returns false → page is clearly unrelated (skip and try next candidate).
+ * Returns null  → can't tell (no page title found — accept with caution).
+ */
+function pageMatchesProduct(
+  pageTitle: string,
+  brand: string,
+  codes: string[],
+  productTitle: string
+): boolean | null {
+  if (!pageTitle) return null;
+  const lower = pageTitle.toLowerCase();
+
+  // Strong positive: brand name in page title
+  if (brand.length > 2 && lower.includes(brand.toLowerCase())) return true;
+
+  // Strong positive: any product code in page title (skip 1-3 char codes — too generic)
+  if (codes.some(c => c.length >= 4 && lower.includes(c.toLowerCase()))) return true;
+
+  // Strong positive: significant word from product title (≥5 chars)
+  const titleWords = productTitle.toLowerCase()
+    .split(/[\s\-\/]+/)
+    .filter(w => w.length >= 5 && !/^(motore|benzina|elettrico|professionale|per|con|the|and)$/i.test(w));
+  if (titleWords.some(w => lower.includes(w))) return true;
+
+  // Strong negative: page is clearly a search/category/home page
+  if (/\b(search|risultati|ricerca|cerca|categoria|category|homepage|benvenuti|welcome)\b/.test(lower)) {
+    return false;
+  }
+
+  // Can't determine — accept with caution
+  return null;
+}
+
+/**
  * Fetches a product page HTML and extracts the og:image (or twitter:image) meta tag.
  *
- * og:image is the canonical product image set by the retailer for social sharing —
- * it is always the main product image, never a logo or placeholder.
- * Reads only the first 50KB of the response (the <head> is always near the top).
+ * Before returning a URL:
+ * 1. Checks that the page title matches the product (rejects search results pages
+ *    and unrelated products fetched by overly broad retailer searches).
+ * 2. Validates the image URL is a downloadable binary (content-type: image/*).
  *
- * Returns null if the fetch fails, times out, or no valid image is found.
+ * Returns null if the fetch fails, times out, page is wrong product, or no valid image found.
  */
 async function fetchOgImageFromPage(
   pageUrl: string,
   brand: string,
-  codes: string[]
+  codes: string[],
+  productTitle?: string
 ): Promise<string | null> {
   // If the URL itself is already a direct image, use it
   if (/\.(jpg|jpeg|png|webp)(\?.*)?$/i.test(pageUrl)) {
@@ -783,6 +825,24 @@ async function fetchOgImageFromPage(
       if (html.includes('</head>')) break;
     }
     reader.cancel();
+
+    // --- Page relevance check ---
+    // Extract og:title first, fall back to <title> tag
+    const ogTitleMatch =
+      html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i) ||
+      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
+    const htmlTitleMatch = html.match(/<title[^>]*>([^<]{3,120})<\/title>/i);
+    const pageTitle = decodeHtmlEntities(
+      (ogTitleMatch?.[1] || htmlTitleMatch?.[1] || '').trim()
+    );
+
+    if (productTitle && pageTitle) {
+      const match = pageMatchesProduct(pageTitle, brand, codes, productTitle);
+      if (match === false) {
+        console.log(`[ImageAgent V4] Page rejected (title mismatch): "${pageTitle.substring(0, 70)}" — expected: ${brand} ${codes[0] || productTitle.substring(0, 30)}`);
+        return null;
+      }
+    }
 
     // 1. og:image — highest priority (canonical product image)
     const ogMatch =
@@ -995,7 +1055,7 @@ async function searchOfficialSite(
     const searchResults = await performWebSearch(searchQuery, domains, { maxResults: 5 });
 
     for (const result of searchResults) {
-      const imageUrl = await fetchOgImageFromPage(result.link, brand, codes);
+      const imageUrl = await fetchOgImageFromPage(result.link, brand, codes, title);
       if (imageUrl) {
         console.log(`[ImageAgent V4] og:image from official site ${extractDomain(result.link)}: ${imageUrl}`);
         return {
@@ -1097,7 +1157,7 @@ async function searchWeb(
     );
 
     for (const result of validResults) {
-      const imageUrl = await fetchOgImageFromPage(result.link, brand, codes);
+      const imageUrl = await fetchOgImageFromPage(result.link, brand, codes, title);
       if (imageUrl && !isWrongProductImage(imageUrl, codes)) {
         console.log(`[ImageAgent V4] og:image from web search ${extractDomain(result.link)}: ${imageUrl}`);
         return {
