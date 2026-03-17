@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { Search, ShoppingCart, Menu, Phone, Truck, User, BookOpen, ChevronDown, Package, FileText } from 'lucide-react';
+import { Search, Menu, Phone, Truck, User, BookOpen, ChevronDown, Package, FileText } from 'lucide-react';
+import { CartBadge } from '@/components/ui/cart-badge';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -184,13 +185,7 @@ export function Header() {
             <span className="hidden lg:inline-block">Accedi</span>
           </Link>
           
-          <Link href="/cart" className="relative inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 py-2 w-9 px-0">
-            <ShoppingCart className="h-5 w-5" />
-            <span className="sr-only">Carrello</span>
-            <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-[10px] font-bold text-primary-foreground flex items-center justify-center">
-              0
-            </span>
-          </Link>
+          <CartBadge />
         </div>
       </div>
 
