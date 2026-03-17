@@ -145,6 +145,13 @@ export function adaptRagToQa(
         const text = item.content || item.text || item.snippet;
         const confidence = item.confidence ? ` [confidence: ${item.confidence}]` : '';
         sections.push(`[Source: ${sourceLabel}${confidence}]\n${text}`);
+      } else if (item.field !== undefined && item.value !== undefined) {
+        // CombinedEvidence format from proactive-fusion.ts: { field, value, sources, evidenceType, isVerified }
+        const sourceList = Array.isArray(item.sources)
+          ? item.sources.map((s: any) => s.source || String(s)).join(', ')
+          : sourceLabel;
+        const verified = item.isVerified ? ' ✓' : '';
+        sections.push(`[${item.evidenceType || 'evidence'}${verified} | ${sourceList}]\n${item.field}: ${item.value}`);
       } else if (typeof item === 'object') {
         // Generic object — stringify relevant fields
         const relevantFields = extractRelevantFields(item);

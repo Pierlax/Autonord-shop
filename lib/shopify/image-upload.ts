@@ -115,6 +115,13 @@ export async function uploadProductImageToShopify(
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     imageBuffer = await resp.arrayBuffer();
     contentType = (resp.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
+    // Reject non-image responses (e.g. HTML bot-protection pages served with 200 OK).
+    // In this case we also skip the URL-based fallback: if the source returns HTML to us,
+    // Shopify's own crawler will be blocked too — creating a FAILED media entry.
+    if (!contentType.startsWith('image/')) {
+      log.warn(`[image-upload] Skipping image: source returned non-image content-type "${contentType}" (bot protection?) for ${imageUrl}`);
+      return;
+    }
     fileSize = imageBuffer.byteLength;
     filename = (imageUrl.split('/').pop()?.split('?')[0] || 'product.jpg')
       .replace(/[^a-zA-Z0-9._-]/g, '-');
