@@ -16,28 +16,32 @@ export function AddToCartButton({ variantId, available, productTitle }: {
   const handleAddToCart = async () => {
     if (!available) return;
 
-    await addItem(variantId);
-    setJustAdded(true);
-    setTimeout(() => setJustAdded(false), 2500);
+    const ok = await addItem(variantId);
 
-    toast.success(
-      <div className="flex items-center gap-3">
-        <div className="flex-shrink-0 w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-          <Check className="w-5 h-5 text-green-600" />
-        </div>
-        <div>
-          <p className="font-semibold">Aggiunto al carrello!</p>
-          {productTitle && <p className="text-xs text-gray-500 line-clamp-1">{productTitle}</p>}
-        </div>
-      </div>,
-      {
-        duration: 3500,
-        action: {
-          label: 'Vai al carrello',
-          onClick: () => { window.location.href = '/cart'; },
-        },
-      }
-    );
+    if (ok) {
+      setJustAdded(true);
+      setTimeout(() => setJustAdded(false), 2500);
+      toast.success(
+        <div className="flex items-center gap-3">
+          <div className="flex-shrink-0 w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+            <Check className="w-5 h-5 text-green-600" />
+          </div>
+          <div>
+            <p className="font-semibold">Aggiunto al carrello!</p>
+            {productTitle && <p className="text-xs text-gray-500 line-clamp-1">{productTitle}</p>}
+          </div>
+        </div>,
+        {
+          duration: 3500,
+          action: {
+            label: 'Vai al carrello',
+            onClick: () => { window.location.href = '/cart'; },
+          },
+        }
+      );
+    } else {
+      toast.error('Impossibile aggiungere al carrello. Riprova o contattaci.');
+    }
   };
 
   const handleBuyNow = () => {
@@ -101,12 +105,16 @@ export function StickyMobileCTA({ variantId, available, price, productTitle }: {
 
   const handleAdd = async () => {
     if (!available) return;
-    await addItem(variantId);
-    setJustAdded(true);
-    setTimeout(() => setJustAdded(false), 2000);
-    toast.success(productTitle ? `"${productTitle}" aggiunto al carrello` : 'Aggiunto al carrello!', {
-      action: { label: 'Carrello', onClick: () => { window.location.href = '/cart'; } },
-    });
+    const ok = await addItem(variantId);
+    if (ok) {
+      setJustAdded(true);
+      setTimeout(() => setJustAdded(false), 2000);
+      toast.success(productTitle ? `"${productTitle}" aggiunto al carrello` : 'Aggiunto al carrello!', {
+        action: { label: 'Carrello', onClick: () => { window.location.href = '/cart'; } },
+      });
+    } else {
+      toast.error('Impossibile aggiungere al carrello. Riprova.');
+    }
   };
 
   return (

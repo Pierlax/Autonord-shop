@@ -18,7 +18,7 @@ interface CartContextValue {
   cart: Cart | null;
   itemCount: number;
   loading: boolean;
-  addItem: (variantId: string, quantity?: number) => Promise<void>;
+  addItem: (variantId: string, quantity?: number) => Promise<boolean>;
   updateItem: (lineId: string, quantity: number) => Promise<void>;
   removeItem: (lineId: string) => Promise<void>;
 }
@@ -55,7 +55,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(CART_ID_KEY, newCart.id);
   };
 
-  const addItem = useCallback(async (variantId: string, quantity = 1) => {
+  const addItem = useCallback(async (variantId: string, quantity = 1): Promise<boolean> => {
     setLoading(true);
     try {
       let updated: Cart | null;
@@ -64,7 +64,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
       } else {
         updated = await cartCreate(variantId, quantity);
       }
-      if (updated) persistCart(updated);
+      if (updated) {
+        persistCart(updated);
+        return true;
+      }
+      console.error('[Cart] addItem: API returned null — check storefront token and variant ID');
+      return false;
     } finally {
       setLoading(false);
     }

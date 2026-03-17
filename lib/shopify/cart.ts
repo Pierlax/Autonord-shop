@@ -42,7 +42,10 @@ export interface Cart {
 // =============================================================================
 
 async function storefrontFetch<T>(query: string, variables?: object): Promise<T | null> {
-  if (!domain || !storefrontAccessToken) return null;
+  if (!domain || !storefrontAccessToken) {
+    console.error('[Cart] Missing NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN or NEXT_PUBLIC_SHOPIFY_STOREFRONT_ACCESS_TOKEN');
+    return null;
+  }
 
   try {
     const res = await fetch(`https://${domain}/api/2024-01/graphql.json`, {
@@ -55,9 +58,15 @@ async function storefrontFetch<T>(query: string, variables?: object): Promise<T 
       cache: 'no-store',
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`[Cart] HTTP ${res.status}:`, await res.text());
+      return null;
+    }
     const json = await res.json();
-    if (json.errors) { console.error('[Cart] GraphQL errors:', json.errors); return null; }
+    if (json.errors) {
+      console.error('[Cart] GraphQL errors:', JSON.stringify(json.errors));
+      return null;
+    }
     return json.data as T;
   } catch (err) {
     console.error('[Cart] Fetch error:', err);
