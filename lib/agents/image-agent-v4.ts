@@ -1140,8 +1140,10 @@ async function searchWeb(
     for (const imgResult of imageResults) {
       if (isBlockedDomain(imgResult.imageUrl)) continue;
       if (!isValidImageUrl(imgResult.imageUrl)) continue;
-      if (!isTrustedDomain(imgResult.imageUrl)) continue; // reject random sites
+      if (!isTrustedDomain(imgResult.imageUrl)) continue;
       if (isWrongProductImage(imgResult.imageUrl, codes)) continue;
+      // Validate downloadability (same check as staged upload)
+      if (!(await validateImageDownloadable(imgResult.imageUrl))) continue;
       console.log(`[ImageAgent V4] Web image search hit: ${imgResult.imageUrl}`);
       return {
         found: true,
@@ -1150,13 +1152,31 @@ async function searchWeb(
       };
     }
 
-    // STEP B: Web search + og:image extraction — only from trusted domains
+    // STEP B: Web search + og:image extraction — only from trusted domains.
+    // Strict mode: pre-filter by Google's title+snippet before fetching the page.
+    // This prevents accepting og:image from unrelated products returned by broad
+    // retailer searches (e.g. misterworker returning a chainsaw for a vibratory plate).
     const searchResults = await performWebSearch(searchQuery, undefined, { maxResults: 10 });
     const validResults = searchResults.filter(r =>
       !isBlockedDomain(r.link) && isTrustedDomain(r.link)
     );
 
     for (const result of validResults) {
+      // Pre-filter: check Google's title+snippet — more reliable than the page's own og:title
+      // because it reflects what Google indexed (actual product content), not JS-rendered metadata.
+      const googleContext = `${result.title || ''} ${result.snippet || ''}`;
+      const titleMatch = pageMatchesProduct(googleContext, brand, codes, title);
+      if (titleMatch === false) {
+        console.log(`[ImageAgent V4] Web result skipped (mismatch): "${result.title?.substring(0, 60)}"`);
+        continue;
+      }
+      // For generic web search (last fallback), require positive confirmation —
+      // not just absence of mismatch — to avoid accepting unrelated images.
+      if (titleMatch === null) {
+        console.log(`[ImageAgent V4] Web result skipped (no confirmation): "${result.title?.substring(0, 60)}"`);
+        continue;
+      }
+
       const imageUrl = await fetchOgImageFromPage(result.link, brand, codes, title);
       if (imageUrl && !isWrongProductImage(imageUrl, codes)) {
         console.log(`[ImageAgent V4] og:image from web search ${extractDomain(result.link)}: ${imageUrl}`);
