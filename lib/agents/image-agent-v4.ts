@@ -324,6 +324,7 @@ function extractIdentifiers(
   
   // Categoria dal titolo
   const categoryKeywords: Record<string, string[]> = {
+    // Power tools
     'portabit': ['portabit', 'bit holder', 'porta inserti', 'prolunga', 'extension'],
     'adattatore': ['adattatore', 'adapter', 'riduzione', 'raccordo'],
     'lama': ['lama', 'blade', 'ricambio', 'replacement'],
@@ -334,6 +335,16 @@ function extractIdentifiers(
     'smerigliatrice': ['smerigliatrice', 'grinder', 'flex'],
     'aspiratore': ['aspiratore', 'vacuum', 'aspirapolvere'],
     'kit': ['kit', 'set', 'combo'],
+    // Construction & heavy equipment
+    'piastra vibrante': ['piastra vibrante', 'vibratory plate', 'compattatore', 'compactor'],
+    'betoniera': ['betoniera', 'concrete mixer', 'miscelatore', 'miscelatura'],
+    'tagliapiastrelle': ['tagliapiastrelle', 'tile cutter', 'tagliatrice piastrelle', 'taglio piastrelle'],
+    'generatore': ['generatore', 'gruppo elettrogeno', 'generator', 'genset'],
+    'miniescavatore': ['miniescavatore', 'mini escavatore', 'minipala', 'micro escavatore'],
+    'benna': ['benna', 'bucket', 'benna escavatore', 'benna demolitrice', 'pinza'],
+    'motosega': ['motosega', 'chainsaw', 'motosega a scoppio'],
+    'idropulitrice': ['idropulitrice', 'pressure washer', 'lavapavimenti'],
+    'pompa': ['pompa', 'pump', 'pompa calce', 'intonacatrice'],
   };
   
   const titleLower = title.toLowerCase();
@@ -468,9 +479,7 @@ async function searchDirectUrls(
     );
   }
 
-  // Generic UK/US retailer search pages — added as a reliable free fallback.
-  // When the query is an exact product code, many retailers' search pages contain only
-  // one result and their og:image IS the product image (not the site logo).
+  // Generic UK/US retailer search pages — reliable for power tools.
   if (primaryCode) {
     candidateUrls.push(
       { url: `https://www.toolstop.co.uk/search?q=${encodeURIComponent(primaryCode)}`, domain: 'toolstop.co.uk', confidence: 'medium' },
@@ -479,6 +488,18 @@ async function searchDirectUrls(
       { url: `https://www.acmetools.com/search?q=${encodeURIComponent(primaryCode)}`, domain: 'acmetools.com', confidence: 'medium' },
     );
   }
+
+  // Italian retailer search pages — best for EU/Italian brands (IMER, Husqvarna, Montolit,
+  // Hikoki, Metabo, etc.) that are not well indexed by UK/US retailers.
+  // Uses title as fallback when no MPN/SKU is available.
+  const italianSearchTerm = encodeURIComponent(primaryCode || title.substring(0, 80));
+  candidateUrls.push(
+    { url: `https://www.rotopino.it/search?q=${italianSearchTerm}`, domain: 'rotopino.it', confidence: 'medium' },
+    { url: `https://www.fixami.it/search?q=${italianSearchTerm}`, domain: 'fixami.it', confidence: 'medium' },
+    { url: `https://www.misterworker.com/it/search/?q=${italianSearchTerm}`, domain: 'misterworker.com', confidence: 'medium' },
+    { url: `https://www.totalutensili.it/search?q=${italianSearchTerm}`, domain: 'totalutensili.it', confidence: 'medium' },
+    { url: `https://www.manomano.it/search/${italianSearchTerm}`, domain: 'manomano.it', confidence: 'medium' },
+  );
 
   // Try each URL — stop at the first valid og:image
   for (const candidate of candidateUrls) {
@@ -769,7 +790,7 @@ async function fetchOgImageFromPage(
       html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
     if (ogMatch?.[1]) {
       const url = maximizeImageUrl(decodeHtmlEntities(ogMatch[1].trim()));
-      if (isValidImageUrl(url)) return url;
+      if (isValidImageUrl(url) && await validateImageDownloadable(url)) return url;
     }
 
     // 2. twitter:image — same purpose, equally reliable
@@ -778,7 +799,7 @@ async function fetchOgImageFromPage(
       html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i);
     if (twitterMatch?.[1]) {
       const url = maximizeImageUrl(decodeHtmlEntities(twitterMatch[1].trim()));
-      if (isValidImageUrl(url)) return url;
+      if (isValidImageUrl(url) && await validateImageDownloadable(url)) return url;
     }
 
     return null;
@@ -830,6 +851,36 @@ function maximizeImageUrl(url: string): string {
     return url;
   } catch {
     return url;
+  }
+}
+
+/**
+ * Verifies that an image URL actually serves binary image data.
+ * Performs a HEAD request and checks that Content-Type starts with "image/".
+ * This catches bot-protection pages that return HTML with HTTP 200, which
+ * would be silently accepted without this check and cause Shopify FAILED media.
+ *
+ * Uses a short timeout (4s) so it fails fast for blocked/slow sources.
+ */
+async function validateImageDownloadable(url: string): Promise<boolean> {
+  try {
+    const resp = await fetch(url, {
+      method: 'HEAD',
+      signal: AbortSignal.timeout(4000),
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+        'Accept': 'image/*,*/*;q=0.8',
+      },
+    });
+    if (!resp.ok) return false;
+    const ct = resp.headers.get('content-type') || '';
+    if (!ct.startsWith('image/')) {
+      console.log(`[ImageAgent V4] HEAD check: ${url.substring(0, 80)} → blocked (${ct.split(';')[0]})`);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -1019,8 +1070,8 @@ async function searchWeb(
 ): Promise<{ found: boolean; imageUrl: string | null; domain: string | null }> {
 
   const searchQuery = codes[0]
-    ? `${brand} ${codes[0]} product image site:toolstop.co.uk OR site:ffx.co.uk OR site:screwfix.com OR site:acmetools.com OR site:rotopino.it`
-    : `${brand} ${title} product image site:toolstop.co.uk OR site:ffx.co.uk OR site:acmetools.com`;
+    ? `${brand} ${codes[0]} product image site:toolstop.co.uk OR site:ffx.co.uk OR site:acmetools.com OR site:rotopino.it OR site:fixami.it OR site:misterworker.com OR site:totalutensili.it OR site:manomano.it`
+    : `${brand} ${title} product image site:toolstop.co.uk OR site:ffx.co.uk OR site:rotopino.it OR site:fixami.it OR site:manomano.it`;
 
   try {
     // STEP A: Direct image search — restricted to trusted domains only
@@ -1077,6 +1128,14 @@ function normalizeBrand(vendor: string): string {
     'dewalt industrial': 'DeWalt',
     'robert bosch': 'Bosch',
     'stanley black & decker': 'DeWalt',
+    'imer international': 'IMER',
+    'hikoki power tools': 'HiKOKI',
+    'hikoki power tools italia': 'HiKOKI',
+    'metabo italia': 'Metabo',
+    'husqvarna italia': 'Husqvarna',
+    'nilfisk italia': 'Nilfisk',
+    'cangini benne': 'Cangini',
+    'hammer benne': 'Hammer',
   };
   
   const lower = vendor.toLowerCase();
