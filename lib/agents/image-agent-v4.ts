@@ -1155,6 +1155,14 @@ async function searchWeb(
       if (!isValidImageUrl(imgResult.imageUrl)) continue;
       if (!isTrustedDomain(imgResult.imageUrl)) continue;
       if (isWrongProductImage(imgResult.imageUrl, codes)) continue;
+      // Skip images from blog/news/article pages — editorial images, not product photos
+      const urlLower = imgResult.imageUrl.toLowerCase();
+      if (urlLower.includes('/blog/') || urlLower.includes('blog.') ||
+          urlLower.includes('/news/') || urlLower.includes('/post/') ||
+          urlLower.includes('/article/') || urlLower.includes('/wp-content/uploads/')) {
+        console.log(`[ImageAgent V4] STEP A: skipping blog/editorial image: ${imgResult.imageUrl.substring(0, 80)}`);
+        continue;
+      }
       // Validate downloadability (same check as staged upload)
       if (!(await validateImageDownloadable(imgResult.imageUrl))) continue;
       console.log(`[ImageAgent V4] Web image search hit: ${imgResult.imageUrl}`);
