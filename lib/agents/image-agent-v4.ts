@@ -56,7 +56,6 @@ const GOLD_STANDARD_DOMAINS = {
     'manomano.it',
     'totalutensili.it',
     'toolshopitalia.it',
-    'misterworker.com',
     'utensileriaonline.it',
     'fershop.eu',
     'contorion.de',
@@ -66,9 +65,12 @@ const GOLD_STANDARD_DOMAINS = {
 };
 
 const BLOCKED_DOMAINS = [
-  'amazon.', 'ebay.', 'aliexpress.', 
+  'amazon.', 'ebay.', 'aliexpress.',
   'facebook.', 'instagram.', 'pinterest.', 'twitter.', 'youtube.',
   'tiktok.', 'reddit.', 'wish.com',
+  // misterworker.com uses a generic placeholder image (chain-0.jpg) for products
+  // that lack proper photos — this causes wrong images to be uploaded.
+  'misterworker.com',
 ];
 
 // =============================================================================
@@ -1141,7 +1143,7 @@ async function searchWeb(
 ): Promise<{ found: boolean; imageUrl: string | null; domain: string | null }> {
 
   const searchQuery = codes[0]
-    ? `${brand} ${codes[0]} product image site:toolstop.co.uk OR site:ffx.co.uk OR site:acmetools.com OR site:rotopino.it OR site:fixami.it OR site:misterworker.com OR site:totalutensili.it OR site:manomano.it`
+    ? `${brand} ${codes[0]} product image site:toolstop.co.uk OR site:ffx.co.uk OR site:acmetools.com OR site:rotopino.it OR site:fixami.it OR site:totalutensili.it OR site:manomano.it`
     : `${brand} ${title} product image site:toolstop.co.uk OR site:ffx.co.uk OR site:rotopino.it OR site:fixami.it OR site:manomano.it`;
 
   try {
