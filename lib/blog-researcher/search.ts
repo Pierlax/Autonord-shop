@@ -175,7 +175,7 @@ async function fetchRssFeed(source: RssSource): Promise<SearchResult[]> {
     const items: RssItem[] = itemMatches.map(block => ({
       title: (block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/) ?? [])[1] ?? (block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/) ?? [])[2] ?? '',
       link: (block.match(/<link>(.*?)<\/link>/) ?? [])[1] ?? '',
-      description: (block.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>|<description>(.*?)<\/description>/s) ?? [])[1] ?? '',
+      description: (block.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>|<description>([\s\S]*?)<\/description>/) ?? [])[1] ?? '',
       pubDate: (block.match(/<pubDate>(.*?)<\/pubDate>/) ?? [])[1] ?? '',
     }));
 
