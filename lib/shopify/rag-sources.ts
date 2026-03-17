@@ -40,7 +40,30 @@ export const OFFICIAL_BRANDS: readonly string[] = [
   'festool.it',
   'festool.com',
   'metabo.com',
+  'metabo.it',
   'hikoki-powertools.it',
+  'hikoki-powertools.com',
+  'hilti.com',
+  'hilti.it',
+  // Macchine da cantiere e benne
+  'cangini.com',
+  'yanmar.com',
+  'yanmar.it',
+  'hammer-benne.it',
+  'tmbenne.com',
+  // Gruppi elettrogeni
+  'tecnogen.it',
+  'honda-engines.eu',
+  // Attrezzatura edilizia
+  'imer.it',
+  'montolit.com',
+  // Veicoli speciali / ricambi
+  'vem-italia.it',
+  // Altro
+  'husqvarna.com',
+  'husqvarna.it',
+  'nilfisk.com',
+  'nilfisk.it',
 ] as const;
 
 /**
@@ -58,6 +81,14 @@ export const TRUSTED_RETAILERS: readonly string[] = [
   'rotopino.it',
   'fixami.it',
   'manomano.it',
+  'totalutensili.it',
+  'toolshopitalia.it',
+  'misterworker.com',
+  'utensileriaonline.it',
+  'fershop.eu',
+  // Ricambi veicoli e auto
+  'autodoc.it',
+  'tecnocar.it',
 ] as const;
 
 /**
@@ -70,6 +101,15 @@ export const EXPERT_REVIEWS: readonly string[] = [
   'workshopaddict.com',
   'coptool.com',
   'toolsinaction.com',
+  'tendsupplies.com',
+  'extoltools.com',
+  // Macchine da cantiere
+  'constructionequipment.com',
+  'macchineescavatori.it',
+  // Gruppi elettrogeni
+  'generatoradvisor.com',
+  // Edilizia
+  'edilportale.com',
 ] as const;
 
 /**
@@ -81,6 +121,9 @@ export const TECHNICAL_MANUALS: readonly string[] = [
   'manualslib.com',
   'toolpartspro.com',
   'mmtoolparts.com',
+  'manuals.plus',
+  // Macchine edili e da cantiere
+  'machinerycenter.com',
 ] as const;
 
 // =============================================================================

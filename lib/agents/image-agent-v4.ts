@@ -13,6 +13,7 @@
 
 import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { performWebSearch, searchProductImages } from '@/lib/shopify/search-client';
+import { cachedGeneric } from '@/lib/shopify/rag-cache';
 
 // =============================================================================
 // CONFIG
@@ -25,15 +26,20 @@ const GOLD_STANDARD_DOMAINS = {
     'makita.it', 'makita.com', 'makita.eu',
     'dewalt.it', 'dewalt.com',
     'bosch-professional.com',
+    'metabo.com', 'metabo.it',
+    'hikoki-powertools.it', 'hikoki-powertools.com',
+    'hilti.com', 'hilti.it',
+    'festool.it', 'festool.com',
   ],
   // UK - Foto professionali eccellenti
   uk: [
     'toolstop.co.uk',
-    'ffx.co.uk', 
+    'ffx.co.uk',
     'screwfix.com',
     'toolstation.com',
     'powertoolworld.co.uk',
     'kelvinpowertools.com',
+    'lawson-his.co.uk',
   ],
   // USA - Cataloghi completi
   usa: [
@@ -48,6 +54,11 @@ const GOLD_STANDARD_DOMAINS = {
     'rotopino.it',
     'fixami.it',
     'manomano.it',
+    'totalutensili.it',
+    'toolshopitalia.it',
+    'misterworker.com',
+    'utensileriaonline.it',
+    'fershop.eu',
     'contorion.de',
     'svh24.de',
     'toolnation.nl',
@@ -92,7 +103,39 @@ interface ProductIdentifiers {
 // MAIN FUNCTION
 // =============================================================================
 
+/**
+ * Generates a deterministic cache key for a product image search.
+ * Same djb2 algorithm used by rag-cache.ts.
+ */
+function generateImageCacheKey(title: string, vendor: string, sku: string | null, barcode: string | null): string {
+  const input = `${title}|${vendor}|${sku || ''}|${barcode || ''}`.toLowerCase().trim();
+  let hash = 5381;
+  for (let i = 0; i < input.length; i++) {
+    hash = ((hash << 5) + hash) + input.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+/**
+ * Cached version of findProductImage.
+ * Results are stored for 7 days (same TTL as RAG image intent).
+ * On cache hit, skips all HTTP requests entirely.
+ */
 export async function findProductImage(
+  title: string,
+  vendor: string,
+  sku: string | null,
+  barcode: string | null
+): Promise<ImageAgentV4Result> {
+  const cacheKey = generateImageCacheKey(title, vendor, sku, barcode);
+  return cachedGeneric<ImageAgentV4Result>(
+    cacheKey,
+    () => findProductImageUncached(title, vendor, sku, barcode),
+  );
+}
+
+async function findProductImageUncached(
   title: string,
   vendor: string,
   sku: string | null,
@@ -472,8 +515,32 @@ async function searchGoldStandard(
     priorityDomains = ['dewalt.it', 'toolstop.co.uk', 'screwfix.com'];
   } else if (brandLower.includes('bosch')) {
     priorityDomains = ['bosch-professional.com', 'toolstop.co.uk'];
+  } else if (brandLower.includes('hilti')) {
+    priorityDomains = ['hilti.it', 'hilti.com', 'toolstop.co.uk'];
+  } else if (brandLower.includes('metabo')) {
+    priorityDomains = ['metabo.it', 'metabo.com', 'toolstop.co.uk'];
+  } else if (brandLower.includes('hikoki') || brandLower.includes('hitachi')) {
+    priorityDomains = ['hikoki-powertools.it', 'hikoki-powertools.com', 'toolstop.co.uk'];
+  } else if (brandLower.includes('festool')) {
+    priorityDomains = ['festool.it', 'festool.com', 'toolstop.co.uk'];
   } else if (brandLower.includes('yanmar')) {
-    priorityDomains = ['yanmar.com', 'yanmarce.com'];
+    priorityDomains = ['yanmar.it', 'yanmar.com'];
+  } else if (brandLower.includes('cangini')) {
+    priorityDomains = ['cangini.com', 'macchineescavatori.it'];
+  } else if (brandLower.includes('hammer')) {
+    priorityDomains = ['hammer-benne.it', 'macchineescavatori.it'];
+  } else if (brandLower.includes('tecnogen')) {
+    priorityDomains = ['tecnogen.it', 'generatoradvisor.com'];
+  } else if (brandLower.includes('imer')) {
+    priorityDomains = ['imer.it', 'edilportale.com'];
+  } else if (brandLower.includes('montolit')) {
+    priorityDomains = ['montolit.com', 'totalutensili.it'];
+  } else if (brandLower.includes('husqvarna')) {
+    priorityDomains = ['husqvarna.it', 'husqvarna.com', 'toolstop.co.uk'];
+  } else if (brandLower.includes('nilfisk')) {
+    priorityDomains = ['nilfisk.it', 'nilfisk.com'];
+  } else if (brandLower.includes('vem') || brandLower.includes('dfsk')) {
+    priorityDomains = ['vem-italia.it', 'autodoc.it'];
   } else {
     priorityDomains = [...GOLD_STANDARD_DOMAINS.uk.slice(0, 3), ...GOLD_STANDARD_DOMAINS.eu.slice(0, 2)];
   }
@@ -827,7 +894,21 @@ async function searchOfficialSite(
     'dewalt': ['dewalt.it', 'dewalt.com'],
     'bosch': ['bosch-professional.com'],
     'hilti': ['hilti.it', 'hilti.com'],
-    'yanmar': ['yanmar.com', 'yanmarce.com'],
+    'metabo': ['metabo.it', 'metabo.com'],
+    'hikoki': ['hikoki-powertools.it', 'hikoki-powertools.com'],
+    'hitachi': ['hikoki-powertools.it', 'hikoki-powertools.com'],
+    'festool': ['festool.it', 'festool.com'],
+    'yanmar': ['yanmar.it', 'yanmar.com'],
+    'cangini': ['cangini.com'],
+    'hammer': ['hammer-benne.it'],
+    'tmbenne': ['tmbenne.com'],
+    'tecnogen': ['tecnogen.it'],
+    'imer': ['imer.it'],
+    'montolit': ['montolit.com'],
+    'husqvarna': ['husqvarna.it', 'husqvarna.com'],
+    'nilfisk': ['nilfisk.it', 'nilfisk.com'],
+    'vem': ['vem-italia.it'],
+    'dfsk': ['vem-italia.it'],
   };
   
   const brandLower = brand.toLowerCase();

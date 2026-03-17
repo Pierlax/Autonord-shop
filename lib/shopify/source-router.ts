@@ -14,7 +14,7 @@ import { loggers } from '@/lib/logger';
 
 const log = loggers.shopify;
 
-// Source types available for power tool products
+// Source types available for all product categories (power tools, excavators, generators, construction, vehicle parts)
 export type SourceType = 
   | 'official_specs'      // Manufacturer specifications, datasheets
   | 'official_manuals'    // User manuals, instruction PDFs
@@ -95,8 +95,8 @@ const INTENT_SOURCE_MAPPING: Record<QueryIntent, { primary: SourceType[], second
 export function ruleBasedRoute(query: string, productType?: string): RoutingDecision {
   const queryLower = query.toLowerCase();
   
-  // Technical specs patterns
-  if (/volt|watt|amp|torque|rpm|peso|dimensioni|capacità|potenza|nm|ah/i.test(queryLower)) {
+  // Technical specs patterns (power tools + heavy equipment + generators)
+  if (/volt|watt|amp|torque|rpm|peso|dimensioni|capacità|potenza|nm|ah|kva|kw|portata|benna|diesel|motore|cilindrata|bar|litri\/min/i.test(queryLower)) {
     return createRoutingDecision('technical_specs', 0.85, 'Detected technical specification keywords');
   }
   
@@ -141,16 +141,17 @@ export async function llmBasedRoute(
   query: string,
   productContext?: { title: string; vendor: string; productType: string }
 ): Promise<RoutingDecision> {
-  const systemPrompt = `Sei un router intelligente per un sistema RAG di e-commerce elettroutensili.
+  const systemPrompt = `Sei un router intelligente per un sistema RAG di e-commerce attrezzatura professionale.
+Il catalogo copre: elettroutensili, escavatori/miniescavatori e benne, gruppi elettrogeni, attrezzatura edilizia (betoniere, tagliapiastrelle), aspirapolvere industriali, motoseghe, ricambi veicoli speciali.
 Il tuo compito è classificare l'intento della query e determinare quali fonti consultare.
 
 INTENTI POSSIBILI:
-- technical_specs: Specifiche tecniche (voltaggio, peso, coppia, RPM, dimensioni)
+- technical_specs: Specifiche tecniche (voltaggio, peso, coppia, RPM, kW, portata, dimensioni)
 - pricing_value: Prezzo, valore, convenienza economica
 - user_experience: Esperienza d'uso reale, durabilità, affidabilità
 - comparison: Confronti tra prodotti o marchi
 - how_to: Istruzioni d'uso, manutenzione, tutorial
-- compatibility: Compatibilità batterie, accessori, ricambi
+- compatibility: Compatibilità batterie, accessori, ricambi, attacchi idraulici
 - troubleshooting: Problemi, guasti, riparazioni
 
 FONTI DISPONIBILI:
@@ -159,7 +160,7 @@ FONTI DISPONIBILI:
 - retailer_data: Listini Amazon, eBay, distributori
 - user_reviews: Recensioni clienti
 - forum_discussions: Forum professionisti, Reddit
-- comparison_sites: Pro Tool Reviews, siti comparativi
+- comparison_sites: Pro Tool Reviews, siti comparativi, riviste settore edile/movimento terra
 - video_content: Video YouTube, tutorial
 
 Rispondi SOLO con JSON valido:
@@ -324,9 +325,11 @@ export function getOptimizedQueries(
       `${productTitle} opinioni professionisti`,
     ],
     forum_discussions: [
-      `${productTitle} forum elettricisti`,
+      `${productTitle} forum professionisti`,
       `${vendor} ${productTitle} reddit`,
       `${productTitle} esperienza cantiere`,
+      `${productTitle} forum edilizia`,
+      `${vendor} ${productTitle} macchineescavatori`,
     ],
     comparison_sites: [
       `${productTitle} vs`,

@@ -46,14 +46,26 @@ const PARAMETRIC_PATTERNS: { pattern: RegExp; knowledgeType: KnowledgeType }[] =
   { pattern: /differenza tra (brushless|brushed|18v|20v|litio|nicd)/i, knowledgeType: 'domain_knowledge' },
   { pattern: /come funziona (un |una )?(avvitatore|trapano|smerigliatrice|seghetto)/i, knowledgeType: 'domain_knowledge' },
   { pattern: /vantaggi (del |della |di )?(brushless|litio|cordless|senza filo)/i, knowledgeType: 'domain_knowledge' },
-  
-  // Category general knowledge
+
+  // Domain knowledge - heavy machinery & generators (general concepts)
+  { pattern: /cos'è (un |una )?(miniescavatore|escavatore|benna|gruppo elettrogeno|tagliapiastrelle|betoniera)/i, knowledgeType: 'domain_knowledge' },
+  { pattern: /come funziona (un |una )?(gruppo elettrogeno|motore diesel|sistema idraulico|avr)/i, knowledgeType: 'domain_knowledge' },
+  { pattern: /differenza tra (diesel|benzina|bifuel|avr|senza avr)/i, knowledgeType: 'domain_knowledge' },
+  { pattern: /vantaggi (del |della |di )?(motore diesel|sistema idraulico|accensione elettrica)/i, knowledgeType: 'domain_knowledge' },
+  { pattern: /cos'è (un |una )?(sistema idraulico|quick coupler|attacco rapido|attacco benna)/i, knowledgeType: 'domain_knowledge' },
+
+  // Category general knowledge - power tools
   { pattern: /tipi di (avvitatori|trapani|seghe|smerigliatrici)/i, knowledgeType: 'category_general' },
   { pattern: /a cosa serve (un |una )?(avvitatore|trapano|smerigliatrice)/i, knowledgeType: 'category_general' },
   { pattern: /quando usare (un |una )?(avvitatore|trapano|smerigliatrice)/i, knowledgeType: 'category_general' },
-  
+
+  // Category general knowledge - heavy equipment
+  { pattern: /tipi di (benne|escavatori|miniescavatori|gruppi elettrogeni|tagliapiastrelle)/i, knowledgeType: 'category_general' },
+  { pattern: /a cosa serve (un |una )?(benna|miniescavatore|gruppo elettrogeno|tagliapiastrelle|betoniera)/i, knowledgeType: 'category_general' },
+  { pattern: /come scegliere (un |una )?(miniescavatore|gruppo elettrogeno|tagliapiastrelle)/i, knowledgeType: 'category_general' },
+
   // Common knowledge
-  { pattern: /sicurezza (sul lavoro|elettroutensili|dpi)/i, knowledgeType: 'common_knowledge' },
+  { pattern: /sicurezza (sul lavoro|elettroutensili|dpi|cantiere|macchine operatrici)/i, knowledgeType: 'common_knowledge' },
   { pattern: /manutenzione (base|generale|ordinaria)/i, knowledgeType: 'common_knowledge' },
 ];
 
@@ -67,7 +79,7 @@ const RETRIEVAL_REQUIRED_PATTERNS: RegExp[] = [
   
   // Product-specific queries
   /questo (prodotto|modello|articolo)/i,
-  /il (milwaukee|makita|dewalt|bosch|hilti|metabo|festool|hikoki) [a-z0-9\-]+/i,
+  /il (milwaukee|makita|dewalt|bosch|hilti|metabo|festool|hikoki|yanmar|cangini|husqvarna|nilfisk|tecnogen|imer|montolit|vem|dfsk|hammer|tmbenne) [a-z0-9\-]+/i,
   
   // Comparison with specific products
   /vs|versus|confronto tra|meglio tra/i,
@@ -112,7 +124,7 @@ export function detectRetrievalNeedRules(query: string): RetrievalDecision {
   
   // Check query characteristics
   const hasNumbers = /\d/.test(query);
-  const hasBrandName = /(milwaukee|makita|dewalt|bosch|hilti|metabo|festool|hikoki|einhell|stanley)/i.test(query);
+  const hasBrandName = /(milwaukee|makita|dewalt|bosch|hilti|metabo|festool|hikoki|einhell|stanley|yanmar|cangini|husqvarna|nilfisk|tecnogen|imer|montolit|vem|dfsk|hammer|tmbenne)/i.test(query);
   const hasModelNumber = /[A-Z]{1,3}\d{2,}|M\d{2}|LXT|XGT/i.test(query);
   const isQuestionAboutConcept = /^(cos'è|cosa sono|come|perché|quando|quale tipo)/i.test(queryLower);
   
@@ -156,14 +168,15 @@ export async function detectRetrievalNeedLLM(
   query: string,
   productContext?: { title: string; vendor: string }
 ): Promise<RetrievalDecision> {
-  const systemPrompt = `Sei un classificatore per un sistema RAG di e-commerce elettroutensili.
+  const systemPrompt = `Sei un classificatore per un sistema RAG di e-commerce attrezzatura professionale.
+Il catalogo copre: elettroutensili, escavatori/benne (Yanmar, Cangini, Hammer, TM Benne), gruppi elettrogeni (Tecnogen, Honda), attrezzatura edilizia (Imer, Montolit), aspiratori industriali (Nilfisk), motoseghe (Husqvarna), ricambi veicoli speciali (VEM/DFSK).
 Determina se la query richiede retrieval esterno o se la conoscenza parametrica del modello è sufficiente.
 
 TIPI DI CONOSCENZA:
 - product_specific: Dati specifici del prodotto (prezzo, specifiche esatte, disponibilità) → RICHIEDE retrieval
 - brand_general: Info generali sul brand → POTREBBE richiedere retrieval
 - category_general: Conoscenza generale sulla categoria → SPESSO parametrica
-- domain_knowledge: Concetti del dominio elettroutensili → PARAMETRICA
+- domain_knowledge: Concetti del dominio (elettroutensili, macchine movimento terra, generatori) → PARAMETRICA
 - common_knowledge: Conoscenza generale → PARAMETRICA
 
 ESEMPI:
@@ -172,6 +185,9 @@ ESEMPI:
 - "Quali sono i vantaggi delle batterie al litio?" → domain_knowledge, unnecessary
 - "Specifiche del Makita DHP486?" → product_specific, required
 - "Come scegliere un trapano?" → category_general, optional
+- "Cos'è un miniescavatore?" → domain_knowledge, unnecessary
+- "Portata benna Yanmar SV17?" → product_specific, required
+- "Come funziona un gruppo elettrogeno AVR?" → domain_knowledge, unnecessary
 
 Rispondi SOLO con JSON:
 {
@@ -232,13 +248,13 @@ export async function generateParametricResponse(
   knowledgeType: KnowledgeType
 ): Promise<{ response: string; confidence: number }> {
   const systemPrompts: Record<KnowledgeType, string> = {
-    domain_knowledge: `Sei un esperto di elettroutensili professionali. Rispondi alla domanda usando la tua conoscenza del dominio.
+    domain_knowledge: `Sei un esperto di attrezzatura professionale: elettroutensili, macchine da cantiere, escavatori, gruppi elettrogeni, attrezzatura edilizia. Rispondi alla domanda usando la tua conoscenza del dominio.
 Sii preciso e tecnico ma accessibile. Se la domanda richiede dati specifici di un prodotto che non conosci, indicalo chiaramente.`,
-    
-    category_general: `Sei un consulente per elettroutensili. Fornisci informazioni generali sulla categoria di prodotti.
+
+    category_general: `Sei un consulente per attrezzatura professionale (elettroutensili, macchine da cantiere, generatori, edilizia). Fornisci informazioni generali sulla categoria di prodotti.
 Evita di fare affermazioni su prodotti specifici senza dati verificati.`,
-    
-    brand_general: `Sei un esperto del settore elettroutensili. Fornisci informazioni generali sul brand menzionato.
+
+    brand_general: `Sei un esperto del settore attrezzatura professionale. Fornisci informazioni generali sul brand menzionato.
 Basati su conoscenze consolidate, evita speculazioni su prodotti specifici.`,
     
     common_knowledge: `Sei un assistente informativo. Rispondi alla domanda con informazioni generali accurate.`,
@@ -340,6 +356,13 @@ export function canUseCachedKnowledge(
     dewalt: ['20V MAX system', 'FLEXVOLT technology', 'Tool Connect', 'POWERSTACK batteries'],
     bosch: ['18V system', 'Connected tools', 'KickBack Control', 'Electronic Cell Protection'],
     hilti: ['Nuron battery platform', 'Active Torque Control', 'Dust removal systems'],
+    husqvarna: ['X-TORQ engine', 'AutoTune', 'LowVib technology', 'smart start'],
+    nilfisk: ['GD series', 'CFM technology', 'Attix series', 'industrial vacuum'],
+    yanmar: ['mini excavator', 'ViO series', 'SV series', 'diesel engine'],
+    cangini: ['excavator buckets', 'sorting grabs', 'quick couplers', 'hydraulic attachments'],
+    tecnogen: ['AVR regulation', 'Honda GX engine', 'inverter generator', 'silent generator'],
+    imer: ['concrete mixer', 'mortar mixer', 'screed pump', 'construction equipment'],
+    montolit: ['tile cutter', 'diamond blade', 'Masterpiuma', 'laser guide'],
   };
   
   const vendorLower = vendor.toLowerCase();

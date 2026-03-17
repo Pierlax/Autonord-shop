@@ -499,11 +499,6 @@ export class UniversalRAGPipeline {
     fusionResult: FusionResult | undefined,
     granularityDecision: GranularityDecision | undefined
   ): any {
-    // Only use fusion result if it actually produced evidence.
-    // executeFusionPlan expects items with {field, value} but search results have
-    // {content, text} — the mismatch means combinedEvidence is always empty.
-    // When that happens, fall through to the raw-data path so rag-adapter can
-    // extract content from the source-keyed arrays using its fallback loop.
     if (fusionResult && fusionResult.combinedEvidence.length > 0) {
       return {
         evidence: fusionResult.combinedEvidence,

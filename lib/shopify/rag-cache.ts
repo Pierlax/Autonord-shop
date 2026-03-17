@@ -338,6 +338,50 @@ class RAGCacheManager {
       backend: this.backendType,
     };
   }
+
+  /**
+   * Retrieve a generic JSON-serializable value from cache.
+   * The value is stored in the snippet field of a synthetic CacheEntry.
+   */
+  async getRawJson<T>(key: string): Promise<T | null> {
+    const entry = await this.backend.get(key);
+    if (!entry) {
+      this.stats.misses++;
+      return null;
+    }
+    try {
+      const value = JSON.parse(entry.results[0]?.snippet || 'null') as T;
+      this.stats.hits++;
+      log.info(`[RAGCache] Generic HIT for key "${key.substring(0, 40)}"`);
+      return value;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Store a generic JSON-serializable value in cache.
+   */
+  async setRawJson<T>(key: string, value: T, ttlMs: number): Promise<void> {
+    const now = new Date();
+    const entry: CacheEntry = {
+      results: [{
+        title: key,
+        link: '',
+        snippet: JSON.stringify(value),
+        domain: 'generic',
+        provider: 'mock',
+      }],
+      cachedAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
+      query: key,
+      domains: [],
+      provider: 'generic',
+      resultCount: 1,
+    };
+    await this.backend.set(key, entry, ttlMs);
+    log.info(`[RAGCache] Generic STORED for key "${key.substring(0, 40)}" (TTL: ${Math.round(ttlMs / 86400000)}d)`);
+  }
 }
 
 // Singleton instance
@@ -414,4 +458,30 @@ export async function clearAllCache(): Promise<void> {
 export async function getCacheStats(): Promise<CacheStats> {
   const cache = getCacheManager();
   return cache.getStats();
+}
+
+/**
+ * Caches any JSON-serializable value using the same Redis/memory backend.
+ * Uses a 'gen:v1:' key prefix to avoid collisions with search result cache.
+ *
+ * @param cacheKey - Unique string key (will be hashed internally)
+ * @param compute  - Async function called on cache miss to produce the value
+ * @param ttlMs    - Time-to-live in ms (default: 7 days, same as images intent)
+ */
+export async function cachedGeneric<T>(
+  cacheKey: string,
+  compute: () => Promise<T>,
+  ttlMs: number = TTL_BY_INTENT.images
+): Promise<T> {
+  const cache = getCacheManager();
+  const prefixedKey = `gen:v1:${cacheKey}`;
+
+  const cached = await cache.getRawJson<T>(prefixedKey);
+  if (cached !== null) {
+    return cached;
+  }
+
+  const result = await compute();
+  await cache.setRawJson(prefixedKey, result, ttlMs);
+  return result;
 }

@@ -261,16 +261,20 @@ export async function executeFusionPlan(
       if (!data) continue;
       
       for (const item of data) {
-        if (!item.field || !item.value) continue;
-        
-        const existing = fieldData.get(item.field) || [];
+        // Search results use content/text/title instead of field/value —
+        // fall back to those fields so fusion works with real retrieval output.
+        const field = item.field || item.title || `${group.evidenceType}_${source}`;
+        const value = item.value || item.content || item.text || '';
+        if (!field || !value) continue;
+
+        const existing = fieldData.get(field) || [];
         existing.push({
-          value: item.value,
+          value,
           source,
           confidence: item.confidence || 0.7,
           evidenceType: group.evidenceType,
         });
-        fieldData.set(item.field, existing);
+        fieldData.set(field, existing);
       }
     }
   }

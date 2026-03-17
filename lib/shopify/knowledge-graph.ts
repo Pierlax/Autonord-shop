@@ -139,6 +139,80 @@ export class PowerToolKnowledgeGraph {
       strengths: ['value', 'innovation', 'multi_volt'],
     });
 
+    // --- Macchine da cantiere e benne ---
+    this.addBrand('yanmar', 'Yanmar', {
+      country: 'Japan',
+      batterySystem: 'diesel',
+      targetMarket: 'professional',
+      strengths: ['reliability', 'compact_excavators', 'fuel_efficiency'],
+    });
+
+    this.addBrand('cangini', 'Cangini Benne', {
+      country: 'Italy',
+      batterySystem: 'hydraulic',
+      targetMarket: 'professional',
+      strengths: ['bucket_variety', 'italian_manufacturing', 'customization'],
+    });
+
+    this.addBrand('hammer', 'Hammer', {
+      country: 'Italy',
+      batterySystem: 'hydraulic',
+      targetMarket: 'professional',
+      strengths: ['hydraulic_attachments', 'demolition', 'heavy_duty'],
+    });
+
+    this.addBrand('tmbenne', 'TM Benne', {
+      country: 'Italy',
+      batterySystem: 'hydraulic',
+      targetMarket: 'professional',
+      strengths: ['sorting_buckets', 'screening', 'italian_manufacturing'],
+    });
+
+    // --- Gruppi elettrogeni ---
+    this.addBrand('tecnogen', 'Tecnogen', {
+      country: 'Italy',
+      batterySystem: 'generator',
+      targetMarket: 'professional',
+      strengths: ['italian_manufacturing', 'reliability', 'open_frame'],
+    });
+
+    // --- Attrezzatura edilizia ---
+    this.addBrand('imer', 'Imer International', {
+      country: 'Italy',
+      batterySystem: 'electric_fuel',
+      targetMarket: 'professional',
+      strengths: ['concrete_mixers', 'tile_saws', 'construction_equipment'],
+    });
+
+    this.addBrand('montolit', 'Brevetti Montolit', {
+      country: 'Italy',
+      batterySystem: 'manual_electric',
+      targetMarket: 'professional',
+      strengths: ['tile_cutting_precision', 'italian_manufacturing', 'wide_range'],
+    });
+
+    this.addBrand('husqvarna', 'Husqvarna', {
+      country: 'Sweden',
+      batterySystem: 'battery_fuel',
+      targetMarket: 'professional',
+      strengths: ['chainsaws', 'construction_cutting', 'outdoor_equipment'],
+    });
+
+    this.addBrand('nilfisk', 'Nilfisk', {
+      country: 'Denmark',
+      batterySystem: 'electric',
+      targetMarket: 'professional',
+      strengths: ['industrial_cleaning', 'vacuum_systems', 'pressure_washers'],
+    });
+
+    // --- Veicoli speciali e ricambi ---
+    this.addBrand('vem_dfsk', 'VEM/DFSK', {
+      country: 'Italy',
+      batterySystem: 'combustion',
+      targetMarket: 'professional',
+      strengths: ['light_commercial_vehicles', 'spare_parts', 'italian_distribution'],
+    });
+
     // === PRODUCT CATEGORIES ===
     this.addProductCategory('drill_driver', 'Trapano Avvitatore', {
       description: 'Per foratura e avvitatura',
@@ -190,6 +264,71 @@ export class PowerToolKnowledgeGraph {
       colletSize: '6-12mm',
     });
 
+    // --- Macchine da cantiere ---
+    this.addProductCategory('mini_excavator', 'Miniescavatore', {
+      description: 'Miniescavatore compatto per lavori di scavo',
+      weightRange: '1t-8t',
+      powerType: 'diesel',
+    });
+
+    this.addProductCategory('excavator_bucket', 'Benna Escavatore', {
+      description: 'Benna e attrezzatura idraulica per escavatori',
+      compatibility: 'mini_excavator',
+      powerType: 'hydraulic',
+    });
+
+    this.addProductCategory('demolition_hammer', 'Martello Demolitore da Cantiere', {
+      description: 'Martello idraulico per demolizione su escavatore',
+      powerType: 'hydraulic',
+    });
+
+    // --- Generatori ---
+    this.addProductCategory('generator', 'Gruppo Elettrogeno', {
+      description: 'Generatore di corrente per cantiere e uso professionale',
+      powerRange: '1kVA-20kVA',
+      powerType: 'petrol_diesel',
+    });
+
+    // --- Attrezzatura edilizia ---
+    this.addProductCategory('tile_cutter', 'Tagliatrice per Piastrelle', {
+      description: 'Tagliatrice manuale o elettrica per ceramica e gres',
+      cutLengths: ['60cm', '90cm', '120cm'],
+    });
+
+    this.addProductCategory('concrete_mixer', 'Betoniera', {
+      description: 'Betoniera per la miscelazione del calcestruzzo',
+      capacityRange: '100L-300L',
+      powerType: 'electric_fuel',
+    });
+
+    this.addProductCategory('pressure_washer', 'Idropulitrice', {
+      description: 'Idropulitrice ad alta pressione per pulizia professionale',
+      pressureRange: '100-300 bar',
+      powerType: 'electric',
+    });
+
+    this.addProductCategory('vacuum_industrial', 'Aspiratore Industriale', {
+      description: 'Aspiratore industriale per cantiere e officina',
+      filterClass: ['L', 'M', 'H'],
+    });
+
+    this.addProductCategory('chainsaw', 'Motosega', {
+      description: 'Motosega professionale per abbattimento e potatura',
+      barLengths: ['35cm', '40cm', '50cm'],
+      powerType: 'petrol_battery',
+    });
+
+    this.addProductCategory('anchor_system', 'Sistema di Ancoraggio', {
+      description: 'Tasselli, ancoraggi chimici e sistemi di fissaggio',
+      materials: ['concrete', 'masonry', 'metal'],
+    });
+
+    // --- Ricambi veicoli ---
+    this.addProductCategory('vehicle_spare_parts', 'Ricambi Veicoli Commerciali', {
+      description: 'Ricambi e accessori per veicoli commerciali leggeri',
+      vehicleTypes: ['van', 'light_truck', 'special_vehicle'],
+    });
+
     // === TRADES ===
     this.addTrade('electrician', 'Elettricista', {
       primaryTools: ['drill_driver', 'impact_driver', 'reciprocating_saw'],
@@ -218,6 +357,31 @@ export class PowerToolKnowledgeGraph {
 
     this.addTrade('metalworker', 'Fabbro', {
       primaryTools: ['angle_grinder', 'drill_driver', 'impact_wrench'],
+      workEnvironment: 'workshop',
+    });
+
+    this.addTrade('tiler', 'Piastrellista', {
+      primaryTools: ['tile_cutter', 'angle_grinder', 'drill_driver'],
+      workEnvironment: 'indoor',
+    });
+
+    this.addTrade('excavator_operator', 'Escavatorista', {
+      primaryTools: ['mini_excavator', 'excavator_bucket', 'demolition_hammer'],
+      workEnvironment: 'outdoor',
+    });
+
+    this.addTrade('site_manager', 'Capocantiere', {
+      primaryTools: ['generator', 'concrete_mixer', 'pressure_washer', 'vacuum_industrial'],
+      workEnvironment: 'outdoor',
+    });
+
+    this.addTrade('arborist', 'Arboricoltore', {
+      primaryTools: ['chainsaw'],
+      workEnvironment: 'outdoor',
+    });
+
+    this.addTrade('mechanic', 'Meccanico', {
+      primaryTools: ['impact_wrench', 'drill_driver', 'vehicle_spare_parts'],
       workEnvironment: 'workshop',
     });
 
@@ -260,6 +424,51 @@ export class PowerToolKnowledgeGraph {
     this.addUseCase('grinding', 'Smerigliatura', {
       requiredTools: ['angle_grinder'],
       accessories: ['grinding_discs', 'flap_discs'],
+    });
+
+    this.addUseCase('tile_cutting', 'Taglio Piastrelle', {
+      requiredTools: ['tile_cutter', 'angle_grinder'],
+      accessories: ['diamond_blades', 'cutting_wheels'],
+    });
+
+    this.addUseCase('excavation', 'Scavo e Movimento Terra', {
+      requiredTools: ['mini_excavator', 'excavator_bucket'],
+      accessories: ['teeth_bucket', 'ripper'],
+    });
+
+    this.addUseCase('demolition_site', 'Demolizione da Cantiere', {
+      requiredTools: ['demolition_hammer', 'mini_excavator'],
+      accessories: ['chisel_bits'],
+    });
+
+    this.addUseCase('power_generation', 'Generazione Energia in Cantiere', {
+      requiredTools: ['generator'],
+      accessories: ['power_cables', 'distribution_box'],
+    });
+
+    this.addUseCase('concrete_mixing', 'Miscelazione Calcestruzzo', {
+      requiredTools: ['concrete_mixer'],
+      accessories: ['cement_bags', 'mixer_blade'],
+    });
+
+    this.addUseCase('surface_cleaning', 'Pulizia Superfici Professionali', {
+      requiredTools: ['pressure_washer', 'vacuum_industrial'],
+      accessories: ['cleaning_nozzles', 'detergent'],
+    });
+
+    this.addUseCase('tree_felling', 'Abbattimento e Potatura', {
+      requiredTools: ['chainsaw'],
+      accessories: ['chain_files', 'bar_oil', 'protective_gear'],
+    });
+
+    this.addUseCase('anchoring', 'Tassellatura e Ancoraggio', {
+      requiredTools: ['hammer_drill', 'anchor_system'],
+      accessories: ['chemical_anchors', 'sds_bits', 'threaded_rods'],
+    });
+
+    this.addUseCase('vehicle_maintenance', 'Manutenzione Veicoli Commerciali', {
+      requiredTools: ['impact_wrench', 'vehicle_spare_parts'],
+      accessories: ['socket_sets', 'oil_filters'],
     });
 
     // === BATTERY SYSTEMS ===
@@ -322,6 +531,35 @@ export class PowerToolKnowledgeGraph {
 
     this.addFeature('kickback_protection', 'Protezione Contraccolpo', {
       benefits: ['safety'],
+    });
+
+    // --- Feature nuove macro-categorie ---
+    this.addFeature('diesel_engine', 'Motore Diesel', {
+      benefits: ['autonomy', 'power', 'reliability'],
+    });
+
+    this.addFeature('honda_gx_engine', 'Motore Honda GX', {
+      benefits: ['reliability', 'fuel_efficiency', 'easy_start'],
+    });
+
+    this.addFeature('hydraulic_system', 'Sistema Idraulico', {
+      benefits: ['force', 'precision', 'versatility'],
+    });
+
+    this.addFeature('avr_regulation', 'Regolazione AVR', {
+      benefits: ['voltage_stability', 'electronics_protection', 'inverter_compatibility'],
+    });
+
+    this.addFeature('diamond_blade', 'Disco Diamantato', {
+      benefits: ['cutting_precision', 'durability', 'clean_cut'],
+    });
+
+    this.addFeature('quick_coupler', 'Attacco Rapido', {
+      benefits: ['versatility', 'fast_attachment_change', 'compatibility'],
+    });
+
+    this.addFeature('electric_start', 'Avviamento Elettrico', {
+      benefits: ['ease_of_use', 'cold_start', 'reliability'],
     });
   }
 
@@ -659,6 +897,7 @@ export class PowerToolKnowledgeGraph {
     const nameLower = productName.toLowerCase();
     
     const categoryPatterns: [RegExp, string][] = [
+      // Utensili elettrici portatili
       [/avvitatore.*impulsi|impact.*driver/i, 'impact_driver'],
       [/avvitatore.*massa|impact.*wrench/i, 'impact_wrench'],
       [/trapano.*avvitatore|drill.*driver/i, 'drill_driver'],
@@ -669,6 +908,21 @@ export class PowerToolKnowledgeGraph {
       [/seghetto.*alternativo|jigsaw/i, 'jigsaw'],
       [/pialla|planer/i, 'planer'],
       [/fresatrice|router/i, 'router'],
+      // Macchine da cantiere
+      [/miniescavatore|mini.*excavat|microescavatore/i, 'mini_excavator'],
+      [/benna|bucket.*escavator|escavator.*bucket|benna.*demolitore/i, 'excavator_bucket'],
+      [/martello.*demolitore.*idraul|demolition.*hammer.*attach/i, 'demolition_hammer'],
+      // Generatori
+      [/gruppo.*elettrogeno|generatore.*corrente|generator/i, 'generator'],
+      // Attrezzatura edilizia
+      [/tagliatrice.*piastrelle|tile.*cutter|tagliapiastrelle|montolit/i, 'tile_cutter'],
+      [/betoniera|concrete.*mixer|miscelatore.*calcestruzzo/i, 'concrete_mixer'],
+      [/idropulitrice|pressure.*washer|alta.*pressione/i, 'pressure_washer'],
+      [/aspiratore.*industriale|industrial.*vacuum|aspirapolvere.*cantiere/i, 'vacuum_industrial'],
+      [/motosega|chainsaw|sega.*catena/i, 'chainsaw'],
+      [/tassello|ancoraggio.*chimico|anchor.*system|fischer/i, 'anchor_system'],
+      // Ricambi veicoli
+      [/ammortizzatore|alternatore|ricambio.*dfsk|ricambio.*vem|spare.*part.*vehicle/i, 'vehicle_spare_parts'],
     ];
 
     for (const [pattern, category] of categoryPatterns) {
