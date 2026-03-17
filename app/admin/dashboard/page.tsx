@@ -591,6 +591,11 @@ function DashboardContent({ secret }: { secret: string }) {
           <DaneaSyncPanel secret={secret} />
         </section>
 
+        {/* Section 4d: Blog Researcher */}
+        <section>
+          <BlogResearcherPanel secret={secret} />
+        </section>
+
         {/* Section 5: Quick Actions */}
         <section>
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">
@@ -1060,6 +1065,286 @@ function DaneaSyncPanel({ secret }: { secret: string }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// =============================================================================
+// BLOG RESEARCHER PANEL
+// =============================================================================
+
+const BLOG_CATEGORIES = [
+  'Confronti',
+  'Prezzi e Costi',
+  'Problemi e Soluzioni',
+  'Guide Pratiche',
+  'Recensioni',
+] as const;
+
+interface DraftArticle {
+  id: number;
+  title: string;
+  handle: string;
+  createdAt: string;
+  tags: string[];
+  adminUrl: string;
+}
+
+function BlogResearcherPanel({ secret }: { secret: string }) {
+  // ── Generate article state ──────────────────────────────────────────────────
+  const [genTitle, setGenTitle] = useState('');
+  const [genCategory, setGenCategory] = useState<string>(BLOG_CATEGORIES[0]);
+  const [genTopic, setGenTopic] = useState('');
+  const [genRunning, setGenRunning] = useState(false);
+  const [genResult, setGenResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  // ── Topic research state ────────────────────────────────────────────────────
+  const [researchRunning, setResearchRunning] = useState(false);
+  const [researchResult, setResearchResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  // ── Drafts state ────────────────────────────────────────────────────────────
+  const [drafts, setDrafts] = useState<DraftArticle[] | null>(null);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+  const [draftsError, setDraftsError] = useState<string | null>(null);
+
+  const loadDrafts = useCallback(async () => {
+    setDraftsLoading(true);
+    setDraftsError(null);
+    try {
+      const res = await fetch(`/api/admin/blog?secret=${secret}`);
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setDraftsError(data.error || 'Errore caricamento bozze');
+      } else {
+        setDrafts(data.drafts);
+      }
+    } catch (err) {
+      setDraftsError(err instanceof Error ? err.message : 'Errore di rete');
+    } finally {
+      setDraftsLoading(false);
+    }
+  }, [secret]);
+
+  useEffect(() => {
+    loadDrafts();
+  }, [loadDrafts]);
+
+  const generateArticle = async () => {
+    if (!genTitle.trim() || !genTopic.trim()) return;
+    setGenRunning(true);
+    setGenResult(null);
+    try {
+      const res = await fetch('/api/workers/generate-article', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${secret}`,
+        },
+        body: JSON.stringify({
+          id: Date.now(),
+          title: genTitle.trim(),
+          category: genCategory,
+          topic: genTopic.trim(),
+          imageQuery: genTitle.trim(),
+          blogId: 'news',
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.article) {
+        setGenResult({ ok: true, message: `✓ Bozza creata: "${data.article.handle}"` });
+        setGenTitle('');
+        setGenTopic('');
+        loadDrafts();
+      } else {
+        setGenResult({ ok: false, message: `✗ ${data.error || 'Errore sconosciuto'}` });
+      }
+    } catch (err) {
+      setGenResult({ ok: false, message: `✗ ${err instanceof Error ? err.message : 'Errore di rete'}` });
+    } finally {
+      setGenRunning(false);
+    }
+  };
+
+  const startResearch = async () => {
+    setResearchRunning(true);
+    setResearchResult(null);
+    try {
+      const res = await fetch(`/api/cron/blog-researcher?secret=${secret}`, {
+        headers: { 'Authorization': `Bearer ${secret}` },
+      });
+      const data = await res.json();
+      if (res.ok && data.success !== false) {
+        setResearchResult({ ok: true, message: `✓ Ricerca completata — ${data.articlesScheduled ?? 0} articoli in coda` });
+        loadDrafts();
+      } else {
+        setResearchResult({ ok: false, message: `✗ ${data.error || 'Errore sconosciuto'}` });
+      }
+    } catch (err) {
+      setResearchResult({ ok: false, message: `✗ ${err instanceof Error ? err.message : 'Errore di rete'}` });
+    } finally {
+      setResearchRunning(false);
+    }
+  };
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-6">
+      <div>
+        <h2 className="text-lg font-bold text-white">📝 Blog Researcher</h2>
+        <p className="text-gray-400 text-sm mt-0.5">
+          Genera articoli TAYA singoli o avvia la ricerca automatica dei topic.
+        </p>
+      </div>
+
+      {/* ── Genera Articolo ── */}
+      <div className="border border-gray-800 rounded-lg p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-gray-300">Genera Articolo Ora</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="sm:col-span-2">
+            <label className="block text-gray-500 text-xs mb-1">Titolo articolo</label>
+            <input
+              type="text"
+              value={genTitle}
+              onChange={e => setGenTitle(e.target.value)}
+              disabled={genRunning}
+              placeholder="es. Milwaukee M18 vs Makita LXT: quale scegliere nel 2025?"
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-600 disabled:opacity-50"
+            />
+          </div>
+          <div>
+            <label className="block text-gray-500 text-xs mb-1">Categoria</label>
+            <select
+              value={genCategory}
+              onChange={e => setGenCategory(e.target.value)}
+              disabled={genRunning}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm disabled:opacity-50"
+            >
+              {BLOG_CATEGORIES.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-gray-500 text-xs mb-1">Argomento da trattare</label>
+            <input
+              type="text"
+              value={genTopic}
+              onChange={e => setGenTopic(e.target.value)}
+              disabled={genRunning}
+              placeholder="es. Confronto prestazioni, prezzi e durata batteria"
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-600 disabled:opacity-50"
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={generateArticle}
+            disabled={genRunning || !genTitle.trim() || !genTopic.trim()}
+            className="px-5 py-2 bg-emerald-600 text-white rounded-lg font-medium text-sm hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {genRunning ? (
+              <span className="flex items-center gap-2">
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Generazione in corso...
+              </span>
+            ) : 'Genera Articolo'}
+          </button>
+          {genResult && (
+            <span className={`text-sm ${genResult.ok ? 'text-emerald-400' : 'text-red-400'}`}>
+              {genResult.message}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ── Avvia Ricerca Topic ── */}
+      <div className="border border-gray-800 rounded-lg p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-300">Avvia Ricerca Topic</h3>
+            <p className="text-gray-500 text-xs mt-0.5">
+              Scansiona Reddit + RSS per trovare topic caldi → genera bozze automaticamente (pipeline completa).
+            </p>
+          </div>
+          <button
+            onClick={startResearch}
+            disabled={researchRunning}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+          >
+            {researchRunning ? (
+              <span className="flex items-center gap-2">
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                In corso...
+              </span>
+            ) : '🔍 Avvia Ricerca'}
+          </button>
+        </div>
+        {researchResult && (
+          <p className={`text-sm mt-3 ${researchResult.ok ? 'text-emerald-400' : 'text-red-400'}`}>
+            {researchResult.message}
+          </p>
+        )}
+      </div>
+
+      {/* ── Bozze Recenti ── */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-300">Bozze in Attesa di Revisione</h3>
+          <button
+            onClick={loadDrafts}
+            disabled={draftsLoading}
+            className="text-xs text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-50"
+          >
+            {draftsLoading ? 'Caricamento...' : '↻ Aggiorna'}
+          </button>
+        </div>
+
+        {draftsError && (
+          <div className="rounded-lg p-3 bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+            {draftsError}
+          </div>
+        )}
+
+        {!draftsError && drafts !== null && drafts.length === 0 && (
+          <p className="text-gray-600 text-sm text-center py-4">
+            Nessuna bozza in attesa. Genera il primo articolo!
+          </p>
+        )}
+
+        {drafts && drafts.length > 0 && (
+          <div className="space-y-2">
+            {drafts.map(draft => (
+              <div
+                key={draft.id}
+                className="flex items-center justify-between gap-3 px-3 py-2.5 bg-gray-800 rounded-lg"
+              >
+                <div className="min-w-0">
+                  <p className="text-white text-sm font-medium truncate">{draft.title}</p>
+                  <p className="text-gray-500 text-xs mt-0.5">
+                    {new Date(draft.createdAt).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    {draft.tags.length > 0 && (
+                      <span className="ml-2 text-gray-600">{draft.tags.slice(0, 3).join(', ')}</span>
+                    )}
+                  </p>
+                </div>
+                <a
+                  href={draft.adminUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs rounded-lg hover:bg-amber-500/20 transition-colors whitespace-nowrap"
+                >
+                  Pubblica →
+                </a>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

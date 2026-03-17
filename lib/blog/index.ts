@@ -1,17 +1,17 @@
 /**
- * Blog Posts - Shopify Admin API
- * 
- * All blog content comes from Shopify Admin API for maximum consistency.
- * This ensures Vercel always shows the same articles as Shopify.
+ * Blog Posts — Shopify Admin API (single source of truth)
+ *
+ * All blog content lives on Shopify. Next.js is a pure frontend.
+ * Articles are created either manually via Shopify admin or automatically
+ * by the blog-researcher AI pipeline (saved as drafts, published manually).
  */
 
-import { BlogPost } from './types';
-import { 
-  getAllArticlesAdmin, 
-  getFeaturedArticlesAdmin, 
+import {
+  getAllArticlesAdmin,
+  getFeaturedArticlesAdmin,
   getArticleByHandleAdmin,
   getRelatedArticlesAdmin,
-  getArticlesByCategoryAdmin 
+  getArticlesByCategoryAdmin,
 } from '../shopify/blog-admin';
 
 // Re-export types and categories
@@ -19,41 +19,38 @@ export type { BlogPost } from './types';
 export { BLOG_CATEGORIES } from './types';
 
 /**
- * Get all posts from Shopify Admin API
- * For server components only
+ * Get all published posts, sorted by date descending
  */
-export async function getAllPostsAsync(): Promise<BlogPost[]> {
+export async function getAllPostsAsync() {
   return getAllArticlesAdmin();
 }
 
 /**
- * Get featured posts from Shopify Admin API
+ * Get featured posts (tagged with "featured" / "in-evidenza" on Shopify)
  */
-export async function getFeaturedPostsAsync(): Promise<BlogPost[]> {
+export async function getFeaturedPostsAsync() {
   return getFeaturedArticlesAdmin();
 }
 
 /**
- * Get a single post by slug
+ * Get a single post by slug — returns null if not found
  */
-export async function getPostBySlugAsync(slug: string): Promise<BlogPost | null> {
+export async function getPostBySlugAsync(slug: string) {
   return getArticleByHandleAdmin(slug);
 }
 
 /**
- * Get related posts based on tags
+ * Get related posts based on shared tags
  */
-export async function getRelatedPostsAsync(currentSlug: string, limit: number = 3): Promise<BlogPost[]> {
-  // Get current post to find its tags
+export async function getRelatedPostsAsync(currentSlug: string, limit = 3) {
   const currentPost = await getArticleByHandleAdmin(currentSlug);
   if (!currentPost) return [];
-  
   return getRelatedArticlesAdmin(currentSlug, currentPost.tags, limit);
 }
 
 /**
- * Get posts by category
+ * Get posts filtered by category slug (prezzi, problemi, confronti, recensioni, guide)
  */
-export async function getPostsByCategoryAsync(category: string): Promise<BlogPost[]> {
+export async function getPostsByCategoryAsync(category: string) {
   return getArticlesByCategoryAdmin(category);
 }

@@ -213,7 +213,7 @@ export function CurrentSolution({ product }: CurrentSolutionProps) {
         {/* Not Listed Option */}
         <p className="text-xs text-muted-foreground mt-4 text-center">
           La tua situazione non è elencata?{' '}
-          <a href="/contatti" className="text-primary hover:underline">
+          <a href="/contact" className="text-primary hover:underline">
             Contattaci
           </a>
           {' '}per una consulenza personalizzata.

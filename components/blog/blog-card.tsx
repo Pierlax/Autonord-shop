@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { BlogPost } from '@/lib/blog/types';
-import { Clock, Calendar, ArrowRight, Tag } from 'lucide-react';
+import { Clock, Calendar, ArrowRight } from 'lucide-react';
 import { useState } from 'react';
 
 interface BlogCardProps {

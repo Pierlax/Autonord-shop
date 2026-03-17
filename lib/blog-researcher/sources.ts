@@ -1,8 +1,9 @@
 /**
  * Blog Researcher - Sources Configuration
- * 
+ *
  * Whitelist of trusted sources and forum configurations
- * for high-quality technical research
+ * for high-quality technical research aligned with the Danea catalog:
+ * utensili elettrici, macchine cantiere, gruppi elettrogeni, attrezzatura edile.
  */
 
 // =============================================================================
@@ -12,18 +13,18 @@
 export interface TrustedSource {
   domain: string;
   name: string;
-  type: 'technical' | 'review' | 'forum' | 'community';
+  type: 'technical' | 'review' | 'forum' | 'community' | 'blog';
   priority: number; // 1-10, higher = more important
-  dataTypes: string[]; // What kind of data we can get
+  dataTypes: string[];
   language: 'en' | 'it' | 'both';
 }
 
 /**
- * Primary whitelist sources for technical data
- * These are the FIRST sources to check for any article
+ * Primary whitelist sources for technical data.
+ * These are the FIRST sources to check for any article.
  */
 export const WHITELIST_SOURCES: TrustedSource[] = [
-  // Tier 1 - Primary Technical Data
+  // ── Tier 1: EN technical benchmarks ──────────────────────────────────────
   {
     domain: 'protoolreviews.com',
     name: 'Pro Tool Reviews',
@@ -48,8 +49,8 @@ export const WHITELIST_SOURCES: TrustedSource[] = [
     dataTypes: ['user-opinions', 'real-world-use', 'durability-reports'],
     language: 'en',
   },
-  
-  // Tier 2 - Additional Quality Sources
+
+  // ── Tier 2: EN additional quality sources ────────────────────────────────
   {
     domain: 'thetoolreport.com',
     name: 'The Tool Report',
@@ -66,10 +67,145 @@ export const WHITELIST_SOURCES: TrustedSource[] = [
     dataTypes: ['hands-on', 'news', 'first-looks'],
     language: 'en',
   },
+
+  // ── Tier 3: IT dealer blogs & industry publications ───────────────────────
+  {
+    domain: 'misterworker.com',
+    name: 'Mister Worker Blog',
+    type: 'blog',
+    priority: 8,
+    dataTypes: ['buying-guides', 'comparisons', 'brand-reviews'],
+    language: 'it',
+  },
+  {
+    domain: 'perinelliforniture.it',
+    name: 'Perinelli Forniture Blog',
+    type: 'blog',
+    priority: 7,
+    dataTypes: ['field-tests', 'professional-guides', 'practical-tips'],
+    language: 'it',
+  },
+  {
+    domain: 'extoltools.com',
+    name: 'Extol Tools Blog IT',
+    type: 'blog',
+    priority: 6,
+    dataTypes: ['brand-rankings', 'comparisons', 'buying-guides'],
+    language: 'it',
+  },
+  {
+    domain: 'festool.it',
+    name: 'Festool Italia Blog',
+    type: 'blog',
+    priority: 6,
+    dataTypes: ['technical-depth', 'system-explanations', 'professional-use'],
+    language: 'it',
+  },
+  {
+    domain: 'mariniproworker.it',
+    name: 'Marini ProWorker Blog',
+    type: 'blog',
+    priority: 5,
+    dataTypes: ['site-tools', 'professional-guides'],
+    language: 'it',
+  },
+
+  // ── Tier 3: IT generator & heavy equipment blogs ─────────────────────────
+  {
+    domain: 'bertolisrl.it',
+    name: 'Bertoli SRL Generatori',
+    type: 'blog',
+    priority: 6,
+    dataTypes: ['generator-guides', 'site-equipment', 'buying-guides'],
+    language: 'it',
+  },
+  {
+    domain: 'oreficegenerators.com',
+    name: 'Orefice Generators Blog',
+    type: 'blog',
+    priority: 6,
+    dataTypes: ['generator-specs', 'site-safety', 'maintenance'],
+    language: 'it',
+  },
+  {
+    domain: 'eurobrico.com',
+    name: 'Eurobrico Magazine',
+    type: 'blog',
+    priority: 5,
+    dataTypes: ['generator-guides', 'equipment-guides', 'diy'],
+    language: 'it',
+  },
+  {
+    domain: 'mastropaolo.net',
+    name: 'Mastropaolo Elettrotecnica',
+    type: 'technical',
+    priority: 6,
+    dataTypes: ['generator-technical', 'electrical-specs', 'load-analysis'],
+    language: 'it',
+  },
+  {
+    domain: 'generatoradvisor.com',
+    name: 'Generator Advisor',
+    type: 'technical',
+    priority: 7,
+    dataTypes: ['generator-reviews', 'load-tests', 'autonomy-tests'],
+    language: 'en',
+  },
 ];
 
 // =============================================================================
-// FORUM SOURCES - Sentiment Analysis
+// RSS SOURCES — Structured feed fetching (no API key required)
+// =============================================================================
+
+export interface RssSource {
+  domain: string;
+  name: string;
+  feedUrl: string;
+  language: 'en' | 'it';
+  category: 'tools' | 'generators' | 'construction' | 'general';
+  priority: number;
+}
+
+/**
+ * Sources with public RSS feeds — fetched automatically every cron run.
+ */
+export const RSS_SOURCES: RssSource[] = [
+  {
+    domain: 'toolguyd.com',
+    name: 'ToolGuyd',
+    feedUrl: 'https://toolguyd.com/feed/',
+    language: 'en',
+    category: 'tools',
+    priority: 9,
+  },
+  {
+    domain: 'protoolreviews.com',
+    name: 'Pro Tool Reviews',
+    feedUrl: 'https://www.protoolreviews.com/feed/',
+    language: 'en',
+    category: 'tools',
+    priority: 10,
+  },
+  {
+    domain: 'misterworker.com',
+    name: 'Mister Worker IT',
+    feedUrl: 'https://www.misterworker.com/it/blog/feed',
+    language: 'it',
+    category: 'tools',
+    priority: 8,
+  },
+  {
+    domain: 'perinelliforniture.it',
+    name: 'Perinelli Forniture',
+    feedUrl: 'https://perinelliforniture.it/feed/',
+    language: 'it',
+    category: 'tools',
+    priority: 7,
+  },
+];
+
+// =============================================================================
+// FORUM SOURCES — Sentiment analysis & real-world opinions
 // =============================================================================
 
 export interface ForumSource {
@@ -77,15 +213,15 @@ export interface ForumSource {
   name: string;
   type: 'reddit' | 'forum' | 'community';
   language: 'en' | 'it';
-  searchPatterns: string[]; // URL patterns for searching
-  sentimentWeight: number; // How much to weight opinions from this source
+  searchPatterns: string[];
+  sentimentWeight: number;
 }
 
 /**
- * Forums for sentiment analysis and real-world opinions
+ * Forums for sentiment analysis and real-world opinions.
  */
 export const FORUM_SOURCES: ForumSource[] = [
-  // English Forums
+  // ── Reddit EN ─────────────────────────────────────────────────────────────
   {
     domain: 'reddit.com/r/Tools',
     name: 'Reddit r/Tools',
@@ -97,6 +233,30 @@ export const FORUM_SOURCES: ForumSource[] = [
       'site:reddit.com/r/Makita',
       'site:reddit.com/r/DeWalt',
     ],
+    sentimentWeight: 0.9,
+  },
+  {
+    domain: 'reddit.com/r/Contractor',
+    name: 'Reddit r/Contractor',
+    type: 'reddit',
+    language: 'en',
+    searchPatterns: ['site:reddit.com/r/Contractor'],
+    sentimentWeight: 0.9,
+  },
+  {
+    domain: 'reddit.com/r/Construction',
+    name: 'Reddit r/Construction',
+    type: 'reddit',
+    language: 'en',
+    searchPatterns: ['site:reddit.com/r/Construction'],
+    sentimentWeight: 0.85,
+  },
+  {
+    domain: 'reddit.com/r/Electricians',
+    name: 'Reddit r/Electricians',
+    type: 'reddit',
+    language: 'en',
+    searchPatterns: ['site:reddit.com/r/Electricians'],
     sentimentWeight: 0.9,
   },
   {
@@ -115,8 +275,8 @@ export const FORUM_SOURCES: ForumSource[] = [
     searchPatterns: ['site:contractortalk.com'],
     sentimentWeight: 0.85,
   },
-  
-  // Italian Forums
+
+  // ── IT Forum generali ─────────────────────────────────────────────────────
   {
     domain: 'plcforum.it',
     name: 'PLC Forum Italia',
@@ -126,20 +286,38 @@ export const FORUM_SOURCES: ForumSource[] = [
     sentimentWeight: 0.9,
   },
   {
+    domain: 'electroyou.it',
+    name: 'ElectroYou',
+    type: 'forum',
+    language: 'it',
+    searchPatterns: ['site:electroyou.it/forum'],
+    sentimentWeight: 0.8,
+  },
+  {
+    domain: 'sv-italia.it',
+    name: 'SV Italia Forum Utensili',
+    type: 'forum',
+    language: 'it',
+    searchPatterns: ['site:sv-italia.it/forum'],
+    sentimentWeight: 0.75,
+  },
+
+  // ── IT Forum macchine da cantiere ─────────────────────────────────────────
+  {
     domain: 'forum-macchine.it',
     name: 'Forum Macchine',
     type: 'forum',
     language: 'it',
     searchPatterns: ['site:forum-macchine.it'],
-    sentimentWeight: 0.85,
+    sentimentWeight: 0.9,
   },
   {
-    domain: 'electroyou.it',
-    name: 'ElectroYou',
+    domain: 'mmtitalia.it',
+    name: 'MMT Italia Escavatori',
     type: 'forum',
     language: 'it',
-    searchPatterns: ['site:electroyou.it'],
-    sentimentWeight: 0.8,
+    searchPatterns: ['site:mmtitalia.it/macchine_edili'],
+    sentimentWeight: 0.85,
   },
 ];
 
@@ -147,14 +325,12 @@ export const FORUM_SOURCES: ForumSource[] = [
 // SEARCH QUERY TEMPLATES
 // =============================================================================
 
-/**
- * Query templates for finding problems and opinions
- */
 export const SENTIMENT_QUERY_TEMPLATES = {
   problems: [
     '{product} problemi',
     '{product} guasto',
     '{product} difetti',
+    '{product} si rompe',
     '{product} problems',
     '{product} issues',
     '{product} broke',
@@ -163,25 +339,27 @@ export const SENTIMENT_QUERY_TEMPLATES = {
   ],
   opinions: [
     'opinioni {product}',
+    'cosa ne pensate {product}',
+    '{product} pro e contro',
     '{product} review',
     '{product} worth it',
     '{product} honest opinion',
-    'cosa ne pensate {product}',
-    '{product} pro e contro',
+    '{product} vale la pena',
   ],
   comparisons: [
     '{product1} vs {product2}',
     '{product1} o {product2}',
     '{product1} meglio di {product2}',
+    '{product1} confronto {product2}',
     '{product1} compared to {product2}',
     'switch from {product1} to {product2}',
   ],
   durability: [
     '{product} durata',
-    '{product} longevity',
-    '{product} after 1 year',
     '{product} dopo un anno',
+    '{product} longevity',
     '{product} long term',
+    '{product} affidabilità',
   ],
 };
 
@@ -198,9 +376,6 @@ export interface ArticleSection {
   description: string;
 }
 
-/**
- * Mandatory sections for every article
- */
 export const MANDATORY_ARTICLE_SECTIONS: ArticleSection[] = [
   {
     id: 'intro',
@@ -215,7 +390,7 @@ export const MANDATORY_ARTICLE_SECTIONS: ArticleSection[] = [
     title: 'Technical Specifications',
     titleIT: 'Specifiche Tecniche',
     required: true,
-    minWords: 0, // Table, not prose
+    minWords: 0,
     description: 'Comparative table with numerical data from whitelist sources',
   },
   {
@@ -256,72 +431,46 @@ export const MANDATORY_ARTICLE_SECTIONS: ArticleSection[] = [
 // HELPER FUNCTIONS
 // =============================================================================
 
-/**
- * Get search queries for a product's problems
- */
 export function getProblemQueries(productName: string): string[] {
-  return SENTIMENT_QUERY_TEMPLATES.problems.map(template =>
-    template.replace('{product}', productName)
-  );
+  return SENTIMENT_QUERY_TEMPLATES.problems.map(t => t.replace('{product}', productName));
 }
 
-/**
- * Get search queries for a product's opinions
- */
 export function getOpinionQueries(productName: string): string[] {
-  return SENTIMENT_QUERY_TEMPLATES.opinions.map(template =>
-    template.replace('{product}', productName)
-  );
+  return SENTIMENT_QUERY_TEMPLATES.opinions.map(t => t.replace('{product}', productName));
 }
 
-/**
- * Get search queries for product comparisons
- */
 export function getComparisonQueries(product1: string, product2: string): string[] {
-  return SENTIMENT_QUERY_TEMPLATES.comparisons.map(template =>
-    template.replace('{product1}', product1).replace('{product2}', product2)
+  return SENTIMENT_QUERY_TEMPLATES.comparisons.map(t =>
+    t.replace('{product1}', product1).replace('{product2}', product2)
   );
 }
 
-/**
- * Get all forum search patterns for a query
- */
 export function getForumSearchPatterns(query: string, language?: 'en' | 'it'): string[] {
   const patterns: string[] = [];
-  
   for (const forum of FORUM_SOURCES) {
     if (language && forum.language !== language) continue;
-    
     for (const pattern of forum.searchPatterns) {
       patterns.push(`${pattern} ${query}`);
     }
   }
-  
   return patterns;
 }
 
-/**
- * Get whitelist domains for search filtering
- */
 export function getWhitelistDomains(): string[] {
-  return WHITELIST_SOURCES.map(source => source.domain);
+  return WHITELIST_SOURCES.map(s => s.domain);
 }
 
-/**
- * Validate article has all mandatory sections
- */
+export function getItSourceDomains(): string[] {
+  return WHITELIST_SOURCES
+    .filter(s => s.language === 'it' || s.language === 'both')
+    .map(s => s.domain);
+}
+
 export function validateArticleStructure(sections: string[]): {
   valid: boolean;
   missing: string[];
 } {
-  const required = MANDATORY_ARTICLE_SECTIONS
-    .filter(s => s.required)
-    .map(s => s.id);
-  
+  const required = MANDATORY_ARTICLE_SECTIONS.filter(s => s.required).map(s => s.id);
   const missing = required.filter(id => !sections.includes(id));
-  
-  return {
-    valid: missing.length === 0,
-    missing,
-  };
+  return { valid: missing.length === 0, missing };
 }

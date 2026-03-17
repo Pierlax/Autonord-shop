@@ -16,6 +16,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { loggers } from '@/lib/logger';
+import { env } from '@/lib/env';
 
 const log = loggers.blog;
 import { searchForTopics } from '@/lib/blog-researcher/search';
@@ -34,7 +35,7 @@ export const maxDuration = 60; // 5 minutes max for cron job
  */
 function verifyCronRequest(request: NextRequest): boolean {
   const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
+  const cronSecret = env.CRON_SECRET;
   
   // In development, allow all requests
   if (process.env.NODE_ENV === 'development') {

@@ -238,7 +238,7 @@ export function ExpertReview({ product, enrichedData }: ExpertReviewProps) {
         {/* Disclaimer */}
         <p className="text-xs text-muted-foreground mt-6 pt-4 border-t border-border">
           💡 <strong>La nostra filosofia:</strong> Preferiamo perderti come cliente oggi piuttosto che venderti qualcosa di sbagliato. 
-          Se hai dubbi, <a href="/contatti" className="text-primary hover:underline">contattaci</a> per una consulenza gratuita.
+          Se hai dubbi, <a href="/contact" className="text-primary hover:underline">contattaci</a> per una consulenza gratuita.
         </p>
       </div>
     </div>

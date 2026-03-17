@@ -7,6 +7,7 @@
 
 import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
+import { optionalEnv } from '@/lib/env';
 
 const log = loggers.blog;
 import {
@@ -124,139 +125,23 @@ async function searchReddit(query: string, subreddits: string[]): Promise<ForumP
 }
 
 /**
- * Search Italian forums using web search
- * Supports multiple fallback strategies:
- * 1. SERPAPI_API_KEY (paid, best results)
- * 2. EXA_API_KEY (Exa.ai, good for forums)
- * 3. Google Custom Search (free tier available)
- * 4. Direct forum scraping (fallback)
+ * Search Italian forums using web search.
+ * Strategy 1: Google Custom Search (GOOGLE_SEARCH_API_KEY + GOOGLE_SEARCH_CX)
+ * Strategy 2: Fallback direct Google scraping
  */
 async function searchItalianForums(query: string): Promise<ForumPost[]> {
-  const posts: ForumPost[] = [];
-  
-  // Strategy 1: Try SerpAPI first
-  const serpApiKey = process.env.SERPAPI_API_KEY;
-  if (serpApiKey) {
-    const serpResults = await searchWithSerpApi(query, serpApiKey);
-    if (serpResults.length > 0) {
-      return serpResults;
-    }
-  }
-  
-  // Strategy 2: Try Exa.ai
-  const exaApiKey = process.env.EXA_API_KEY;
-  if (exaApiKey) {
-    const exaResults = await searchWithExa(query, exaApiKey);
-    if (exaResults.length > 0) {
-      return exaResults;
-    }
-  }
-  
-  // Strategy 3: Try Google Custom Search
-  const googleApiKey = process.env.GOOGLE_SEARCH_API_KEY;
-  const googleCx = process.env.GOOGLE_SEARCH_CX;
+  const googleApiKey = optionalEnv.GOOGLE_SEARCH_API_KEY;
+  const googleCx = optionalEnv.GOOGLE_SEARCH_CX;
+
   if (googleApiKey && googleCx) {
     const googleResults = await searchWithGoogleCustomSearch(query, googleApiKey, googleCx);
     if (googleResults.length > 0) {
       return googleResults;
     }
   }
-  
-  // Strategy 4: Fallback - Direct Google search scraping (limited)
-  log.info('[Sentiment] No API keys available, using fallback Google search');
-  const fallbackResults = await searchWithGoogleFallback(query);
-  return fallbackResults;
-}
 
-/**
- * Search using SerpAPI
- */
-async function searchWithSerpApi(query: string, apiKey: string): Promise<ForumPost[]> {
-  const posts: ForumPost[] = [];
-  const italianForums = FORUM_SOURCES.filter(f => f.language === 'it');
-  
-  for (const forum of italianForums) {
-    try {
-      const searchQuery = `site:${forum.domain} ${query}`;
-      const url = `https://serpapi.com/search.json?q=${encodeURIComponent(searchQuery)}&api_key=${apiKey}&num=10&hl=it&gl=it`;
-      
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        log.info(`[Sentiment] SerpAPI search failed: ${response.status}`);
-        continue;
-      }
-      
-      const data = await response.json();
-      
-      if (data.organic_results) {
-        for (const result of data.organic_results) {
-          posts.push({
-            source: forum.name,
-            url: result.link,
-            title: result.title,
-            content: result.snippet || '',
-          });
-        }
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-    } catch (error) {
-      log.error(`[Sentiment] SerpAPI error for ${forum.name}:`, error);
-    }
-  }
-  
-  return posts;
-}
-
-/**
- * Search using Exa.ai (good for forums and discussions)
- */
-async function searchWithExa(query: string, apiKey: string): Promise<ForumPost[]> {
-  const posts: ForumPost[] = [];
-  
-  try {
-    const response = await fetch('https://api.exa.ai/search', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        query: `${query} site:plcforum.it OR site:forum-macchine.it OR site:electroyou.it`,
-        numResults: 20,
-        type: 'neural',
-        useAutoprompt: true,
-        contents: {
-          text: { maxCharacters: 1000 },
-        },
-      }),
-    });
-    
-    if (!response.ok) {
-      log.info(`[Sentiment] Exa.ai search failed: ${response.status}`);
-      return posts;
-    }
-    
-    const data = await response.json();
-    
-    if (data.results) {
-      for (const result of data.results) {
-        posts.push({
-          source: extractSourceFromUrl(result.url),
-          url: result.url,
-          title: result.title || '',
-          content: result.text || '',
-        });
-      }
-    }
-    
-  } catch (error) {
-    log.error('[Sentiment] Exa.ai error:', error);
-  }
-  
-  return posts;
+  log.info('[Sentiment] GOOGLE_SEARCH_API_KEY not set, using fallback Google search');
+  return searchWithGoogleFallback(query);
 }
 
 /**
@@ -364,7 +249,7 @@ async function searchWithGoogleFallback(query: string): Promise<ForumPost[]> {
   }
   
   if (posts.length === 0) {
-    log.warn('[Sentiment] WARNING: No Italian forum results found. Consider configuring SERPAPI_API_KEY or EXA_API_KEY for better coverage.');
+    log.warn('[Sentiment] WARNING: No Italian forum results found. Configure GOOGLE_SEARCH_API_KEY + GOOGLE_SEARCH_CX for better coverage.');
   }
   
   return posts;

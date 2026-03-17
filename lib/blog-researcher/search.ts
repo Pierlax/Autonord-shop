@@ -1,13 +1,20 @@
 /**
  * Blog Researcher - Search Module
- * Scans Reddit and forums for hot topics about power tools
+ *
+ * Scans Reddit, RSS feeds, and Exa for hot topics on:
+ * utensili elettrici, macchine cantiere, gruppi elettrogeni, attrezzatura edile.
+ * Sources aligned with the Danea catalog (Autonord product range).
  */
 
 import { loggers } from '@/lib/logger';
+import { RSS_SOURCES, RssSource } from './sources';
 
 const log = loggers.blog;
 
-// Types for search results
+// =============================================================================
+// TYPES
+// =============================================================================
+
 export interface RedditPost {
   id: string;
   title: string;
@@ -22,7 +29,7 @@ export interface RedditPost {
 }
 
 export interface SearchResult {
-  source: 'reddit' | 'exa' | 'web';
+  source: 'reddit' | 'exa' | 'rss' | 'web';
   title: string;
   content: string;
   url: string;
@@ -30,81 +37,73 @@ export interface SearchResult {
   comments: number;
   date: Date;
   subreddit?: string;
+  feedDomain?: string;
 }
 
-// Subreddits to scan for power tool discussions
+// =============================================================================
+// CONFIGURATION
+// =============================================================================
+
+// Reddit subreddits — EN professionals + brand-specific
 const TARGET_SUBREDDITS = [
+  // Core professional communities
   'Tools',
-  'Construction', 
+  'Contractor',
+  'Construction',
   'electricians',
   'Plumbing',
   'HVAC',
   'Carpentry',
-  'HomeImprovement',
+  'woodworking',
+  'DIY',
+  // Brand-specific
   'MilwaukeeTool',
   'Makita',
   'DeWalt',
 ];
 
-// Search queries for TAYA topics (Big 5)
+// TAYA query patterns — EN + IT
 const SEARCH_QUERIES = [
-  // Pricing questions
-  'worth the money',
-  'overpriced',
-  'budget alternative',
-  'cost vs',
-  
-  // Problems
-  'problem with',
-  'issue with',
-  'broke after',
-  'stopped working',
-  'overheating',
-  'battery drain',
-  
-  // Comparisons
-  'vs',
-  'better than',
-  'compared to',
-  'switch from',
-  'upgrade from',
-  
-  // Reviews/Best
-  'best',
-  'recommend',
-  'favorite',
-  'worst',
-  'avoid',
+  // Pricing (IT + EN)
+  'worth the money', 'overpriced', 'budget alternative', 'cost vs',
+  'vale la pena', 'troppo caro', 'alternativa economica', 'prezzo',
+
+  // Problems (IT + EN)
+  'problem with', 'issue with', 'broke after', 'stopped working',
+  'overheating', 'battery drain',
+  'problemi', 'guasto', 'si è rotto', 'surriscalda', 'batteria scarica',
+
+  // Comparisons (IT + EN)
+  'vs', 'better than', 'compared to', 'switch from', 'upgrade from',
+  'confronto', 'meglio di', 'quale scegliere', 'o il',
+
+  // Reviews / Best (IT + EN)
+  'best', 'recommend', 'favorite', 'worst', 'avoid',
+  'migliori', 'consigliato', 'sconsigliato', 'da evitare',
 ];
 
-// Brand keywords to filter relevant posts
+// Brand keywords — utensili elettrici + macchine catalogo Danea
 const BRAND_KEYWORDS = [
-  'milwaukee',
-  'makita',
-  'dewalt',
-  'bosch',
-  'hilti',
-  'metabo',
-  'festool',
-  'hikoki',
-  'ryobi',
-  'ridgid',
+  // Utensili cordless
+  'milwaukee', 'makita', 'dewalt', 'bosch', 'hilti', 'metabo',
+  'festool', 'hikoki', 'ryobi', 'ridgid', 'fein', 'flex',
+  // Macchine cantiere / escavatori
+  'yanmar', 'komatsu', 'doosan', 'kubota', 'cat', 'case',
+  // Benne e attrezzi escavatore
+  'cangini', 'hammer', 'tm benne',
+  // Gruppi elettrogeni
+  'tecnogen', 'sdmo', 'honda', 'briggs', 'kohler', 'generac',
 ];
 
-/**
- * Fetch hot posts from a subreddit using Manus Data API
- */
-async function fetchRedditPosts(subreddit: string, limit: number = 50): Promise<RedditPost[]> {
+// =============================================================================
+// REDDIT FETCHER
+// =============================================================================
+
+async function fetchRedditPosts(subreddit: string, limit = 50): Promise<RedditPost[]> {
   try {
-    // Use fetch to call the Reddit API endpoint
-    // In production, this would use the Manus Data API
     const response = await fetch(
       `https://www.reddit.com/r/${subreddit}/hot.json?limit=${limit}`,
-      {
-        headers: {
-          'User-Agent': 'AutonordBlogResearcher/1.0',
-        },
-      }
+      { headers: { 'User-Agent': 'AutonordBlogResearcher/1.0 (professional tool research)' } }
     );
 
     if (!response.ok) {
@@ -113,8 +112,7 @@ async function fetchRedditPosts(subreddit: string, limit: number = 50): Promise<
     }
 
     const data = await response.json();
-    
-    return data.data.children.map((child: any) => ({
+    return data.data.children.map((child: { data: RedditPost }) => ({
       id: child.data.id,
       title: child.data.title,
       selftext: child.data.selftext || '',
@@ -132,99 +130,101 @@ async function fetchRedditPosts(subreddit: string, limit: number = 50): Promise<
   }
 }
 
-/**
- * Filter posts that are relevant to power tools and TAYA topics
- */
 function filterRelevantPosts(posts: RedditPost[]): RedditPost[] {
   return posts.filter(post => {
     const text = `${post.title} ${post.selftext}`.toLowerCase();
-    
-    // Must mention at least one brand
     const hasBrand = BRAND_KEYWORDS.some(brand => text.includes(brand));
-    
-    // Must match at least one TAYA query pattern
-    const hasTayaTopic = SEARCH_QUERIES.some(query => text.includes(query.toLowerCase()));
-    
-    // Must have some engagement
+    const hasTayaTopic = SEARCH_QUERIES.some(q => text.includes(q.toLowerCase()));
     const hasEngagement = post.score >= 5 || post.num_comments >= 3;
-    
     return hasBrand && (hasTayaTopic || hasEngagement);
   });
 }
 
-/**
- * Search Exa.ai for forum discussions (optional, requires API key)
- */
-async function searchExa(query: string): Promise<SearchResult[]> {
-  const apiKey = process.env.EXA_API_KEY;
-  
-  if (!apiKey) {
-    log.info('[Search] EXA_API_KEY not set, skipping Exa search');
-    return [];
-  }
+// =============================================================================
+// RSS FEED FETCHER
+// =============================================================================
 
+interface RssItem {
+  title: string;
+  link: string;
+  description: string;
+  pubDate: string;
+}
+
+/**
+ * Fetch and parse an RSS feed using native XML parsing via regex.
+ * No external libraries required — works in Node.js edge/serverless.
+ */
+async function fetchRssFeed(source: RssSource): Promise<SearchResult[]> {
   try {
-    const response = await fetch('https://api.exa.ai/search', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        query,
-        type: 'neural',
-        useAutoprompt: true,
-        numResults: 10,
-        includeDomains: [
-          'reddit.com',
-          'toolguyd.com',
-          'protoolreviews.com',
-          'contractortalk.com',
-          'garagejournal.com',
-        ],
-      }),
+    const response = await fetch(source.feedUrl, {
+      headers: { 'User-Agent': 'AutonordBlogResearcher/1.0' },
+      signal: AbortSignal.timeout(8000),
     });
 
     if (!response.ok) {
-      log.error(`[Search] Exa API error: ${response.status}`);
+      log.warn(`[Search] RSS fetch failed for ${source.domain}: ${response.status}`);
       return [];
     }
 
-    const data = await response.json();
-    
-    return data.results.map((result: any) => ({
-      source: 'exa' as const,
-      title: result.title,
-      content: result.text || '',
-      url: result.url,
-      score: result.score || 0,
+    const xml = await response.text();
+
+    // Extract <item> blocks
+    const itemMatches = xml.match(/<item>([\s\S]*?)<\/item>/g) ?? [];
+
+    const items: RssItem[] = itemMatches.map(block => ({
+      title: (block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/) ?? [])[1] ?? (block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/) ?? [])[2] ?? '',
+      link: (block.match(/<link>(.*?)<\/link>/) ?? [])[1] ?? '',
+      description: (block.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>|<description>(.*?)<\/description>/s) ?? [])[1] ?? '',
+      pubDate: (block.match(/<pubDate>(.*?)<\/pubDate>/) ?? [])[1] ?? '',
+    }));
+
+    // Filter to brand-relevant items only
+    const relevant = items.filter(item => {
+      const text = `${item.title} ${item.description}`.toLowerCase();
+      return BRAND_KEYWORDS.some(b => text.includes(b)) ||
+             SEARCH_QUERIES.some(q => text.includes(q.toLowerCase()));
+    });
+
+    log.info(`[Search] RSS ${source.domain}: ${relevant.length}/${items.length} relevant items`);
+
+    return relevant.map(item => ({
+      source: 'rss' as const,
+      title: item.title.replace(/<[^>]+>/g, '').trim(),
+      content: item.description.replace(/<[^>]+>/g, '').slice(0, 500),
+      url: item.link.trim(),
+      score: source.priority,
       comments: 0,
-      date: new Date(result.publishedDate || Date.now()),
+      date: item.pubDate ? new Date(item.pubDate) : new Date(),
+      feedDomain: source.domain,
     }));
   } catch (error) {
-    log.error('[Search] Exa search error:', error);
+    log.warn(`[Search] RSS error for ${source.domain}:`, error);
     return [];
   }
 }
 
+
+// =============================================================================
+// MAIN SEARCH ORCHESTRATOR
+// =============================================================================
+
 /**
- * Main search function - scans all sources
+ * Collect trending topics from Reddit, RSS feeds, and Exa.
+ * Results are merged and sorted by engagement.
  */
 export async function searchForTopics(): Promise<SearchResult[]> {
   log.info('[Search] Starting topic search...');
-  
   const allResults: SearchResult[] = [];
-  
-  // 1. Scan Reddit subreddits
+
+  // ── 1. Reddit subreddits ──────────────────────────────────────────────────
   for (const subreddit of TARGET_SUBREDDITS) {
     log.info(`[Search] Scanning r/${subreddit}...`);
-    
     const posts = await fetchRedditPosts(subreddit, 50);
-    const relevantPosts = filterRelevantPosts(posts);
-    
-    log.info(`[Search] Found ${relevantPosts.length} relevant posts in r/${subreddit}`);
-    
-    for (const post of relevantPosts) {
+    const relevant = filterRelevantPosts(posts);
+    log.info(`[Search] r/${subreddit}: ${relevant.length} relevant posts`);
+
+    for (const post of relevant) {
       allResults.push({
         source: 'reddit',
         title: post.title,
@@ -236,65 +236,83 @@ export async function searchForTopics(): Promise<SearchResult[]> {
         subreddit: post.subreddit,
       });
     }
-    
-    // Rate limiting - wait between requests
+
+    // Polite rate limiting between Reddit requests
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
-  
-  // 2. Search Exa for broader forum discussions (if API key available)
-  const exaQueries = [
-    'Milwaukee tool problems forum',
-    'Makita vs DeWalt professional opinion',
-    'power tool battery issues',
-    'best cordless drill for electricians',
-  ];
-  
-  for (const query of exaQueries) {
-    const exaResults = await searchExa(query);
-    allResults.push(...exaResults);
+
+  // ── 2. RSS feeds ──────────────────────────────────────────────────────────
+  log.info(`[Search] Fetching ${RSS_SOURCES.length} RSS feeds...`);
+  const rssResults = await Promise.allSettled(RSS_SOURCES.map(fetchRssFeed));
+  for (const result of rssResults) {
+    if (result.status === 'fulfilled') {
+      allResults.push(...result.value);
+    }
   }
-  
-  log.info(`[Search] Total results collected: ${allResults.length}`);
-  
-  // Sort by engagement (score + comments)
+
+  log.info(`[Search] Total collected: ${allResults.length} results`);
+
+  // Sort by engagement
   allResults.sort((a, b) => (b.score + b.comments) - (a.score + a.comments));
-  
+
   return allResults;
 }
 
+// =============================================================================
+// TOPIC GROUPER
+// =============================================================================
+
 /**
- * Group results by topic/theme
+ * Cluster results into named topics for the analysis phase.
  */
 export function groupByTopic(results: SearchResult[]): Map<string, SearchResult[]> {
   const topics = new Map<string, SearchResult[]>();
-  
-  // Topic patterns to detect
-  const topicPatterns = [
-    { pattern: /battery|batteries|charge|runtime/i, topic: 'Battery Issues' },
-    { pattern: /overheat|hot|temperature|burn/i, topic: 'Overheating Problems' },
-    { pattern: /milwaukee.*vs.*makita|makita.*vs.*milwaukee/i, topic: 'Milwaukee vs Makita' },
-    { pattern: /milwaukee.*vs.*dewalt|dewalt.*vs.*milwaukee/i, topic: 'Milwaukee vs DeWalt' },
-    { pattern: /makita.*vs.*dewalt|dewalt.*vs.*makita/i, topic: 'Makita vs DeWalt' },
-    { pattern: /worth|price|expensive|cheap|budget/i, topic: 'Value & Pricing' },
-    { pattern: /broke|break|fail|defect|warranty/i, topic: 'Reliability Issues' },
-    { pattern: /best.*drill|drill.*recommend/i, topic: 'Best Drills' },
-    { pattern: /best.*impact|impact.*recommend/i, topic: 'Best Impact Drivers' },
-    { pattern: /best.*saw|saw.*recommend/i, topic: 'Best Saws' },
+
+  const topicPatterns: { pattern: RegExp; topic: string }[] = [
+    // Brand confronti
+    { pattern: /milwaukee.{0,10}(vs|contro|o il).{0,10}makita|makita.{0,10}(vs|contro|o il).{0,10}milwaukee/i, topic: 'Milwaukee vs Makita' },
+    { pattern: /milwaukee.{0,10}(vs|contro|o il).{0,10}dewalt|dewalt.{0,10}(vs|contro|o il).{0,10}milwaukee/i, topic: 'Milwaukee vs DeWalt' },
+    { pattern: /makita.{0,10}(vs|contro|o il).{0,10}dewalt|dewalt.{0,10}(vs|contro|o il).{0,10}makita/i, topic: 'Makita vs DeWalt' },
+    { pattern: /hi-?koki/i, topic: 'HiKOKI Tools' },
+
+    // Problemi tecnici utensili — singolare + plurale IT
+    { pattern: /batter(?:y|ies|ia|ie)|charge|runtime|ricaric/i, topic: 'Battery Issues' },
+    { pattern: /overheat|surriscald(?:a|amento)|temperatura.*alta|hot.*tool/i, topic: 'Overheating Problems' },
+    { pattern: /broke|break|fail|defect|warranty|guast[oi]|difett[oi]|si.{0,5}rompe/i, topic: 'Reliability Issues' },
+
+    // Categorie prodotto — singolare + plurale IT
+    { pattern: /best.*drill|drill.*recommend|miglior[ie]?.{0,5}trapan[oi]/i, topic: 'Best Drills' },
+    { pattern: /best.*impact|impact.*recommend|avvitator[ei]/i, topic: 'Best Impact Drivers' },
+    { pattern: /best.*saw|saw.*recommend|seg[ae]\b/i, topic: 'Best Saws' },
+    { pattern: /tassellator[ei]|rotary.*hammer|sds.{0,5}plus/i, topic: 'Rotary Hammers' },
+    { pattern: /smerigliatric[ei]|angle.*grinder|flex.*grinding/i, topic: 'Angle Grinders' },
+
+    // Generatori — singolare + plurale IT
+    { pattern: /generator[es]?|generator[ei]\b|gruppi?.{0,5}elettrogen[io]/i, topic: 'Generators' },
+    { pattern: /tecnogen|sdmo/i, topic: 'Generators' },
+    { pattern: /silenzios[oa]|noise.*level|db[a]?\b|rumorosit[àa]/i, topic: 'Generator Noise' },
+    { pattern: /autonomi[ae].*generatore|fuel.*consumption|consumo.*carburante/i, topic: 'Generator Fuel & Autonomy' },
+
+    // Macchine cantiere — singolare + plurale IT
+    { pattern: /mini.?escavator[ei]|mini.?digger|compact.*excavat/i, topic: 'Mini Excavators' },
+    { pattern: /escavator[ei]|excavat(?:or|ing)|yanmar|komatsu|kubota|doosan/i, topic: 'Excavators' },
+    { pattern: /benn[ae]|bucket.*attach|cangini|hammer.*attach|tm.{0,5}benn/i, topic: 'Excavator Attachments' },
+    { pattern: /demolizion[ei]|demolition.*hammer|martell[oi].*demolitore/i, topic: 'Demolition' },
+
+    // Pricing
+    { pattern: /worth.*money|price.*quality|expensive|budget.{0,10}alternat|prezzo|vale.{0,5}pena|troppo.{0,5}car/i, topic: 'Value & Pricing' },
   ];
-  
+
   for (const result of results) {
     const text = `${result.title} ${result.content}`;
-    
     for (const { pattern, topic } of topicPatterns) {
       if (pattern.test(text)) {
-        if (!topics.has(topic)) {
-          topics.set(topic, []);
-        }
+        if (!topics.has(topic)) topics.set(topic, []);
         topics.get(topic)!.push(result);
-        break; // Only assign to first matching topic
+        break;
       }
     }
   }
-  
+
   return topics;
 }

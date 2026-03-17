@@ -5,6 +5,7 @@
 
 import { ArticleDraft } from './drafting';
 import { loggers } from '@/lib/logger';
+import { optionalEnv } from '@/lib/env';
 
 const log = loggers.blog;
 
@@ -22,7 +23,7 @@ async function sendSlackNotification(
   article: ArticleDraft,
   articleUrl: string
 ): Promise<NotificationResult> {
-  const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+  const webhookUrl = optionalEnv.SLACK_WEBHOOK_URL;
   
   if (!webhookUrl) {
     return { success: false, channel: 'slack', error: 'SLACK_WEBHOOK_URL not configured' };
@@ -128,8 +129,8 @@ async function sendEmailNotification(
   article: ArticleDraft,
   articleUrl: string
 ): Promise<NotificationResult> {
-  const emailTo = process.env.NOTIFICATION_EMAIL;
-  const resendApiKey = process.env.RESEND_API_KEY;
+  const emailTo = optionalEnv.NOTIFICATION_EMAIL;
+  const resendApiKey = optionalEnv.RESEND_API_KEY;
   
   if (!emailTo) {
     return { success: false, channel: 'email', error: 'NOTIFICATION_EMAIL not configured' };
@@ -214,7 +215,7 @@ export async function sendNotification(
   article: ArticleDraft,
   shopifyArticleId: number
 ): Promise<NotificationResult[]> {
-  const shopDomain = process.env.SHOPIFY_SHOP_DOMAIN || 'your-store.myshopify.com';
+  const shopDomain = optionalEnv.SHOPIFY_SHOP_DOMAIN ?? 'your-store.myshopify.com';
   const articleUrl = `https://${shopDomain}/admin/articles/${shopifyArticleId}`;
   
   log.info(`[Notification] Sending notifications for article: ${article.title}`);

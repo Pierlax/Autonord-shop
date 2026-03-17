@@ -8,7 +8,6 @@ import { generateTextSafe } from '@/lib/shopify/ai-client';
 
 const SHOPIFY_STORE = 'autonord-service.myshopify.com';
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN!;
-const SERPAPI_API_KEY = process.env.SERPAPI_API_KEY;
 
 interface ArticlePayload {
   id: number;
@@ -68,38 +67,6 @@ NON usare: <h1> (sarà il titolo separato), <html>, <body>, <head>, <script>, <s
 Lunghezza target: 1800-2500 parole.
 Scrivi in italiano.`;
 
-async function searchForImage(query: string): Promise<string | null> {
-  if (!SERPAPI_API_KEY) {
-    console.log('SERPAPI_API_KEY not set, skipping image search');
-    return null;
-  }
-  
-  try {
-    const url = `https://serpapi.com/search.json?engine=google_images&q=${encodeURIComponent(query + ' product')}&num=10&api_key=${SERPAPI_API_KEY}`;
-    const response = await fetch(url);
-    const data = await response.json();
-    
-    if (data.images_results && data.images_results.length > 0) {
-      const goodImages = data.images_results.filter((img: any) => 
-        img.original && 
-        !img.original.includes('placeholder') &&
-        !img.original.includes('logo') &&
-        img.original.match(/\.(jpg|jpeg|png|webp)/i)
-      );
-      
-      const preferredDomains = ['milwaukeetool', 'makitatools', 'dewalt', 'hilti', 'bosch'];
-      const preferred = goodImages.find((img: any) => 
-        preferredDomains.some(d => img.original?.toLowerCase().includes(d))
-      );
-      
-      return preferred?.original || goodImages[0]?.original || null;
-    }
-    return null;
-  } catch (error) {
-    console.error('Error searching for image:', error);
-    return null;
-  }
-}
 
 async function generateArticleContent(article: ArticlePayload): Promise<string> {
   const userPrompt = `Scrivi un articolo completo e approfondito per il blog di Autonord Service su:
@@ -217,18 +184,13 @@ export async function POST(request: NextRequest) {
     const content = await generateArticleContent(payload);
     console.log('   ✅ Content generated');
     
-    // Search for image
-    console.log('   🔍 Searching for image...');
-    const imageUrl = await searchForImage(payload.imageQuery);
-    console.log(imageUrl ? '   ✅ Image found' : '   ⚠️ No image found');
-    
     // Create article on Shopify
     console.log('   📤 Publishing to Shopify...');
     const result = await createArticle(
       payload.title,
       content,
       payload.category,
-      imageUrl,
+      null,
       payload.featured
     );
     

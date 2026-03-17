@@ -120,7 +120,7 @@ export function FAQAccordion({ faqs, productTitle, isAiEnriched }: FAQAccordionP
           <p className="text-sm text-muted-foreground">
             Hai altre domande?{' '}
             <a 
-              href="/contatti" 
+              href="/contact"
               className="text-primary hover:underline font-medium 
                          inline-flex items-center min-h-[44px] -my-2 py-2"
             >
