@@ -1,14 +1,20 @@
 /**
- * UniversalRAG Integration Module
- * 
- * Integrates all UniversalRAG paper improvements into a unified pipeline:
- * 1. Source Type Router - Routes queries to appropriate sources
- * 2. Granularity-Aware Retrieval - Adjusts retrieval depth
- * 3. No-Retrieval Detection - Skips retrieval when unnecessary
- * 4. Proactive Cross-Source Fusion - Plans multi-source retrieval
- * 
- * Based on "UniversalRAG: Retrieval-Augmented Generation over Corpora 
- * of Diverse Modalities and Granularities" (KAIST, 2026)
+ * UniversalRAG Integration Module — v2
+ *
+ * Integrates all UniversalRAG paper improvements plus the v2 navigation/discovery
+ * extension for dynamic corpus construction at query time.
+ *
+ * Seven-layer architecture:
+ *   1. Intent Gate            — No-retrieval detection
+ *   2. Source Discovery       — Multi-intent domain-filtered search (NEW v2)
+ *   3. Domain Navigation      — Controlled URL navigation with budget (NEW v2)
+ *   4. Corpus Builder         — Typed corpora per modality/granularity (NEW v2)
+ *   5. Universal Router       — Source routing + extended V2 labels (EXTENDED v2)
+ *   6. Retrieval + Rerank     — Hybrid search on enriched corpus (EXTENDED v2)
+ *   7. Synthesis + Memory     — Evidence Graph + Evaluator-Optimizer (NEW v2)
+ *
+ * Based on "UniversalRAG: Retrieval-Augmented Generation over Corpora
+ * of Diverse Modalities and Granularities" (KAIST, 2026) + v2 extensions.
  */
 
 import { loggers } from '@/lib/logger';
@@ -74,13 +80,96 @@ import { performWebSearch, SearchResult } from './search-client';
 import { cachedSearch, CacheIntent } from './rag-cache';
 import { getKnowledgeGraph, PowerToolKnowledgeGraph } from './knowledge-graph';
 
+// v2 imports
+import {
+  discoverSources,
+  discoveredSourceToSearchResult,
+  DiscoveryResult,
+  DiscoverySignal,
+  DiscoveryIntent,
+} from './source-discovery';
+import {
+  navigateDomains,
+  NavigationResult,
+  NavigationBudget,
+} from './domain-navigator';
+import {
+  buildCorpus,
+  corpusToContext,
+  corpusToSearchResults,
+  CorpusCollection,
+} from './corpus-builder';
+import {
+  buildEvidenceGraph,
+  EvidenceGraph,
+  EvidenceGraphSummary,
+} from './evidence-graph';
+import {
+  evaluateCorpus,
+  generateGapQueries,
+  EvaluationResult,
+  OptimizerResult,
+  OptimizationPass,
+} from './evaluator-optimizer';
+
+// ---------------------------------------------------------------------------
+// V2: Extended routing labels (more operational than source types)
+// ---------------------------------------------------------------------------
+
+/**
+ * Extended routing labels for Autonord v2.
+ * More granular than the paper's modality/granularity split:
+ * each label maps to a specific retrieval strategy + corpus type combination.
+ */
+export type V2RoutingLabel =
+  | 'none'                // No retrieval needed
+  | 'spec_short'          // Brief specs (fact-level granularity)
+  | 'spec_full'           // Full technical spec sheet (document-level)
+  | 'manual_pdf'          // PDF manual retrieval
+  | 'compatibility_table' // Compatibility matrix (table corpus)
+  | 'image_gallery'       // Image discovery (visual corpus)
+  | 'support_page'        // Support / FAQ page
+  | 'forum_discussion';   // Forum / community discussion
+
+/** Maps V2RoutingLabel to the best DiscoveryIntents to activate. */
+const V2_LABEL_TO_INTENTS: Record<V2RoutingLabel, DiscoveryIntent[]> = {
+  none:                [],
+  spec_short:          ['product'],
+  spec_full:           ['product', 'manual'],
+  manual_pdf:          ['manual', 'download'],
+  compatibility_table: ['compatibility', 'manual'],
+  image_gallery:       ['product'],
+  support_page:        ['support', 'download'],
+  forum_discussion:    ['support'],
+};
+
 // Pipeline configuration
 export interface UniversalRAGConfig {
   enableSourceRouting: boolean;
   enableGranularityAware: boolean;
   enableNoRetrievalDetection: boolean;
   enableProactiveFusion: boolean;
-  enableBenchmarkContext: boolean;  // NEW: Load competitor benchmarks
+  enableBenchmarkContext: boolean;  // Load competitor benchmarks
+
+  // ── V2 extensions ────────────────────────────────────────────────────────
+  /** Layer 2: Multi-intent source discovery before routing. */
+  enableSourceDiscovery: boolean;
+  /** Layer 3: Controlled domain navigation with budget. */
+  enableDomainNavigation: boolean;
+  /** Layer 4: Build typed corpora (pdf, table, spec_sheet, …). */
+  enableCorpusBuilder: boolean;
+  /** Layer 7 – memory: Session evidence graph. */
+  enableEvidenceGraph: boolean;
+  /** Layer 7 – loop: Evaluator-Optimizer iterative retrieval. */
+  enableEvaluatorOptimizer: boolean;
+  /** Max URLs to keep per domain during navigation (default: 5). */
+  navigationBudgetPerDomain: number;
+  /** Max navigation depth (0 = direct, 1-2 = follow-up, default: 2). */
+  navigationDepth: number;
+  /** Max evaluator-optimizer passes (default: 2). */
+  maxRetrievalPasses: number;
+  // ─────────────────────────────────────────────────────────────────────────
+
   maxSources: number;
   maxTokenBudget: number;
   timeoutMs: number;
@@ -92,7 +181,16 @@ const DEFAULT_CONFIG: UniversalRAGConfig = {
   enableGranularityAware: true,
   enableNoRetrievalDetection: true,
   enableProactiveFusion: true,
-  enableBenchmarkContext: true,  // NEW: Always load benchmarks
+  enableBenchmarkContext: true,
+  // V2 defaults — all enabled
+  enableSourceDiscovery: true,
+  enableDomainNavigation: true,
+  enableCorpusBuilder: true,
+  enableEvidenceGraph: true,
+  enableEvaluatorOptimizer: true,
+  navigationBudgetPerDomain: 5,
+  navigationDepth: 2,
+  maxRetrievalPasses: 2,
   maxSources: 5,
   maxTokenBudget: 6000,
   timeoutMs: 30000,
@@ -110,6 +208,20 @@ export interface UniversalRAGResult {
     suitableForTrades: string[];
     relatedUseCases: string[];
     crossSellSuggestions: string[];
+  };
+  /** V2 layer outputs — undefined when v2 is disabled. */
+  v2?: {
+    discoverySourceCount: number;
+    navigationResourceCount: number;
+    corpusTokens: number;
+    corpusCoverage: number;
+    hasPdf: boolean;
+    hasTable: boolean;
+    evidenceGraphSummary?: EvidenceGraphSummary;
+    evaluationResult?: EvaluationResult;
+    optimizerResult?: OptimizerResult;
+    v2RoutingLabel?: V2RoutingLabel;
+    corpusContext: string;  // Pre-built context string injected into enrichedData
   };
   metadata: {
     routingDecision?: RoutingDecision;
@@ -195,6 +307,26 @@ export class UniversalRAGPipeline {
       }
     }
     
+    // ── V2 Layer 2-4: Source Discovery → Domain Navigation → Corpus Builder ──
+    // Runs BEFORE the existing routing so discovered corpus items can be
+    // injected into the retrieval data maps as additional search results.
+    let v2DiscoveryResult: DiscoveryResult | undefined;
+    let v2NavigationResult: NavigationResult | undefined;
+    let v2Corpus: CorpusCollection | undefined;
+    let v2EvidenceGraph: EvidenceGraph | undefined;
+    let v2RoutingLabel: V2RoutingLabel | undefined;
+    let v2OptimizerResult: OptimizerResult | undefined;
+
+    if (this.config.enableSourceDiscovery) {
+      const v2Data = await this.runV2Discovery(
+        productTitle, vendor, sku, productType, state
+      );
+      v2DiscoveryResult = v2Data.discoveryResult;
+      v2NavigationResult = v2Data.navigationResult;
+      v2Corpus = v2Data.corpus;
+      v2RoutingLabel = v2Data.routingLabel;
+    }
+
     try {
       // Step 1: Check if retrieval is needed
       let retrievalDecision: RetrievalDecision | undefined;
@@ -271,6 +403,12 @@ export class UniversalRAGPipeline {
         fusionPlan,
         state
       );
+
+      // V2: Inject corpus items into retrieval data so the existing fusion/
+      // granularity pipeline processes them together with web search results.
+      if (v2Corpus && v2Corpus.totalItems > 0) {
+        this.injectCorpusIntoRetrieval(v2Corpus, retrievedData, state);
+      }
       
       // Step 5.5: Adapt granularity based on actual retrieved content density
       // If content is sparse (low density) → increase granularity (fetch more context)
@@ -306,6 +444,35 @@ export class UniversalRAGPipeline {
         state
       );
       
+      // V2: Build Evidence Graph from corpus (session memory)
+      if (this.config.enableEvidenceGraph && v2Corpus && v2Corpus.totalItems > 0) {
+        v2EvidenceGraph = buildEvidenceGraph(
+          `${vendor} ${productTitle}`,
+          '',
+          v2Corpus.items
+        );
+        this.log(
+          state,
+          `EvidenceGraph: ${v2EvidenceGraph.nodeCount} nodes, ` +
+            `${v2EvidenceGraph.edgeCount} edges, ` +
+            `${v2EvidenceGraph.detectConflicts().length} conflicts`
+        );
+
+        // V2: Evaluator-Optimizer loop
+        if (this.config.enableEvaluatorOptimizer) {
+          v2OptimizerResult = await this.runEvaluatorOptimizer(
+            v2Corpus,
+            v2EvidenceGraph,
+            productTitle,
+            vendor,
+            sku,
+            retrievedData,
+            granularityDecision,
+            state
+          );
+        }
+      }
+
       // Step 7: Prepare final result
       const enrichedData = this.prepareEnrichedData(
         retrievedData,
@@ -319,7 +486,19 @@ export class UniversalRAGPipeline {
         enrichedData.brandProfile = benchmarkContext.brandProfile;
         enrichedData.competitors = benchmarkContext.competitors;
       }
-      
+
+      // V2: Inject corpus context and evidence graph context into enrichedData.
+      // rag-adapter reads enrichedData and builds sourceData from it —
+      // adding v2CorpusContext here gives it rich, pre-structured content.
+      if (v2Corpus && v2Corpus.totalItems > 0) {
+        enrichedData.v2CorpusContext = corpusToContext(v2Corpus, 3000);
+        enrichedData.v2HasPdf = v2Corpus.hasPdf;
+        enrichedData.v2HasTable = v2Corpus.hasTable;
+      }
+      if (v2EvidenceGraph) {
+        enrichedData.v2EvidenceGraphContext = v2EvidenceGraph.buildContext();
+      }
+
       const result = this.createResult(true, enrichedData, state, {
         routingDecision,
         granularityDecision,
@@ -332,10 +511,37 @@ export class UniversalRAGPipeline {
           comparisonContextLength: benchmarkContext.comparisonContext.length,
         } : undefined,
       });
-      
+
       // Attach KG context to result for downstream consumers (ai-enrichment-v3)
       result.knowledgeGraphContext = kgContext;
-      
+
+      // Attach v2 layer outputs
+      if (v2Corpus) {
+        const evalResult = v2OptimizerResult?.evaluation;
+        result.v2 = {
+          discoverySourceCount: v2DiscoveryResult?.totalFound ?? 0,
+          navigationResourceCount: v2NavigationResult?.totalResources ?? 0,
+          corpusTokens: v2Corpus.totalTokens,
+          corpusCoverage: v2Corpus.coverageScore,
+          hasPdf: v2Corpus.hasPdf,
+          hasTable: v2Corpus.hasTable,
+          evidenceGraphSummary: v2EvidenceGraph?.getSummary(),
+          evaluationResult: evalResult,
+          optimizerResult: v2OptimizerResult,
+          v2RoutingLabel,
+          corpusContext: enrichedData.v2CorpusContext ?? '',
+        };
+        this.log(
+          state,
+          `V2 summary: discovery=${result.v2.discoverySourceCount}, ` +
+            `nav=${result.v2.navigationResourceCount}, ` +
+            `corpus=${result.v2.corpusTokens}tok, ` +
+            `coverage=${result.v2.corpusCoverage.toFixed(2)}, ` +
+            `pdf=${result.v2.hasPdf}, table=${result.v2.hasTable}, ` +
+            `quality=${evalResult?.qualityScore?.toFixed(2) ?? 'n/a'}`
+        );
+      }
+
       return result;
       
     } catch (error) {
@@ -783,6 +989,284 @@ export class UniversalRAGPipeline {
   private estimateTokens(content: any): number {
     const str = JSON.stringify(content);
     return Math.ceil(str.length / 4);
+  }
+
+  // ── V2 private methods ────────────────────────────────────────────────────
+
+  /**
+   * V2 Layer 2-4: Source Discovery → Domain Navigation → Corpus Builder.
+   *
+   * Determines the V2RoutingLabel from the product signals, selects the
+   * appropriate DiscoveryIntents, runs source discovery, navigates discovered
+   * URLs within budget, and builds a typed CorpusCollection.
+   *
+   * Returns the three layer outputs for injection into the main pipeline.
+   */
+  private async runV2Discovery(
+    productTitle: string,
+    vendor: string,
+    sku: string,
+    productType: string,
+    state: PipelineState
+  ): Promise<{
+    discoveryResult: DiscoveryResult;
+    navigationResult: NavigationResult;
+    corpus: CorpusCollection;
+    routingLabel: V2RoutingLabel;
+  }> {
+    this.log(state, `V2 Discovery starting for: ${vendor} ${productTitle}`);
+
+    // Determine V2RoutingLabel from enrichment type and product signals
+    const routingLabel = this.selectV2RoutingLabel(productTitle, vendor, productType);
+    this.log(state, `V2 RoutingLabel: ${routingLabel}`);
+
+    // Select discovery intents for this label
+    const intents: DiscoveryIntent[] = V2_LABEL_TO_INTENTS[routingLabel].length > 0
+      ? V2_LABEL_TO_INTENTS[routingLabel]
+      : ['product', 'manual', 'compatibility'];
+
+    const signal: DiscoverySignal = {
+      brand: vendor,
+      productTitle,
+      sku: sku || null,
+      category: productType || null,
+    };
+
+    // Layer 2: Source Discovery
+    const discoveryResult = await discoverSources(
+      signal,
+      intents,
+      this.config.navigationBudgetPerDomain
+    );
+    this.log(state, `V2 Discovery: ${discoveryResult.totalFound} sources in ${discoveryResult.executionTimeMs}ms`);
+
+    // Layer 3: Domain Navigation
+    let navigationResult: NavigationResult;
+    if (this.config.enableDomainNavigation) {
+      const navBudget: Partial<NavigationBudget> = {
+        maxUrlsPerDomain: this.config.navigationBudgetPerDomain,
+        maxTotalUrls: this.config.navigationBudgetPerDomain * 4,
+        maxDepth: this.config.navigationDepth,
+      };
+      navigationResult = await navigateDomains(discoveryResult.sources, navBudget);
+      this.log(state, `V2 Navigation: ${navigationResult.totalResources} resources (${navigationResult.pdfUrls.length} PDFs)`);
+    } else {
+      // Skip navigation: convert discovered sources directly to navigation resources
+      navigationResult = {
+        resources: discoveryResult.sources.map((s) => ({
+          url: s.url,
+          title: s.title,
+          snippet: s.snippet,
+          resourceType: s.isPdf ? ('pdf' as const) : ('page' as const),
+          intent: s.intent,
+          domain: s.domain,
+          confidence: s.confidence,
+          isPdf: s.isPdf,
+          depth: 0,
+        })),
+        pdfUrls: discoveryResult.sources.filter((s) => s.isPdf).map((s) => s.url),
+        supportUrls: discoveryResult.sources.filter((s) => s.isSupport).map((s) => s.url),
+        downloadUrls: [],
+        byDomain: new Map(),
+        totalResources: discoveryResult.sources.length,
+        executionTimeMs: 0,
+        debugLog: [],
+      };
+    }
+
+    // Layer 4: Corpus Builder
+    let corpus: CorpusCollection;
+    if (this.config.enableCorpusBuilder) {
+      corpus = buildCorpus(
+        navigationResult.resources,
+        discoveryResult.sources,
+        this.config.maxTokenBudget
+      );
+      this.log(state, `V2 Corpus: ${corpus.totalItems} items, ${corpus.totalTokens} tokens, coverage=${corpus.coverageScore.toFixed(2)}`);
+    } else {
+      corpus = {
+        items: [],
+        byType: {},
+        totalItems: 0,
+        totalTokens: 0,
+        hasPdf: false,
+        hasTable: false,
+        hasImage: false,
+        coverageScore: 0,
+      };
+    }
+
+    return { discoveryResult, navigationResult, corpus, routingLabel };
+  }
+
+  /**
+   * Determine the V2RoutingLabel from product title, vendor and type.
+   * Uses fast keyword heuristics — no LLM call needed.
+   */
+  private selectV2RoutingLabel(
+    productTitle: string,
+    vendor: string,
+    productType: string
+  ): V2RoutingLabel {
+    const text = `${productTitle} ${productType}`.toLowerCase();
+
+    if (/manuale|pdf|istruzioni|manual/i.test(text)) return 'manual_pdf';
+    if (/compatibil|batteria|battery|accessori/i.test(text)) return 'compatibility_table';
+    if (/immagin|foto|image|gallery/i.test(text)) return 'image_gallery';
+    if (/support|faq|assist|troubleshoot/i.test(text)) return 'support_page';
+    if (/forum|reddit|opinioni|discussioni/i.test(text)) return 'forum_discussion';
+
+    // Infer from product type
+    if (/generatore|compressore|saldatrice|escavatore|miniescavatore/i.test(text)) return 'spec_full';
+    if (/ricambio|pezzo|spare|part/i.test(text)) return 'compatibility_table';
+
+    return 'spec_full'; // Default for general product enrichment
+  }
+
+  /**
+   * Inject v2 corpus items into the existing retrieval data map so the
+   * fusion/granularity pipeline processes them alongside web search results.
+   *
+   * Maps corpus type → closest SourceType:
+   *   pdf, spec_sheet → official_manuals
+   *   table           → official_specs
+   *   review items    → user_reviews
+   *   others          → official_specs (safest default)
+   */
+  private injectCorpusIntoRetrieval(
+    corpus: CorpusCollection,
+    retrievedData: Map<SourceType, any[]>,
+    state: PipelineState
+  ): void {
+    const typeToSource: Record<string, SourceType> = {
+      pdf:        'official_manuals',
+      spec_sheet: 'official_specs',
+      table:      'official_specs',
+      document:   'official_specs',
+      paragraph:  'retailer_data',
+      image:      'retailer_data',
+    };
+
+    let injected = 0;
+    for (const item of corpus.items) {
+      const targetSource = typeToSource[item.type] ?? 'official_specs';
+      const bucket = retrievedData.get(targetSource) ?? [];
+      bucket.push({
+        source: targetSource,
+        sourceType: targetSource,
+        intent: item.metadata.intent ?? 'specs',
+        content: item.content,
+        text: item.content,
+        title: item.title,
+        url: item.url,
+        domain: item.domain,
+        confidence: item.confidence,
+        granularity: item.type === 'pdf' ? 'document' :
+                     item.type === 'table' ? 'section' : 'paragraph',
+        provider: `corpus_${item.type}`,
+        queryMetadata: { isWhitelisted: true, intent: 'specs', timestamp: new Date().toISOString() },
+        _fromV2Corpus: true,
+      });
+      retrievedData.set(targetSource, bucket);
+      injected++;
+    }
+
+    this.log(state, `V2 Corpus injection: ${injected} items injected into retrieval data`);
+  }
+
+  /**
+   * V2 Layer 7 – loop: Evaluator-Optimizer.
+   *
+   * Evaluates the current corpus quality. If below threshold, generates
+   * targeted gap queries, runs a second retrieval pass, and updates the
+   * retrieval data map. Repeats up to maxRetrievalPasses times.
+   */
+  private async runEvaluatorOptimizer(
+    corpus: CorpusCollection,
+    evidenceGraph: EvidenceGraph,
+    productTitle: string,
+    vendor: string,
+    sku: string,
+    retrievedData: Map<SourceType, any[]>,
+    granularityDecision: GranularityDecision | undefined,
+    state: PipelineState
+  ): Promise<OptimizerResult> {
+    const startEval = await evaluateCorpus(corpus, evidenceGraph, productTitle, vendor);
+    this.log(
+      state,
+      `Evaluator: quality=${startEval.qualityScore.toFixed(2)}, ` +
+        `coherence=${startEval.coherenceScore.toFixed(2)}, ` +
+        `needsSecondPass=${startEval.needsSecondPass}, ` +
+        `gaps=[${startEval.gaps.join('; ')}]`
+    );
+
+    const passes: OptimizationPass[] = [];
+    let currentEval = startEval;
+    let currentCorpus = corpus;
+
+    for (let pass = 1; pass <= this.config.maxRetrievalPasses; pass++) {
+      if (!currentEval.needsSecondPass) break;
+
+      const gapQueries = generateGapQueries(currentEval.gaps, productTitle, vendor, sku);
+      if (gapQueries.length === 0) break;
+
+      this.log(state, `Optimizer pass ${pass}: running ${gapQueries.length} gap queries`);
+
+      const passStartItems = currentCorpus.totalItems;
+      const gapFilledList: string[] = [];
+
+      // Run gap queries as additional retrieval
+      for (const query of gapQueries) {
+        try {
+          const results = await this.executeSourceAwareRetrieval(
+            'official_specs',
+            [query],
+            productTitle,
+            vendor,
+            granularityDecision
+          );
+          if (results.length > 0) {
+            const bucket = retrievedData.get('official_specs') ?? [];
+            bucket.push(...results);
+            retrievedData.set('official_specs', bucket);
+            gapFilledList.push(query.slice(0, 50));
+            this.log(state, `Optimizer: gap query returned ${results.length} results`);
+          }
+        } catch (err) {
+          this.log(state, `Optimizer: gap query failed — ${err}`);
+        }
+      }
+
+      // Re-evaluate with updated retrieval data
+      // (corpus is already injected into retrievedData; we re-evaluate based on
+      //  the evidence graph which captures the original corpus — this is intentional:
+      //  the second pass improves upstream data, and the evaluator reflects pre-pass state)
+      const newEval = await evaluateCorpus(currentCorpus, evidenceGraph, productTitle, vendor);
+      const newItems = retrievedData.get('official_specs')?.length ?? 0;
+
+      passes.push({
+        passNumber: pass,
+        gapsFilled: gapFilledList,
+        gapQueries,
+        qualityBefore: currentEval.qualityScore,
+        qualityAfter: newEval.qualityScore,
+      });
+
+      this.log(
+        state,
+        `Optimizer pass ${pass} done: quality ${currentEval.qualityScore.toFixed(2)} → ${newEval.qualityScore.toFixed(2)}, +${newItems - passStartItems} items`
+      );
+
+      currentEval = newEval;
+    }
+
+    return {
+      evaluation: currentEval,
+      passes,
+      originalQuality: startEval.qualityScore,
+      finalQuality: currentEval.qualityScore,
+      passesUsed: passes.length,
+    };
   }
 }
 

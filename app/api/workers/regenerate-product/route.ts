@@ -765,6 +765,18 @@ export async function POST(request: NextRequest) {
         metafieldsCreated: 14,
         imageUploadMethod: imageResult.success ? 'staged_with_fallback' : 'none',
         parallelSteps: 'TwoPhaseQA+ImageAgent',
+        // V2 RAG metrics
+        v2Enabled: !!ragResult.v2,
+        v2DiscoverySources: ragResult.v2?.discoverySourceCount ?? 0,
+        v2NavigationResources: ragResult.v2?.navigationResourceCount ?? 0,
+        v2CorpusTokens: ragResult.v2?.corpusTokens ?? 0,
+        v2CoverageScore: ragResult.v2?.corpusCoverage ?? 0,
+        v2HasPdf: ragResult.v2?.hasPdf ?? false,
+        v2HasTable: ragResult.v2?.hasTable ?? false,
+        v2RoutingLabel: ragResult.v2?.v2RoutingLabel ?? 'n/a',
+        v2QualityScore: ragResult.v2?.evaluationResult?.qualityScore ?? null,
+        v2OptimizerPasses: ragResult.v2?.optimizerResult?.passesUsed ?? 0,
+        v2Conflicts: ragResult.v2?.evidenceGraphSummary?.conflictCount ?? 0,
       },
     });
 

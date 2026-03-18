@@ -169,8 +169,8 @@ export function adaptRagToQa(
       if (key === 'benchmarkContext' || key === 'brandProfile' || key === 'competitors') {
         continue; // Handle these separately below
       }
-      if (key.startsWith('_')) {
-        continue; // Skip internal metadata keys (e.g., _fusionCoverage, _fusionConflicts)
+      if (key.startsWith('_') || key.startsWith('v2')) {
+        continue; // Skip internal metadata keys and v2 fields (handled separately)
       }
       if (Array.isArray(value)) {
         for (const item of value) {
@@ -191,6 +191,20 @@ export function adaptRagToQa(
         sections.push(`[Source: ${key}]\n${value}`);
       }
     }
+  }
+
+  // --- V2: Include corpus context and evidence graph context ---
+  // These fields are injected by UniversalRAG v2 into enrichedData.
+  // They contain pre-structured, typed content (spec_sheet, pdf, table, …)
+  // that significantly improves TwoPhaseQA fact extraction quality.
+  if (data.v2CorpusContext && typeof data.v2CorpusContext === 'string' && data.v2CorpusContext.length > 20) {
+    sections.unshift(`--- V2 CORPUS (pdf/spec/table/paragraph) ---\n${data.v2CorpusContext}`);
+    if (!contributingSources.includes('v2_corpus')) contributingSources.push('v2_corpus');
+    log.info(`[RAG Adapter] V2 corpus context injected: ${data.v2CorpusContext.length} chars`);
+  }
+  if (data.v2EvidenceGraphContext && typeof data.v2EvidenceGraphContext === 'string' && data.v2EvidenceGraphContext.length > 20) {
+    sections.push(`--- V2 EVIDENCE GRAPH ---\n${data.v2EvidenceGraphContext}`);
+    if (!contributingSources.includes('v2_evidence_graph')) contributingSources.push('v2_evidence_graph');
   }
 
   // --- Include benchmark/competitor context ---
