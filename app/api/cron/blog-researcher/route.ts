@@ -25,6 +25,8 @@ import { generateArticleDraft, formatForShopify } from '@/lib/blog-researcher/dr
 import { createDraftArticle } from '@/lib/blog-researcher/shopify-blog';
 import { sendNotification } from '@/lib/blog-researcher/notifications';
 import { leaveNoteForProductAgent, shareCategoryGuideline } from '@/lib/agent-memory';
+import { discoverBlogSources } from '@/lib/blog-researcher/rag-bridge';
+import { generateArticleBrief, generateBriefedArticle } from '@/lib/blog-researcher/blog-brief';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -91,29 +93,95 @@ export async function GET(request: NextRequest) {
     log.info(`[BlogResearcher] Selected topic: ${analysis.selectedTopic.topic}`);
     log.info(`[BlogResearcher] Pain point: ${analysis.selectedTopic.painPoint}`);
     
-    // Step 3: Generate article draft
-    log.info('[BlogResearcher] Step 3: Generating article...');
-    const articleDraft = await generateArticleDraft(analysis.selectedTopic);
-    
-    // Format content for Shopify
-    articleDraft.content = formatForShopify(articleDraft);
-    
-    log.info(`[BlogResearcher] Generated: ${articleDraft.title}`);
-    log.info(`[BlogResearcher] Word count: ~${articleDraft.content.split(/\s+/).length}`);
-    
-    // Step 4: Create draft in Shopify
-    log.info('[BlogResearcher] Step 4: Creating Shopify draft...');
-    const shopifyArticle = await createDraftArticle(articleDraft);
+    // Step 3: RAG Bridge — deep discovery on selected topic
+    log.info('[BlogResearcher] Step 3: RAG Bridge discovery...');
+    const topicSignal = {
+      topic: analysis.selectedTopic.topic,
+      painPoint: analysis.selectedTopic.painPoint,
+      brands: extractBrandsFromTags([
+        ...searchResults.slice(0, 5).map(r => r.title),
+        analysis.selectedTopic.topic,
+      ]),
+      tayaCategory: analysis.selectedTopic.tayaCategory,
+    };
+    const discovery = await discoverBlogSources(topicSignal);
+    log.info(`[BlogResearcher] RAG Bridge: ${discovery.sources.length} sources | ${discovery.executionTimeMs}ms`);
+
+    // Step 3.5: Generate editorial brief from RAG corpus
+    log.info('[BlogResearcher] Step 3.5: Generating editorial brief...');
+    const brief = await generateArticleBrief(analysis.selectedTopic, discovery);
+    log.info(`[BlogResearcher] Brief: "${brief.recommendedTitle}" | confidence: ${brief.confidence}`);
+
+    // Step 4: Generate article from brief (RAG-informed drafting)
+    log.info('[BlogResearcher] Step 4: Drafting article from brief...');
+    let articleTitle: string;
+    let articleSlug: string;
+    let articleContent: string;
+    let articleTags: string[];
+    let articleCategory: string;
+    let articleReadTime: number;
+    let shopifyArticle: { id: number };
+
+    try {
+      const briefedArticle = await generateBriefedArticle(brief);
+      articleTitle = briefedArticle.titleIT || briefedArticle.title;
+      articleSlug = briefedArticle.slug;
+      articleContent = briefedArticle.htmlContent;
+      articleTags = briefedArticle.tags;
+      articleCategory = briefedArticle.category;
+      articleReadTime = briefedArticle.estimatedReadTime;
+      log.info(`[BlogResearcher] Briefed article: "${articleTitle}" | ~${briefedArticle.estimatedReadTime}min`);
+
+      // Publish to Shopify using existing createDraftArticle with compatible shape
+      const draftCompat = {
+        title: articleTitle,
+        slug: articleSlug,
+        content: articleContent,
+        excerpt: briefedArticle.excerpt,
+        metaDescription: briefedArticle.metaDescription,
+        tags: articleTags,
+        category: articleCategory,
+        estimatedReadTime: articleReadTime,
+      };
+      shopifyArticle = await createDraftArticle(draftCompat as Parameters<typeof createDraftArticle>[0]);
+    } catch (briefError) {
+      // Graceful degradation: fall back to classic drafting
+      log.warn('[BlogResearcher] Briefed drafting failed, falling back to classic drafting:', briefError);
+      const articleDraft = await generateArticleDraft(analysis.selectedTopic);
+      articleDraft.content = formatForShopify(articleDraft);
+      articleTitle = articleDraft.title;
+      articleSlug = articleDraft.slug;
+      articleContent = articleDraft.content;
+      articleTags = articleDraft.tags;
+      articleCategory = articleDraft.category;
+      articleReadTime = articleDraft.estimatedReadTime;
+      shopifyArticle = await createDraftArticle(articleDraft);
+    }
+
+    log.info(`[BlogResearcher] Word count: ~${articleContent.replace(/<[^>]+>/g, ' ').split(/\s+/).length}`);
     
     log.info(`[BlogResearcher] Created draft article ID: ${shopifyArticle.id}`);
-    
+
     // Step 4.5: Share insights with Product Agent via AgeMem
     log.info('[BlogResearcher] Step 4.5: Sharing insights with Product Agent via AgeMem...');
-    await shareInsightsWithProductAgent(analysis.selectedTopic, articleDraft.tags);
+    await shareInsightsWithProductAgent(analysis.selectedTopic, articleTags);
 
-    // Step 5: Send notification
+    // Step 5: Send notification — build a compatible notification shape
     log.info('[BlogResearcher] Step 5: Sending notifications...');
-    const notificationResults = await sendNotification(articleDraft, shopifyArticle.id);
+    const notifShape = {
+      title: articleTitle,
+      slug: articleSlug,
+      content: articleContent,
+      tags: articleTags,
+      category: articleCategory,
+      estimatedReadTime: articleReadTime,
+      excerpt: brief.painPoint,
+      metaDescription: brief.articleAngle,
+    };
+    const notificationResults = await sendNotification(
+      notifShape as Parameters<typeof sendNotification>[0],
+      shopifyArticle.id
+    );
     
     const successfulNotifications = notificationResults.filter(r => r.success);
     log.info(`[BlogResearcher] Sent ${successfulNotifications.length} notifications`);
@@ -125,11 +193,40 @@ export async function GET(request: NextRequest) {
       success: true,
       article: {
         id: shopifyArticle.id,
-        title: articleDraft.title,
-        slug: articleDraft.slug,
-        category: articleDraft.category,
-        readTime: articleDraft.estimatedReadTime,
-        tags: articleDraft.tags,
+        title: articleTitle,
+        slug: articleSlug,
+        category: articleCategory,
+        readTime: articleReadTime,
+        tags: articleTags,
+      },
+      brief: {
+        recommendedTitle: brief.recommendedTitle,
+        articleAngle: brief.articleAngle,
+        confidence: brief.confidence,
+        outline: brief.outline.map(s => s.sectionTitle),
+        seoKeywords: brief.seoKeywords,
+      },
+      ragBridge: {
+        sourcesFound: discovery.sources.length,
+        corpusItems: discovery.corpusCollection.totalItems,
+        quality: discovery.evaluation.qualityScore.toFixed(2),
+        secondPassRan: discovery.secondPassRan,
+        // Layer 5 routing buckets
+        routed: {
+          forumVoices:      discovery.routed.forum_voices?.length ?? 0,
+          expertValidation: discovery.routed.expert_validation?.length ?? 0,
+          editorialAngle:   discovery.routed.editorial_angle?.length ?? 0,
+          officialClaims:   discovery.routed.official_claim?.length ?? 0,
+        },
+        // Layer 7 evidence graph
+        evidenceGraph: {
+          nodes:     discovery.evidenceGraphSummary.nodeCount,
+          edges:     discovery.evidenceGraphSummary.edgeCount,
+          reviews:   discovery.evidenceGraphSummary.reviewCount,
+          conflicts: discovery.evidenceGraphSummary.conflictCount,
+        },
+        gaps: discovery.evaluation.gaps,
+        executionTimeMs: discovery.executionTimeMs,
       },
       topic: {
         name: analysis.selectedTopic.topic,
@@ -246,4 +343,21 @@ async function shareInsightsWithProductAgent(
     // Non far fallire il job se la condivisione memoria fallisce
     log.warn('[BlogResearcher] Could not share insights with Product Agent:', error);
   }
+}
+
+// =============================================================================
+// HELPER — estrae brand riconosciuti dai titoli dei post
+// =============================================================================
+
+const KNOWN_BRANDS_LOWER = [
+  'milwaukee', 'makita', 'dewalt', 'bosch', 'hikoki', 'metabo',
+  'festool', 'hilti', 'flex', 'ryobi', 'stanley', 'fein',
+  'yanmar', 'komatsu', 'kubota', 'doosan', 'honda', 'sdmo',
+];
+
+function extractBrandsFromTags(texts: string[]): string[] {
+  const combined = texts.join(' ').toLowerCase();
+  return KNOWN_BRANDS_LOWER
+    .filter(b => combined.includes(b))
+    .map(b => b.charAt(0).toUpperCase() + b.slice(1));
 }

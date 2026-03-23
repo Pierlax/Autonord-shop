@@ -27,7 +27,7 @@ interface ShopifyArticleNode {
   title: string;
   summary: string | null;
   body: string;
-  publishedAt: string;
+  publishedAt: string | null;
   tags: string[];
   image: {
     url: string;
@@ -124,7 +124,7 @@ function transformArticle(article: ShopifyArticleNode): BlogPost {
     excerpt: article.summary || '',
     content: article.body,
     coverImage: article.image?.url || '/blog/default-cover.jpg',
-    date: article.publishedAt.split('T')[0],
+    date: article.publishedAt ? article.publishedAt.split('T')[0] : new Date().toISOString().split('T')[0],
     author: {
       name: article.author?.name || 'Team Autonord',
       avatar: '/team/autonord-avatar.jpg',

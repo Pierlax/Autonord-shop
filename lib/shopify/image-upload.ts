@@ -94,11 +94,17 @@ async function addProductImageByUrl(
  * Falls back to `originalSource` (external URL) automatically if any
  * step fails, so the pipeline never blocks on an image error.
  */
+export interface ImageUploadResult {
+  success: boolean;
+  method: 'staged' | 'url_fallback' | 'skipped' | 'failed';
+  reason?: string;
+}
+
 export async function uploadProductImageToShopify(
   productGid: string,
   imageUrl: string,
   altText: string
-): Promise<void> {
+): Promise<ImageUploadResult> {
   const normalizedGid = toShopifyGid(productGid, 'Product');
 
   // Step 1: download binary from source
@@ -120,16 +126,25 @@ export async function uploadProductImageToShopify(
     // Shopify's own crawler will be blocked too — creating a FAILED media entry.
     if (!contentType.startsWith('image/')) {
       log.warn(`[image-upload] Skipping image: source returned non-image content-type "${contentType}" (bot protection?) for ${imageUrl}`);
-      return;
+      return { success: false, method: 'skipped', reason: `bot_protection: content-type was ${contentType}` };
     }
     fileSize = imageBuffer.byteLength;
     filename = (imageUrl.split('/').pop()?.split('?')[0] || 'product.jpg')
       .replace(/[^a-zA-Z0-9._-]/g, '-');
     if (!filename.match(/\.(jpg|jpeg|png|webp|gif)$/i)) filename += '.jpg';
   } catch (fetchErr) {
-    log.warn(`[image-upload] Binary download failed (${fetchErr}), fallback to URL`);
+    const errMsg = String(fetchErr);
+    // If the server returned a 4xx error (bot protection, auth, not found), Shopify's
+    // own crawler will hit the same wall — skip the fallback to avoid creating a
+    // FAILED media entry (src: null) in the product gallery.
+    const is4xx = /HTTP (4\d\d)/.test(errMsg);
+    if (is4xx) {
+      log.warn(`[image-upload] Skipping fallback: server returned ${errMsg} — Shopify crawler would also be blocked`);
+      return { success: false, method: 'skipped', reason: `blocked_4xx: ${errMsg}` };
+    }
+    log.warn(`[image-upload] Binary download failed (${errMsg}), fallback to URL`);
     await addProductImageByUrl(normalizedGid, imageUrl, altText);
-    return;
+    return { success: true, method: 'url_fallback', reason: errMsg };
   }
 
   // Step 2: create staged upload slot on Shopify
@@ -189,9 +204,11 @@ export async function uploadProductImageToShopify(
     // Step 4: attach CDN resource to product
     await addProductImageByUrl(normalizedGid, target.resourceUrl, altText);
     log.info(`[image-upload] Staged upload OK: ${filename} (${fileSize} bytes) alt="${altText}"`);
+    return { success: true, method: 'staged' };
 
   } catch (stagingErr) {
     log.warn(`[image-upload] Staged upload failed (${stagingErr}), fallback to URL`);
     await addProductImageByUrl(normalizedGid, imageUrl, altText);
+    return { success: true, method: 'url_fallback', reason: String(stagingErr) };
   }
 }

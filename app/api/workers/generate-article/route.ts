@@ -95,6 +95,17 @@ Ricorda:
   return result.text;
 }
 
+function titleToHandle(title: string): string {
+  return title
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove accents
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 80);
+}
+
 async function createArticle(
   title: string,
   content: string,
@@ -136,6 +147,7 @@ async function createArticle(
   
   const articleInput: any = {
     title,
+    handle: titleToHandle(title),
     body: content,
     tags,
     author: {

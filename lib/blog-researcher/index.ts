@@ -37,3 +37,17 @@ export {
   prioritizeQueries,
 } from './query-expander';
 export type { ExpandedQuery, QueryVariant, QueryType } from './query-expander';
+
+// RAG Bridge — Universal RAG v2 in editorial intelligence mode
+export { discoverBlogSources } from './rag-bridge';
+export type {
+  BlogTopicSignal,
+  BlogDiscoveryIntent,
+  BlogSourceType,
+  BlogDiscoveredSource,
+  BlogDiscoveryResult,
+} from './rag-bridge';
+
+// Blog Brief — editorial brief generator
+export { generateArticleBrief, generateBriefedArticle } from './blog-brief';
+export type { ArticleBrief, ArticleOutlineSection } from './blog-brief';

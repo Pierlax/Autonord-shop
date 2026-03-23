@@ -145,17 +145,17 @@ async function findProductImageUncached(
 ): Promise<ImageAgentV4Result> {
   const startTime = Date.now();
   let searchAttempts = 0;
-  
+
   const brand = normalizeBrand(vendor);
-  
+
   console.log(`[ImageAgent V4] 🔍 Starting search for: ${title}`);
-  
+
   // ===========================================
   // STEP 1: Estrai identificatori
   // ===========================================
   const identifiers = extractIdentifiers(title, brand, sku, barcode);
   console.log(`[ImageAgent V4] Identifiers: MPN=${identifiers.mpn}, EAN=${identifiers.ean}, Category=${identifiers.category}`);
-  
+
   // ===========================================
   // STEP 2: Trova codici alternativi (Cross-Code)
   // ===========================================
@@ -164,15 +164,38 @@ async function findProductImageUncached(
     identifiers.allCodes = Array.from(new Set([identifiers.mpn, ...altCodes]));
     console.log(`[ImageAgent V4] All codes to search: ${identifiers.allCodes.join(', ')}`);
   }
-  
+
   // ===========================================
-  // STEP 3a: Direct URL search — NO API key needed
-  // Constructs retailer search/product page URLs and extracts og:image directly.
-  // Always runs — falls back to title when no MPN/codes are available.
+  // STEP 3: GCS Direct Image Search (STRATEGIA PRIMARIA)
+  // Query esatta "[brand] [codice]" site:[dominio-affidabile]
+  // searchType=image → URL diretto, niente og:image parsing
+  // ===========================================
+  searchAttempts++;
+  const gcsResult = await searchGCSImageDirect(title, brand, identifiers.allCodes, identifiers.category);
+  if (gcsResult.found && gcsResult.imageUrl) {
+    console.log(`[ImageAgent V4] ✅ GCS direct strategy: ${gcsResult.domain}`);
+    return {
+      success: true,
+      imageUrl: gcsResult.imageUrl,
+      imageAlt: `${title} - ${brand}`,
+      source: gcsResult.domain,
+      method: 'gold_standard',
+      confidence: gcsResult.confidence,
+      alternativeCodes: identifiers.allCodes.slice(1),
+      pdfSpecsFound: false,
+      searchAttempts,
+      totalTimeMs: Date.now() - startTime,
+    };
+  }
+
+  // ===========================================
+  // STEP 4: Direct URL search — NO API key needed (fallback)
+  // Costruisce URL di pagina-prodotto noti e ne fa parsing og:image.
+  // Funziona anche senza Google CSE configurato.
   // ===========================================
   searchAttempts++;
   const directResult = await searchDirectUrls(brand, identifiers.allCodes, title);
-  if (directResult.found && directResult.imageUrl) {
+  if (directResult.found && directResult.imageUrl && await isImageAccessible(directResult.imageUrl)) {
     console.log(`[ImageAgent V4] ✅ Direct URL strategy succeeded: ${directResult.domain}`);
     return {
       success: true,
@@ -189,34 +212,7 @@ async function findProductImageUncached(
   }
 
   // ===========================================
-  // STEP 3b: API-based Gold Standard (SerpAPI/Exa/Google)
-  // ===========================================
-  searchAttempts++;
-  const goldResult = await searchGoldStandard(
-    title, 
-    brand, 
-    identifiers.allCodes,
-    identifiers.category
-  );
-  
-  if (goldResult.found && goldResult.imageUrl) {
-    console.log(`[ImageAgent V4] ✅ Gold Standard (API) image found: ${goldResult.domain}`);
-    return {
-      success: true,
-      imageUrl: goldResult.imageUrl,
-      imageAlt: `${title} - ${brand}`,
-      source: goldResult.domain,
-      method: 'gold_standard',
-      confidence: goldResult.confidence,
-      alternativeCodes: identifiers.allCodes.slice(1),
-      pdfSpecsFound: false,
-      searchAttempts,
-      totalTimeMs: Date.now() - startTime,
-    };
-  }
-  
-  // ===========================================
-  // STEP 4: Fallback - Cerca su sito ufficiale brand
+  // STEP 5: Sito ufficiale brand (fallback)
   // ===========================================
   searchAttempts++;
   const officialResult = await searchOfficialSite(
@@ -224,8 +220,8 @@ async function findProductImageUncached(
     brand,
     identifiers.allCodes
   );
-  
-  if (officialResult.found && officialResult.imageUrl) {
+
+  if (officialResult.found && officialResult.imageUrl && await isImageAccessible(officialResult.imageUrl)) {
     console.log(`[ImageAgent V4] ✅ Official site image found: ${officialResult.domain}`);
     return {
       success: true,
@@ -240,25 +236,19 @@ async function findProductImageUncached(
       totalTimeMs: Date.now() - startTime,
     };
   }
-  
+
   // ===========================================
-  // STEP 5: Fallback - Ricerca web generica
+  // STEP 6: Gemini knowledge-based URL (last resort)
   // ===========================================
   searchAttempts++;
-  const webResult = await searchWeb(
-    title,
-    brand,
-    identifiers.allCodes,
-    identifiers.category
-  );
-  
-  if (webResult.found && webResult.imageUrl) {
-    console.log(`[ImageAgent V4] ✅ Web search image found: ${webResult.domain}`);
+  const geminiResult = await findImageViaGeminiKnowledge(title, brand, identifiers.allCodes);
+  if (geminiResult.found && geminiResult.imageUrl && await isImageAccessible(geminiResult.imageUrl)) {
+    console.log(`[ImageAgent V4] ✅ Gemini knowledge image found: ${geminiResult.domain}`);
     return {
       success: true,
-      imageUrl: webResult.imageUrl,
+      imageUrl: geminiResult.imageUrl,
       imageAlt: `${title} - ${brand}`,
-      source: webResult.domain,
+      source: geminiResult.domain,
       method: 'web_search',
       confidence: 'medium',
       alternativeCodes: identifiers.allCodes.slice(1),
@@ -267,7 +257,7 @@ async function findProductImageUncached(
       totalTimeMs: Date.now() - startTime,
     };
   }
-  
+
   // ===========================================
   // Nessuna immagine trovata
   // ===========================================
@@ -285,6 +275,122 @@ async function findProductImageUncached(
     totalTimeMs: Date.now() - startTime,
     error: 'No valid image found',
   };
+}
+
+// =============================================================================
+// STEP 3: GCS DIRECT IMAGE SEARCH — STRATEGIA PRIMARIA
+// =============================================================================
+
+/**
+ * Strategia primaria di ricerca immagini via Google Custom Search searchType=image.
+ *
+ * Query esatta: `"Brand" "Codice"` → Google restituisce URL diretti di immagini
+ * dal dominio filtrato, senza dover parsare og:image da pagine HTML.
+ *
+ * Domini selezionati per brand: solo retailer con CDN puliti e senza geo-redirect.
+ * milwaukeetool.eu ESCLUSO: Vercel viene geo-reindirizzato a Ungheria/Francia.
+ *
+ * Fallback a Bing image scraping se Google CSE non è configurato.
+ */
+async function searchGCSImageDirect(
+  title: string,
+  brand: string,
+  codes: string[],
+  _category: string | null
+): Promise<{ found: boolean; imageUrl: string | null; domain: string | null; confidence: 'high' | 'medium' | 'low' }> {
+
+  // Domini con CDN affidabili per brand — niente geo-redirect, niente listing pages
+  const brandLower = brand.toLowerCase();
+  let imageDomains: string[];
+
+  if (brandLower.includes('milwaukee')) {
+    // milwaukeetool.eu/.it ESCLUSI — geo-redirect (Vercel → Ungheria/Francia)
+    imageDomains = ['toolstop.co.uk', 'acmetools.com', 'ohiopowertool.com', 'ffx.co.uk', 'toolnut.com'];
+  } else if (brandLower.includes('makita')) {
+    imageDomains = ['makita.it', 'makita.com', 'toolstop.co.uk', 'ffx.co.uk'];
+  } else if (brandLower.includes('dewalt')) {
+    imageDomains = ['dewalt.it', 'dewalt.com', 'toolstop.co.uk', 'screwfix.com'];
+  } else if (brandLower.includes('bosch')) {
+    imageDomains = ['bosch-professional.com', 'toolstop.co.uk', 'screwfix.com'];
+  } else if (brandLower.includes('hilti')) {
+    imageDomains = ['hilti.it', 'hilti.com', 'toolstop.co.uk'];
+  } else if (brandLower.includes('metabo')) {
+    imageDomains = ['metabo.it', 'metabo.com', 'toolstop.co.uk'];
+  } else if (brandLower.includes('hikoki') || brandLower.includes('hitachi')) {
+    imageDomains = ['hikoki-powertools.it', 'hikoki-powertools.com', 'toolstop.co.uk'];
+  } else if (brandLower.includes('festool')) {
+    imageDomains = ['festool.it', 'festool.com', 'toolstop.co.uk'];
+  } else if (brandLower.includes('husqvarna')) {
+    imageDomains = ['husqvarna.it', 'husqvarna.com', 'toolstop.co.uk'];
+  } else if (brandLower.includes('yanmar')) {
+    imageDomains = ['macchineescavatori.it', 'edilatlas.it', 'imer.it'];
+  } else if (brandLower.includes('imer')) {
+    imageDomains = ['imer.it', 'edilportale.com'];
+  } else if (brandLower.includes('montolit')) {
+    imageDomains = ['montolit.com', 'totalutensili.it'];
+  } else if (brandLower.includes('nilfisk')) {
+    imageDomains = ['nilfisk.it', 'nilfisk.com'];
+  } else {
+    imageDomains = ['toolstop.co.uk', 'ffx.co.uk', 'acmetools.com', 'ohiopowertool.com'];
+  }
+
+  const primaryCode = codes[0];
+
+  // Costruisce query con virgolette per match esatto
+  // "[Brand] [Codice]" garantisce che Google restituisca solo immagini del prodotto specifico
+  const queries: string[] = [];
+  if (primaryCode) {
+    queries.push(`"${brand}" "${primaryCode}"`);
+    // Secondo tentativo: brand + secondo codice (es. codice US per Milwaukee)
+    if (codes[1]) queries.push(`"${brand}" "${codes[1]}"`);
+  } else {
+    // Nessun codice: usa le 3 parole più distintive del titolo (min 4 char)
+    const distinctWords = title
+      .replace(new RegExp(brand, 'gi'), '')
+      .split(/[\s\-\/,]+/)
+      .filter(w => w.length >= 4 && !/^(per|con|the|and|kit|set|pro|new|con|da)$/i.test(w))
+      .slice(0, 3);
+    queries.push(`"${brand}" ${distinctWords.join(' ')}`);
+  }
+
+  for (const query of queries) {
+    try {
+      const imageResults = await searchProductImages(query, imageDomains.slice(0, 4), 5);
+
+      for (const imgResult of imageResults) {
+        if (isBlockedDomain(imgResult.imageUrl)) continue;
+        if (!isValidImageUrl(imgResult.imageUrl)) continue;
+        if (isWrongProductImage(imgResult.imageUrl, codes)) continue;
+
+        // Scarta immagini troppo piccole (thumbnail) quando le dimensioni sono note
+        if (imgResult.width && imgResult.width < 300) continue;
+        if (imgResult.height && imgResult.height < 300) continue;
+
+        // Scarta immagini da pagine editoriali (blog, news)
+        const urlLower = imgResult.imageUrl.toLowerCase();
+        if (
+          urlLower.includes('/blog/') || urlLower.includes('/news/') ||
+          urlLower.includes('/post/') || urlLower.includes('/wp-content/uploads/')
+        ) continue;
+
+        // Verifica che l'URL risponda effettivamente come immagine
+        if (!(await validateImageDownloadable(imgResult.imageUrl))) continue;
+
+        const isOfficial = GOLD_STANDARD_DOMAINS.official.some(d => imgResult.domain.includes(d));
+        console.log(`[ImageAgent V4] ✅ GCS direct: ${imgResult.imageUrl.substring(0, 100)} (${imgResult.domain})`);
+        return {
+          found: true,
+          imageUrl: maximizeImageUrl(imgResult.imageUrl),
+          domain: imgResult.domain,
+          confidence: isOfficial ? 'high' : 'medium',
+        };
+      }
+    } catch (e) {
+      console.log(`[ImageAgent V4] GCS image search error for "${query}": ${e}`);
+    }
+  }
+
+  return { found: false, imageUrl: null, domain: null, confidence: 'low' };
 }
 
 // =============================================================================
@@ -541,7 +647,8 @@ async function searchGoldStandard(
   } else if (brandLower.includes('festool')) {
     priorityDomains = ['festool.it', 'festool.com', 'toolstop.co.uk'];
   } else if (brandLower.includes('yanmar')) {
-    priorityDomains = ['yanmar.it', 'yanmar.com'];
+    // yanmar.it/yanmar.com block bot downloads (403) — use accessible distributors
+    priorityDomains = ['macchineescavatori.it', 'imer.it', 'noleggiomacchine.it', 'edilatlas.it', 'yanmar.it'];
   } else if (brandLower.includes('cangini')) {
     priorityDomains = ['cangini.com', 'macchineescavatori.it'];
   } else if (brandLower.includes('hammer')) {
@@ -703,6 +810,26 @@ Return JSON:
   }
 
   return { found: false, imageUrl: null, domain: null };
+}
+
+/**
+ * HEAD check: verifies the image URL is actually downloadable (not bot-blocked).
+ * Returns false if the server responds with 4xx or non-image content-type.
+ * A true result means the staged upload will succeed.
+ */
+async function isImageAccessible(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, {
+      method: 'HEAD',
+      signal: AbortSignal.timeout(5000),
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Autonord-Bot/1.0)' },
+    });
+    if (!res.ok) return false;
+    const ct = res.headers.get('content-type') || '';
+    return ct.startsWith('image/');
+  } catch {
+    return false;
+  }
 }
 
 /**

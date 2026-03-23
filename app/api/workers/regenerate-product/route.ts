@@ -56,7 +56,7 @@ import {
 } from '@/lib/shopify/ai-enrichment-v3';
 import { ShopifyProductWebhookPayload } from '@/lib/shopify/webhook-types';
 import { findProductImage, ImageAgentV4Result } from '@/lib/agents/image-agent-v4';
-import { uploadProductImageToShopify } from '@/lib/shopify/image-upload';
+import { uploadProductImageToShopify, ImageUploadResult } from '@/lib/shopify/image-upload';
 import { validateAndCorrect, CleanedContent } from '@/lib/agents/taya-police';
 import { formatProvenanceDisplay } from '@/lib/shopify/provenance-tracking';
 
@@ -266,7 +266,7 @@ async function updateShopifyProductWithMetafields(
   qaVerdict?: string,
   suitableFor?: string[],
   notSuitableFor?: string[],
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; imageUpload?: ImageUploadResult }> {
   
   const url = `https://${SHOPIFY_STORE}/admin/api/2024-01/graphql.json`;
   
@@ -452,14 +452,18 @@ async function updateShopifyProductWithMetafields(
     console.log('[Worker V5] Product updated with Metafields');
 
     // Carica immagine su Shopify CDN (staged upload → più affidabile di URL esterno)
+    let imageUpload: ImageUploadResult | undefined;
     if (imageResult.success && imageResult.imageUrl) {
-      await uploadProductImageToShopify(productGid, imageResult.imageUrl, imageResult.imageAlt);
+      imageUpload = await uploadProductImageToShopify(productGid, imageResult.imageUrl, imageResult.imageAlt);
+      if (!imageUpload.success) {
+        console.warn(`[Worker V5] Image upload skipped/failed: ${imageUpload.reason}`);
+      }
     }
 
     // Pubblica il prodotto sull'Online Store (era DRAFT dalla sync iniziale)
     await publishProductToOnlineStore(productGid);
 
-    return { success: true };
+    return { success: true, imageUpload };
     
   } catch (error) {
     console.error('[Worker] Shopify update error:', error);
@@ -753,8 +757,11 @@ export async function POST(request: NextRequest) {
         v3WarningsCount: enrichedData.provenance.warnings.length,
         // Image metrics
         hasImage: imageResult.success,
+        imageUploaded: updateResult.imageUpload?.success ?? false,
+        imageUploadMethod: updateResult.imageUpload?.method ?? 'none',
+        imageUploadSkipReason: updateResult.imageUpload?.reason ?? null,
         imageSource: imageResult.source,
-        imageMethod: imageResult.method,
+        imageSearchMethod: imageResult.method,
         imageAlt: imageResult.imageAlt,
         // Content metrics
         prosCount: validationResult.content.pros.length,
@@ -763,7 +770,6 @@ export async function POST(request: NextRequest) {
         accessoriesCount: enrichedData.accessories.length,
         tayaViolationsFixed: validationResult.violations.length,
         metafieldsCreated: 14,
-        imageUploadMethod: imageResult.success ? 'staged_with_fallback' : 'none',
         parallelSteps: 'TwoPhaseQA+ImageAgent',
         // V2 RAG metrics
         v2Enabled: !!ragResult.v2,
