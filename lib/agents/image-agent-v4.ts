@@ -173,19 +173,25 @@ async function findProductImageUncached(
   searchAttempts++;
   const gcsResult = await searchGCSImageDirect(title, brand, identifiers.allCodes, identifiers.category);
   if (gcsResult.found && gcsResult.imageUrl) {
-    console.log(`[ImageAgent V4] ✅ GCS direct strategy: ${gcsResult.domain}`);
-    return {
-      success: true,
-      imageUrl: gcsResult.imageUrl,
-      imageAlt: `${title} - ${brand}`,
-      source: gcsResult.domain,
-      method: 'gold_standard',
-      confidence: gcsResult.confidence,
-      alternativeCodes: identifiers.allCodes.slice(1),
-      pdfSpecsFound: false,
-      searchAttempts,
-      totalTimeMs: Date.now() - startTime,
-    };
+    // Vision validation solo per medium confidence (high = codice esatto in URL)
+    const visionOk = gcsResult.confidence === 'high'
+      || await validateImageWithVision(gcsResult.imageUrl, title, brand);
+    if (visionOk) {
+      console.log(`[ImageAgent V4] ✅ GCS direct strategy: ${gcsResult.domain} (vision=${gcsResult.confidence === 'high' ? 'skipped' : 'ok'})`);
+      return {
+        success: true,
+        imageUrl: gcsResult.imageUrl,
+        imageAlt: `${title} - ${brand}`,
+        source: gcsResult.domain,
+        method: 'gold_standard',
+        confidence: gcsResult.confidence,
+        alternativeCodes: identifiers.allCodes.slice(1),
+        pdfSpecsFound: false,
+        searchAttempts,
+        totalTimeMs: Date.now() - startTime,
+      };
+    }
+    console.log(`[ImageAgent V4] GCS image rejected by vision validation, continuing...`);
   }
 
   // ===========================================
@@ -196,19 +202,24 @@ async function findProductImageUncached(
   searchAttempts++;
   const directResult = await searchDirectUrls(brand, identifiers.allCodes, title);
   if (directResult.found && directResult.imageUrl && await isImageAccessible(directResult.imageUrl)) {
-    console.log(`[ImageAgent V4] ✅ Direct URL strategy succeeded: ${directResult.domain}`);
-    return {
-      success: true,
-      imageUrl: directResult.imageUrl,
-      imageAlt: `${title} - ${brand}`,
-      source: directResult.domain,
-      method: 'gold_standard',
-      confidence: directResult.confidence,
-      alternativeCodes: identifiers.allCodes.slice(1),
-      pdfSpecsFound: false,
-      searchAttempts,
-      totalTimeMs: Date.now() - startTime,
-    };
+    const visionOk = directResult.confidence === 'high'
+      || await validateImageWithVision(directResult.imageUrl, title, brand);
+    if (visionOk) {
+      console.log(`[ImageAgent V4] ✅ Direct URL strategy succeeded: ${directResult.domain}`);
+      return {
+        success: true,
+        imageUrl: directResult.imageUrl,
+        imageAlt: `${title} - ${brand}`,
+        source: directResult.domain,
+        method: 'gold_standard',
+        confidence: directResult.confidence,
+        alternativeCodes: identifiers.allCodes.slice(1),
+        pdfSpecsFound: false,
+        searchAttempts,
+        totalTimeMs: Date.now() - startTime,
+      };
+    }
+    console.log(`[ImageAgent V4] Direct URL image rejected by vision validation, continuing...`);
   }
 
   // ===========================================
@@ -222,19 +233,24 @@ async function findProductImageUncached(
   );
 
   if (officialResult.found && officialResult.imageUrl && await isImageAccessible(officialResult.imageUrl)) {
-    console.log(`[ImageAgent V4] ✅ Official site image found: ${officialResult.domain}`);
-    return {
-      success: true,
-      imageUrl: officialResult.imageUrl,
-      imageAlt: `${title} - ${brand}`,
-      source: officialResult.domain,
-      method: 'official_site',
-      confidence: 'high',
-      alternativeCodes: identifiers.allCodes.slice(1),
-      pdfSpecsFound: false,
-      searchAttempts,
-      totalTimeMs: Date.now() - startTime,
-    };
+    // Official site — always vision-validate (high trust domain but can still be wrong product page)
+    const visionOk = await validateImageWithVision(officialResult.imageUrl, title, brand);
+    if (visionOk) {
+      console.log(`[ImageAgent V4] ✅ Official site image found: ${officialResult.domain}`);
+      return {
+        success: true,
+        imageUrl: officialResult.imageUrl,
+        imageAlt: `${title} - ${brand}`,
+        source: officialResult.domain,
+        method: 'official_site',
+        confidence: 'high',
+        alternativeCodes: identifiers.allCodes.slice(1),
+        pdfSpecsFound: false,
+        searchAttempts,
+        totalTimeMs: Date.now() - startTime,
+      };
+    }
+    console.log(`[ImageAgent V4] Official site image rejected by vision validation, continuing...`);
   }
 
   // ===========================================
@@ -834,24 +850,83 @@ async function isImageAccessible(url: string): Promise<boolean> {
 
 /**
  * Detects if an image URL likely belongs to a different product.
- * For Milwaukee-style EU codes (10-digit starting with 49), checks if the URL
- * contains a numeric code that conflicts with all of our expected product codes.
+ *
+ * Checks two Milwaukee code formats in the URL:
+ *   EU format: 49xxxxxxxx  (10 digits, e.g. 4932430483)
+ *   US format: 48-xx-xxxx  (e.g. 48-11-1850, 48-22-9140)
+ *
+ * If the URL contains a product code that does NOT match any of our expected
+ * codes, the image belongs to a different product and must be rejected.
  */
 function isWrongProductImage(imageUrl: string, expectedCodes: string[]): boolean {
   const lower = imageUrl.toLowerCase();
-  // Look for Milwaukee-style EU article numbers (10 digits starting with 49)
-  const milwaukeeCodeMatches = lower.match(/\b49\d{8}\b/g);
-  if (!milwaukeeCodeMatches) return false;
 
-  // If ANY found code matches one of our expected codes, it's the right product
-  for (const found of milwaukeeCodeMatches) {
-    if (expectedCodes.some(c => c.toLowerCase().includes(found) || found.includes(c.toLowerCase()))) {
+  // Normalize expected codes: strip dashes for uniform comparison
+  const normalizedExpected = expectedCodes.map(c => c.toLowerCase().replace(/-/g, ''));
+
+  // Milwaukee EU codes: 10 digits starting with 49 (e.g. 4932430483)
+  const euCodes: string[] = lower.match(/(?<![0-9])49\d{8}(?![0-9])/g) ?? [];
+
+  // Milwaukee US codes: 48-xx-xxxx or 49-xx-xxxx
+  // Use digit-boundary lookahead/lookbehind to avoid partial matches
+  const usCodesRaw: string[] = lower.match(/(?<![0-9])4[89]-\d{2}-\d{4}(?![0-9])/g) ?? [];
+  const usCodes = usCodesRaw.map(c => c.replace(/-/g, '')); // normalize for comparison
+
+  const allFoundNormalized = [...euCodes, ...usCodes];
+  if (allFoundNormalized.length === 0) return false;
+
+  // If ANY found code matches one of our expected codes → correct product
+  for (const found of allFoundNormalized) {
+    if (normalizedExpected.some(c => c.includes(found) || found.includes(c))) {
       return false;
     }
   }
-  // All found codes are different from ours — likely wrong product
-  console.log(`[ImageAgent V4] Cross-code mismatch: image has ${milwaukeeCodeMatches}, expected ${expectedCodes}`);
+
+  // All found codes differ from ours → wrong product
+  console.log(`[ImageAgent V4] Cross-code mismatch: URL has [${[...euCodes, ...usCodesRaw].join(', ')}], expected [${expectedCodes.join(', ')}]`);
   return true;
+}
+
+/**
+ * Vision validation — uses Gemini multimodal to verify the image
+ * actually shows the expected product. Last line of defense against
+ * visually plausible but wrong images.
+ *
+ * Only called for medium-confidence candidates to preserve API quota.
+ * On error or timeout → returns true (assume valid, don't block pipeline).
+ */
+async function validateImageWithVision(
+  imageUrl: string,
+  productTitle: string,
+  brand: string
+): Promise<boolean> {
+  try {
+    const result = await generateTextSafe({
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', image: imageUrl },
+          {
+            type: 'text',
+            text: `Does this image show a "${productTitle}" manufactured by ${brand}?\n` +
+                  `Reply with exactly one word: MATCH or NO_MATCH.`,
+          },
+        ],
+      }],
+      maxTokens: 10,
+      temperature: 0.0,
+      useLiteModel: true,
+    });
+    const answer = result.text.trim().toUpperCase();
+    const valid = answer.includes('MATCH') && !answer.includes('NO_MATCH');
+    if (!valid) {
+      console.log(`[ImageAgent V4] Vision validation failed: "${result.text.trim()}" for ${productTitle}`);
+    }
+    return valid;
+  } catch (err) {
+    console.log(`[ImageAgent V4] Vision validation error (assuming valid): ${err}`);
+    return true; // fail open — don't block the pipeline
+  }
 }
 
 /**
