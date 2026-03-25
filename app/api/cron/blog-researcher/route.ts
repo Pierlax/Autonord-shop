@@ -96,13 +96,24 @@ export async function GET(request: NextRequest) {
 
     // Step 2.5: Cluster topics to avoid keyword cannibalization
     log.info('[BlogResearcher] Step 2.5: Clustering topics...');
-    const allTopics = [analysis.selectedTopic, ...analysis.allTopics];
-    const clusters = clusterTopics(allTopics);
-    const bestCluster = pickBestCluster(clusters);
-    const selectedTopic = bestCluster?.representativeTopic ?? analysis.selectedTopic;
-    log.info(`[BlogResearcher] Clusters: ${clusters.length} | Best: "${bestCluster?.clusterLabel ?? 'none'}" (score=${bestCluster?.editorialScore ?? 0})`);
-    if (selectedTopic.topic !== analysis.selectedTopic.topic) {
-      log.info(`[BlogResearcher] Clusterer overrode LLM pick: "${analysis.selectedTopic.topic}" → "${selectedTopic.topic}"`);
+    let selectedTopic = analysis.selectedTopic;
+    let bestCluster: import('@/lib/blog-researcher/topic-clusterer').TopicCluster | null = null;
+    try {
+      // Normalizza: filtra topic nulli e samplePosts undefined/null
+      const rawTopics = [analysis.selectedTopic, ...(analysis.allTopics ?? [])].filter(Boolean);
+      const safeTopics = rawTopics.map(t => ({
+        ...t,
+        samplePosts: Array.isArray(t.samplePosts) ? t.samplePosts.filter((p): p is string => typeof p === 'string') : [],
+      }));
+      const clusters = clusterTopics(safeTopics);
+      bestCluster = pickBestCluster(clusters);
+      if (bestCluster?.representativeTopic) selectedTopic = bestCluster.representativeTopic;
+      log.info(`[BlogResearcher] Clusters: ${clusters.length} | Best: "${bestCluster?.clusterLabel ?? 'none'}" (score=${bestCluster?.editorialScore ?? 0})`);
+      if (selectedTopic.topic !== analysis.selectedTopic.topic) {
+        log.info(`[BlogResearcher] Clusterer overrode LLM pick: "${analysis.selectedTopic.topic}" → "${selectedTopic.topic}"`);
+      }
+    } catch (clusterErr) {
+      log.warn('[BlogResearcher] Step 2.5 clustering failed, using LLM selection:', clusterErr);
     }
 
     // Step 3: RAG Bridge — deep discovery on selected topic
