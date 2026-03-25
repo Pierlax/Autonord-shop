@@ -161,7 +161,9 @@ async function findProductImageUncached(
   // ===========================================
   if (identifiers.mpn) {
     const altCodes = await findAlternativeCodes(identifiers.mpn, brand, title);
-    identifiers.allCodes = Array.from(new Set([identifiers.mpn, ...altCodes]));
+    // Preserve SKU and EAN from original allCodes — they are dropped when overwriting
+    const preserved = [identifiers.sku, identifiers.ean].filter(Boolean) as string[];
+    identifiers.allCodes = Array.from(new Set([identifiers.mpn, ...altCodes, ...preserved]));
     console.log(`[ImageAgent V4] All codes to search: ${identifiers.allCodes.join(', ')}`);
   }
 
@@ -379,6 +381,11 @@ async function searchGCSImageDirect(
     const baseModel = modelCode.replace(/-\d*[A-Z]*$/, '');  // "M18FBJS-0X" → "M18FBJS"
     if (baseModel !== modelCode) queries.push(`"${brand}" "${baseModel}"`);
   }
+
+  // EAN barcode search — EAN is globally unique and appears on EU retailer product pages
+  // even when the EU article number doesn't appear in image CDN URLs.
+  const ean = codes.find(c => /^\d{13}$/.test(c));
+  if (ean) queries.push(`"${ean}"`);
 
   // Generic title-based fallback (broader, no quotes)
   const titleWords = title
