@@ -21,16 +21,20 @@ export async function GET(request: NextRequest) {
 
   const startTime = Date.now();
 
-  // --- Step 1: raw GCS image search diagnostic ---
-  const gcsTestQuery = `"${vendor}" "${sku}"`;
-  const gcsDomains   = ['toolstop.co.uk', 'acmetools.com', 'ohiopowertool.com', 'ffx.co.uk'];
+  // --- Step 1: raw GCS image search diagnostic — test 3 query strategies ---
+  const euDomains = ['toolstop.co.uk', 'ffx.co.uk', 'rotopino.it', 'fixami.it', 'contorion.de'];
 
-  let rawSearchResults: unknown[] = [];
-  let rawSearchError: string | null = null;
-  try {
-    rawSearchResults = await searchProductImages(gcsTestQuery, gcsDomains, 5);
-  } catch (err) {
-    rawSearchError = String(err);
+  const rawSearches: Record<string, unknown> = {};
+  for (const q of [
+    `"${vendor}" "${sku}"`,
+    `${vendor} ${title}`,
+    `Milwaukee M18 5.0Ah battery`,
+  ]) {
+    try {
+      rawSearches[q] = await searchProductImages(q, euDomains, 5);
+    } catch (err) {
+      rawSearches[q] = { error: String(err) };
+    }
   }
 
   // --- Step 2: full image agent (with cache disabled via unique title suffix) ---
@@ -47,10 +51,8 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     query: { title, vendor, sku, barcode },
     rawSearch: {
-      query:   gcsTestQuery,
-      domains: gcsDomains,
-      results: rawSearchResults,
-      error:   rawSearchError,
+      domains: euDomains,
+      queries: rawSearches,
     },
     agentResult,
     agentError,
