@@ -160,7 +160,7 @@ async function findProductImageUncached(
   // STEP 2: Trova codici alternativi (Cross-Code)
   // ===========================================
   if (identifiers.mpn) {
-    const altCodes = await findAlternativeCodes(identifiers.mpn, brand);
+    const altCodes = await findAlternativeCodes(identifiers.mpn, brand, title);
     identifiers.allCodes = Array.from(new Set([identifiers.mpn, ...altCodes]));
     console.log(`[ImageAgent V4] All codes to search: ${identifiers.allCodes.join(', ')}`);
   }
@@ -496,27 +496,54 @@ function extractIdentifiers(
 
 async function findAlternativeCodes(
   mpn: string,
-  brand: string
+  brand: string,
+  title: string = ''
 ): Promise<string[]> {
   // Pattern di conversione noti per Milwaukee
   if (brand.toLowerCase().includes('milwaukee')) {
     const altCodes: string[] = [];
-    
-    if (mpn.startsWith('4932')) {
-      // 4932352406 → 48-32-4006 (pattern comune)
+
+    // ---------------------------------------------------------------------
+    // Milwaukee battery US-code extraction from product title
+    // EU article numbers (4932xxxxxx) have NO mathematical relationship to
+    // the customer-facing US codes (48-11-xxxx). Instead, derive the US
+    // code from the platform (M18/M12) + capacity visible in the title.
+    //
+    // Known US battery codes:
+    //   M18: 48-11-18{cap*10 padded 2 digits}
+    //        e.g. 2Ah→1820, 3Ah→1828*, 4Ah→1840, 5Ah→1850, 6Ah→1860, 8Ah→1880
+    //             *48-11-1828 for 3Ah Compact; 48-11-1830 for 3Ah High-Demand
+    //   M12: 48-11-24{cap*10 padded 2 digits}
+    //        e.g. 2Ah→2420, 4Ah→2440, 6Ah→2460
+    // ---------------------------------------------------------------------
+    const batteryCapMatch = title.match(/\b(M18|M12)\b.*?(\d+(?:\.\d+)?)\s*Ah/i);
+    if (batteryCapMatch) {
+      const platform = batteryCapMatch[1].toUpperCase(); // 'M18' or 'M12'
+      const cap = parseFloat(batteryCapMatch[2]);
+      const capStr = Math.round(cap * 10).toString().padStart(2, '0');
+      if (platform === 'M18') {
+        altCodes.push(`48-11-18${capStr}`);
+      } else if (platform === 'M12') {
+        altCodes.push(`48-11-24${capStr}`);
+      }
+      console.log(`[ImageAgent V4] Battery cross-code: ${platform} ${cap}Ah → ${altCodes[altCodes.length - 1]}`);
+    }
+
+    // Generic EU → US last-4-digits pattern for accessories (e.g. 4932xxxxxx → 48-32-xxxx)
+    // Only used when no battery-specific code was found above.
+    if (altCodes.length === 0 && mpn.startsWith('4932')) {
       const suffix = mpn.slice(-4);
       altCodes.push(`48-32-${suffix}`);
-      altCodes.push(`49-32-${suffix}`);
     }
-    
-    // US → EU conversion
+
+    // US → EU: reconstruct EU-style article number
     if (mpn.startsWith('48-') || mpn.startsWith('49-')) {
       const parts = mpn.split('-');
       if (parts.length === 3) {
         altCodes.push(`4932${parts[1]}${parts[2]}`);
       }
     }
-    
+
     if (altCodes.length > 0) {
       console.log(`[ImageAgent V4] Cross-code: ${mpn} → ${altCodes.join(', ')}`);
       return altCodes;
@@ -584,13 +611,26 @@ async function searchDirectUrls(
   // Brand-specific direct product pages (highest quality images)
   if (brandLower.includes('milwaukee')) {
     // milwaukeetool.eu/.it excluded — geo-redirect from Vercel IPs.
-    // Use EU retailers that stock EU article numbers (49xxxxxxxx):
-    if (primaryCode) {
-      candidateUrls.push(
-        { url: `https://www.rotopino.it/search?q=${encodeURIComponent(primaryCode)}`, domain: 'rotopino.it', confidence: 'medium' },
-        { url: `https://www.fixami.it/search?query=${encodeURIComponent(primaryCode)}`, domain: 'fixami.it', confidence: 'medium' },
-        { url: `https://www.contorion.de/search?q=${encodeURIComponent(primaryCode)}`, domain: 'contorion.de', confidence: 'medium' },
-      );
+    // US retailers have predictable product page URLs keyed to the US code (48-xx-xxxx).
+    // EU retailers have searchable catalogs that stock EU codes (49xxxxxxxx).
+    for (const code of allCodes) {
+      const isUsCode = /^4[89]-\d{2}-\d{4}$/.test(code);
+      if (isUsCode) {
+        // acmetools and ohiopowertool have direct product URLs keyed to US codes
+        candidateUrls.push(
+          { url: `https://www.acmetools.com/${code.toLowerCase()}`, domain: 'acmetools.com', confidence: 'high' },
+          { url: `https://www.ohiopowertool.com/milwaukee-tools-${code.toLowerCase()}`, domain: 'ohiopowertool.com', confidence: 'high' },
+          { url: `https://www.toolstop.co.uk/search?q=${encodeURIComponent(code)}`, domain: 'toolstop.co.uk', confidence: 'medium' },
+          { url: `https://www.ffx.co.uk/tools/search?q=${encodeURIComponent(code)}`, domain: 'ffx.co.uk', confidence: 'medium' },
+        );
+      } else if (/^4\d{9}$/.test(code)) {
+        // EU code (10 digits starting with 4) — EU retailers
+        candidateUrls.push(
+          { url: `https://www.rotopino.it/search?q=${encodeURIComponent(code)}`, domain: 'rotopino.it', confidence: 'medium' },
+          { url: `https://www.fixami.it/search?query=${encodeURIComponent(code)}`, domain: 'fixami.it', confidence: 'medium' },
+          { url: `https://www.contorion.de/search?q=${encodeURIComponent(code)}`, domain: 'contorion.de', confidence: 'medium' },
+        );
+      }
     }
   } else if (brandLower.includes('makita')) {
     for (const code of allCodes) {
