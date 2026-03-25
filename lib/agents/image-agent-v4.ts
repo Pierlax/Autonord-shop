@@ -1304,7 +1304,9 @@ async function searchOfficialSite(
 ): Promise<{ found: boolean; imageUrl: string | null; domain: string | null }> {
   
   const brandDomains: Record<string, string[]> = {
-    'milwaukee': ['milwaukeetool.eu', 'milwaukeetool.com'],
+    // milwaukeetool.eu/.com geo-redirect from Vercel IPs. Use EU retailers
+    // that stock Milwaukee and have product pages reachable from cloud IPs.
+    'milwaukee': ['rotopino.it', 'fixami.it', 'totalutensili.it', 'toolstop.co.uk', 'ffx.co.uk'],
     'makita': ['makita.it', 'makita.com'],
     'dewalt': ['dewalt.it', 'dewalt.com'],
     'bosch': ['bosch-professional.com'],
@@ -1333,10 +1335,13 @@ async function searchOfficialSite(
     return { found: false, imageUrl: null, domain: null };
   }
   
-  const codeQuery = codes.slice(0, 2).join(' ');
+  // Build the best search query: prefer Milwaukee model codes (M18FBJS-0X) over EU article numbers
+  const modelCodeMatch = title.match(/\b((?:M1[28]|M28)\s*[A-Z]{2,}(?:[-]\d*[A-Z]*)*)\b/i);
+  const modelCode = modelCodeMatch ? modelCodeMatch[1].replace(/\s+/, '') : null;
+  const codeQuery = modelCode ?? codes.filter(c => !/^\d{13}$/.test(c)).slice(0, 2).join(' ');
 
   try {
-    // STEP A: Direct image search on official brand domains
+    // STEP A: Direct image search on retailer domains
     const imageResults = await searchProductImages(
       `${brand} ${codeQuery || title}`,
       domains,
