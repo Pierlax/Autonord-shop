@@ -321,7 +321,13 @@ async function searchGCSImageDirect(
 
   if (brandLower.includes('milwaukee')) {
     // milwaukeetool.eu/.it ESCLUSI — geo-redirect (Vercel → Ungheria/Francia)
-    imageDomains = ['toolstop.co.uk', 'acmetools.com', 'ohiopowertool.com', 'ffx.co.uk', 'toolnut.com'];
+    // EU retailers (rotopino, fixami, contorion) stock EU article numbers (49xxxxxxxx)
+    imageDomains = [
+      'toolstop.co.uk', 'ffx.co.uk',          // UK — great catalog photos
+      'rotopino.it', 'fixami.it',              // IT EU — stock EU codes
+      'contorion.de', 'svh24.de',              // DE EU — stock EU codes
+      'acmetools.com', 'ohiopowertool.com',    // US — for US codes
+    ];
   } else if (brandLower.includes('makita')) {
     imageDomains = ['makita.it', 'makita.com', 'toolstop.co.uk', 'ffx.co.uk'];
   } else if (brandLower.includes('dewalt')) {
@@ -352,22 +358,22 @@ async function searchGCSImageDirect(
 
   const primaryCode = codes[0];
 
-  // Costruisce query con virgolette per match esatto
-  // "[Brand] [Codice]" garantisce che Google restituisca solo immagini del prodotto specifico
+  // Build queries — ordered from most precise to most permissive.
+  // 1. Exact EU/US code in quotes → guaranteed product match when code appears in URL
+  // 2. Second code (e.g. US code derived from EU)
+  // 3. Title-based → works when EU code doesn't appear on UK/US retailer pages
   const queries: string[] = [];
   if (primaryCode) {
     queries.push(`"${brand}" "${primaryCode}"`);
-    // Secondo tentativo: brand + secondo codice (es. codice US per Milwaukee)
     if (codes[1]) queries.push(`"${brand}" "${codes[1]}"`);
-  } else {
-    // Nessun codice: usa le 3 parole più distintive del titolo (min 4 char)
-    const distinctWords = title
-      .replace(new RegExp(brand, 'gi'), '')
-      .split(/[\s\-\/,]+/)
-      .filter(w => w.length >= 4 && !/^(per|con|the|and|kit|set|pro|new|con|da)$/i.test(w))
-      .slice(0, 3);
-    queries.push(`"${brand}" ${distinctWords.join(' ')}`);
   }
+  // Always add a title-based query as final fallback (no quotes → broader match)
+  const titleWords = title
+    .replace(new RegExp(brand, 'gi'), '')
+    .split(/[\s\-\/,]+/)
+    .filter(w => w.length >= 3 && !/^(per|con|the|and|kit|set|pro|new|da|di|il|la|le)$/i.test(w))
+    .slice(0, 4);
+  queries.push(`${brand} ${titleWords.join(' ')}`);
 
   for (const query of queries) {
     try {
@@ -577,11 +583,15 @@ async function searchDirectUrls(
 
   // Brand-specific direct product pages (highest quality images)
   if (brandLower.includes('milwaukee')) {
-    // NOTE: milwaukeetool.eu / milwaukeetool.it are intentionally excluded.
-    // Those sites geo-redirect based on server IP (Vercel → Hungarian, French, etc.)
-    // producing locale-specific pages that may map the EU article number to the wrong
-    // product. Milwaukee images are handled reliably by searchGoldStandard via SerpAPI
-    // (toolstop.co.uk, acmetools.com, ohiopowertool.com have stable Milwaukee catalogs).
+    // milwaukeetool.eu/.it excluded — geo-redirect from Vercel IPs.
+    // Use EU retailers that stock EU article numbers (49xxxxxxxx):
+    if (primaryCode) {
+      candidateUrls.push(
+        { url: `https://www.rotopino.it/search?q=${encodeURIComponent(primaryCode)}`, domain: 'rotopino.it', confidence: 'medium' },
+        { url: `https://www.fixami.it/search?query=${encodeURIComponent(primaryCode)}`, domain: 'fixami.it', confidence: 'medium' },
+        { url: `https://www.contorion.de/search?q=${encodeURIComponent(primaryCode)}`, domain: 'contorion.de', confidence: 'medium' },
+      );
+    }
   } else if (brandLower.includes('makita')) {
     for (const code of allCodes) {
       candidateUrls.push(
