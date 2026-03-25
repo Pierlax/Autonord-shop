@@ -27,6 +27,7 @@ import { sendNotification } from '@/lib/blog-researcher/notifications';
 import { leaveNoteForProductAgent, shareCategoryGuideline } from '@/lib/agent-memory';
 import { discoverBlogSources } from '@/lib/blog-researcher/rag-bridge';
 import { generateArticleBrief, generateBriefedArticle } from '@/lib/blog-researcher/blog-brief';
+import { clusterTopics, pickBestCluster } from '@/lib/blog-researcher/topic-clusterer';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -89,27 +90,39 @@ export async function GET(request: NextRequest) {
     // Step 2: Analyze and select best topic
     log.info('[BlogResearcher] Step 2: Analyzing topics...');
     const analysis = await analyzeTopics(searchResults);
-    
+
     log.info(`[BlogResearcher] Selected topic: ${analysis.selectedTopic.topic}`);
     log.info(`[BlogResearcher] Pain point: ${analysis.selectedTopic.painPoint}`);
-    
+
+    // Step 2.5: Cluster topics to avoid keyword cannibalization
+    log.info('[BlogResearcher] Step 2.5: Clustering topics...');
+    const allTopics = [analysis.selectedTopic, ...analysis.allTopics];
+    const clusters = clusterTopics(allTopics);
+    const bestCluster = pickBestCluster(clusters);
+    const selectedTopic = bestCluster?.representativeTopic ?? analysis.selectedTopic;
+    log.info(`[BlogResearcher] Clusters: ${clusters.length} | Best: "${bestCluster?.clusterLabel ?? 'none'}" (score=${bestCluster?.editorialScore ?? 0})`);
+    if (selectedTopic.topic !== analysis.selectedTopic.topic) {
+      log.info(`[BlogResearcher] Clusterer overrode LLM pick: "${analysis.selectedTopic.topic}" → "${selectedTopic.topic}"`);
+    }
+
     // Step 3: RAG Bridge — deep discovery on selected topic
     log.info('[BlogResearcher] Step 3: RAG Bridge discovery...');
     const topicSignal = {
-      topic: analysis.selectedTopic.topic,
-      painPoint: analysis.selectedTopic.painPoint,
+      topic: selectedTopic.topic,
+      painPoint: selectedTopic.painPoint,
       brands: extractBrandsFromTags([
         ...searchResults.slice(0, 5).map(r => r.title),
-        analysis.selectedTopic.topic,
+        selectedTopic.topic,
+        ...(bestCluster?.topBrands ?? []),
       ]),
-      tayaCategory: analysis.selectedTopic.tayaCategory,
+      tayaCategory: selectedTopic.tayaCategory,
     };
     const discovery = await discoverBlogSources(topicSignal);
     log.info(`[BlogResearcher] RAG Bridge: ${discovery.sources.length} sources | ${discovery.executionTimeMs}ms`);
 
     // Step 3.5: Generate editorial brief from RAG corpus
     log.info('[BlogResearcher] Step 3.5: Generating editorial brief...');
-    const brief = await generateArticleBrief(analysis.selectedTopic, discovery);
+    const brief = await generateArticleBrief(selectedTopic, discovery);
     log.info(`[BlogResearcher] Brief: "${brief.recommendedTitle}" | confidence: ${brief.confidence}`);
 
     // Step 4: Generate article from brief (RAG-informed drafting)
@@ -147,7 +160,7 @@ export async function GET(request: NextRequest) {
     } catch (briefError) {
       // Graceful degradation: fall back to classic drafting
       log.warn('[BlogResearcher] Briefed drafting failed, falling back to classic drafting:', briefError);
-      const articleDraft = await generateArticleDraft(analysis.selectedTopic);
+      const articleDraft = await generateArticleDraft(selectedTopic);
       articleDraft.content = formatForShopify(articleDraft);
       articleTitle = articleDraft.title;
       articleSlug = articleDraft.slug;
@@ -164,7 +177,7 @@ export async function GET(request: NextRequest) {
 
     // Step 4.5: Share insights with Product Agent via AgeMem
     log.info('[BlogResearcher] Step 4.5: Sharing insights with Product Agent via AgeMem...');
-    await shareInsightsWithProductAgent(analysis.selectedTopic, articleTags);
+    await shareInsightsWithProductAgent(selectedTopic, articleTags);
 
     // Step 5: Send notification — build a compatible notification shape
     log.info('[BlogResearcher] Step 5: Sending notifications...');
@@ -229,9 +242,14 @@ export async function GET(request: NextRequest) {
         executionTimeMs: discovery.executionTimeMs,
       },
       topic: {
-        name: analysis.selectedTopic.topic,
-        painPoint: analysis.selectedTopic.painPoint,
-        tayaCategory: analysis.selectedTopic.tayaCategory,
+        name: selectedTopic.topic,
+        painPoint: selectedTopic.painPoint,
+        tayaCategory: selectedTopic.tayaCategory,
+        clusterLabel: bestCluster?.clusterLabel,
+        clusterScore: bestCluster?.editorialScore,
+        relatedTopicsCount: bestCluster?.relatedTopics.length ?? 0,
+        topBrands: bestCluster?.topBrands ?? [],
+        searchVolume: bestCluster?.estimatedSearchVolume,
       },
       search: {
         totalResults: searchResults.length,

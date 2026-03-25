@@ -51,3 +51,7 @@ export type {
 // Blog Brief — editorial brief generator
 export { generateArticleBrief, generateBriefedArticle } from './blog-brief';
 export type { ArticleBrief, ArticleOutlineSection } from './blog-brief';
+
+// Topic Clusterer — raggruppa topic simili, evita keyword cannibalization
+export { clusterTopics, rankClusters, pickBestCluster, deduplicateAgainstHistory } from './topic-clusterer';
+export type { TopicCluster } from './topic-clusterer';
