@@ -367,7 +367,20 @@ async function searchGCSImageDirect(
     queries.push(`"${brand}" "${primaryCode}"`);
     if (codes[1]) queries.push(`"${brand}" "${codes[1]}"`);
   }
-  // Always add a title-based query as final fallback (no quotes → broader match)
+
+  // Milwaukee model code (e.g. FBJS-0X, M18CHX, M18CCES) appears directly in the title
+  // and is a reliable image search signal — better than the EU article number.
+  // Pattern: 2+ uppercase letters + optional digits + optional dash + suffix
+  const milwaukeeModelMatch = title.match(/\b((?:M1[28]|M28)\s*[A-Z]{2,}(?:[-]\d*[A-Z]*)*)\b/i);
+  if (milwaukeeModelMatch && brand.toLowerCase().includes('milwaukee')) {
+    const modelCode = milwaukeeModelMatch[1].replace(/\s+/, '');  // "M18 FBJS-0X" → "M18FBJS-0X"
+    queries.push(`"${brand}" "${modelCode}"`);
+    // Also search without variant suffix (-0X, -502X) — finds all variants of the same tool
+    const baseModel = modelCode.replace(/-\d*[A-Z]*$/, '');  // "M18FBJS-0X" → "M18FBJS"
+    if (baseModel !== modelCode) queries.push(`"${brand}" "${baseModel}"`);
+  }
+
+  // Generic title-based fallback (broader, no quotes)
   const titleWords = title
     .replace(new RegExp(brand, 'gi'), '')
     .split(/[\s\-\/,]+/)
@@ -631,6 +644,13 @@ async function searchDirectUrls(
           { url: `https://www.rotopino.it/search?q=${encodeURIComponent(code)}`, domain: 'rotopino.it', confidence: 'medium' },
           { url: `https://www.fixami.it/search?query=${encodeURIComponent(code)}`, domain: 'fixami.it', confidence: 'medium' },
           { url: `https://www.contorion.de/search?q=${encodeURIComponent(code)}`, domain: 'contorion.de', confidence: 'medium' },
+        );
+      } else if (/^M1[28]\s*[A-Z]{2}/i.test(code)) {
+        // Milwaukee model code (M18FBJS-0X, M12CHZ, etc.) — search on retailers
+        candidateUrls.push(
+          { url: `https://www.toolstop.co.uk/search?q=${encodeURIComponent(code)}`, domain: 'toolstop.co.uk', confidence: 'medium' },
+          { url: `https://www.ffx.co.uk/tools/search?q=${encodeURIComponent(code)}`, domain: 'ffx.co.uk', confidence: 'medium' },
+          { url: `https://www.acmetools.com/search?q=${encodeURIComponent(code)}`, domain: 'acmetools.com', confidence: 'medium' },
         );
       }
     }
