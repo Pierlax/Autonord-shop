@@ -93,7 +93,7 @@ const STOP_WORDS = new Set([
  * Normalizza in lowercase e rimuove stop words.
  */
 function extractKeywords(topic: TopicAnalysis): Set<string> {
-  const text = `${topic.topic} ${topic.painPoint} ${topic.searchIntent}`.toLowerCase();
+  const text = `${topic.topic ?? ''} ${topic.painPoint ?? ''} ${topic.searchIntent ?? ''}`.toLowerCase();
   const tokens = text.split(/[\s,.:;!?()/\\'"]+/).filter(t => t.length >= 3);
 
   const keywords = new Set<string>();
@@ -184,7 +184,11 @@ function buildCluster(
   const clusterTopics = indices.map(i => topics[i]);
 
   // Rappresentante = topic con score più alto
-  const scored = clusterTopics.map(t => ({ t, score: scoreTopic(t) }));
+  // scoreTopic() può crashare se samplePosts è undefined/null (LLM non lo include sempre)
+  const scored = clusterTopics.map(t => {
+    try { return { t, score: scoreTopic(t) }; }
+    catch { return { t, score: 0 }; }
+  });
   scored.sort((a, b) => b.score - a.score);
   const representative = scored[0].t;
   const related = scored.slice(1).map(s => s.t);
