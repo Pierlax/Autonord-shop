@@ -834,17 +834,25 @@ Return JSON:
  * A true result means the staged upload will succeed.
  */
 async function isImageAccessible(url: string): Promise<boolean> {
+  // Quick format sanity
+  const lower = url.toLowerCase().split('?')[0];
+  if (lower.endsWith('.html') || lower.endsWith('.htm') || lower.endsWith('.php') ||
+      lower.endsWith('.js')   || lower.endsWith('.css')) return false;
+
   try {
     const res = await fetch(url, {
       method: 'HEAD',
       signal: AbortSignal.timeout(5000),
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Autonord-Bot/1.0)' },
     });
-    if (!res.ok) return false;
+    // Definitive 404/410 → skip; any other failure → fail-open
+    if (res.status === 404 || res.status === 410) return false;
     const ct = res.headers.get('content-type') || '';
-    return ct.startsWith('image/');
+    if (ct && !ct.startsWith('image/') && !ct.includes('octet-stream') && ct !== '') return false;
+    return true;
   } catch {
-    return false;
+    // Fail-open: CDNs often block HEAD; Shopify validates on upload
+    return true;
   }
 }
 
@@ -1138,6 +1146,11 @@ function maximizeImageUrl(url: string): string {
  * Uses a short timeout (4s) so it fails fast for blocked/slow sources.
  */
 async function validateImageDownloadable(url: string): Promise<boolean> {
+  // Quick format sanity — reject non-image extensions without any HTTP round-trip
+  const lower = url.toLowerCase().split('?')[0];
+  if (lower.endsWith('.html') || lower.endsWith('.htm') || lower.endsWith('.php') ||
+      lower.endsWith('.js')   || lower.endsWith('.css')) return false;
+
   try {
     const resp = await fetch(url, {
       method: 'HEAD',
@@ -1147,15 +1160,19 @@ async function validateImageDownloadable(url: string): Promise<boolean> {
         'Accept': 'image/*,*/*;q=0.8',
       },
     });
-    if (!resp.ok) return false;
+    // Definitive 404/410 → skip; any other failure → fail-open (let Shopify validate on upload)
+    if (resp.status === 404 || resp.status === 410) return false;
     const ct = resp.headers.get('content-type') || '';
-    if (!ct.startsWith('image/')) {
-      console.log(`[ImageAgent V4] HEAD check: ${url.substring(0, 80)} → blocked (${ct.split(';')[0]})`);
+    // If Content-Type says it's definitely NOT an image, skip it
+    if (ct && !ct.startsWith('image/') && !ct.includes('octet-stream') && ct !== '') {
+      console.log(`[ImageAgent V4] HEAD check: ${url.substring(0, 80)} → not image (${ct.split(';')[0]})`);
       return false;
     }
     return true;
   } catch {
-    return false;
+    // Network error / timeout / CDN blocking HEAD → fail-open
+    // Shopify will validate the URL when we try to upload it
+    return true;
   }
 }
 
