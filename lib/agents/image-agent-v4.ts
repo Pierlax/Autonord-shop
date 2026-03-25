@@ -616,10 +616,12 @@ async function searchDirectUrls(
     for (const code of allCodes) {
       const isUsCode = /^4[89]-\d{2}-\d{4}$/.test(code);
       if (isUsCode) {
-        // acmetools and ohiopowertool have direct product URLs keyed to US codes
+        // acmetools and ohiopowertool have direct product URLs keyed to US codes.
+        // Use 'medium' so vision validation always runs — the US code may have been
+        // AI-generated and may not match the actual product.
         candidateUrls.push(
-          { url: `https://www.acmetools.com/${code.toLowerCase()}`, domain: 'acmetools.com', confidence: 'high' },
-          { url: `https://www.ohiopowertool.com/milwaukee-tools-${code.toLowerCase()}`, domain: 'ohiopowertool.com', confidence: 'high' },
+          { url: `https://www.acmetools.com/${code.toLowerCase()}`, domain: 'acmetools.com', confidence: 'medium' },
+          { url: `https://www.ohiopowertool.com/milwaukee-tools-${code.toLowerCase()}`, domain: 'ohiopowertool.com', confidence: 'medium' },
           { url: `https://www.toolstop.co.uk/search?q=${encodeURIComponent(code)}`, domain: 'toolstop.co.uk', confidence: 'medium' },
           { url: `https://www.ffx.co.uk/tools/search?q=${encodeURIComponent(code)}`, domain: 'ffx.co.uk', confidence: 'medium' },
         );
