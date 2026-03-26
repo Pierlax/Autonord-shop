@@ -6,7 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { findProductImage } from '@/lib/agents/image-agent-v4';
-import { searchProductImages } from '@/lib/shopify/search-client';
+import { searchProductImages, searchImagesWithBing } from '@/lib/shopify/search-client';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -37,6 +37,14 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // --- Step 1b: Bing image search direct (no domain filter) ---
+  let bingDirect: unknown = null;
+  try {
+    bingDirect = await searchImagesWithBing(`${vendor} ${title}`, undefined, 5);
+  } catch (err) {
+    bingDirect = { error: String(err) };
+  }
+
   // --- Step 2: full image agent (with cache disabled via unique title suffix) ---
   // Append a timestamp so the cache key is unique each time we test
   const testTitle = `${title} [debug-${Date.now()}]`;
@@ -54,6 +62,7 @@ export async function GET(request: NextRequest) {
       domains: euDomains,
       queries: rawSearches,
     },
+    bingDirect,
     agentResult,
     agentError,
     totalMs: Date.now() - startTime,
