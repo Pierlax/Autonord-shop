@@ -12,7 +12,7 @@
  */
 
 import { generateTextSafe } from '@/lib/shopify/ai-client';
-import { performWebSearch, searchProductImages } from '@/lib/shopify/search-client';
+import { performWebSearch, searchProductImages, searchImagesWithBing } from '@/lib/shopify/search-client';
 import { cachedGeneric } from '@/lib/shopify/rag-cache';
 
 // =============================================================================
@@ -444,7 +444,9 @@ async function searchGCSImageDirect(
 
   for (const query of broadQueries) {
     try {
-      const imageResults = await searchProductImages(query, undefined, 5);
+      // Force Bing — Google CSE CX may be restricted to specific sites
+      // and would still return nothing even without a site: filter.
+      const imageResults = await searchImagesWithBing(query, undefined, 8);
       for (const imgResult of imageResults) {
         if (isBlockedDomain(imgResult.imageUrl)) continue;
         if (!isValidImageUrl(imgResult.imageUrl)) continue;

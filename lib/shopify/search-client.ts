@@ -398,7 +398,7 @@ export async function searchProductImages(
  *
  * Domain filtering is achieved via site: operators in the query.
  */
-async function searchImagesWithBing(
+export async function searchImagesWithBing(
   query: string,
   domainFilter: string[] | undefined,
   maxResults: number
