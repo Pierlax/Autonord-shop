@@ -37,10 +37,31 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // --- Step 1b: Bing image search direct (no domain filter) ---
+  // --- Step 1b: Bing image search direct with exact broad-fallback query ---
+  // Simulates what searchGCSImageDirect broad fallback actually does
+  const normalizedBrand = vendor.split(' ')[0]; // simple normalization
+  const titleWords = title
+    .replace(new RegExp(vendor, 'gi'), '')
+    .split(/[\s\-\/,\[\]]+/)
+    .filter((w: string) => w.length >= 3 && !/^(per|con|the|and|kit|set|pro|new|da|di|il|la|le|debug)$/i.test(w))
+    .slice(0, 4);
+  const broadQuery = `"${normalizedBrand}" ${titleWords.join(' ')}`;
+
   let bingDirect: unknown = null;
   try {
-    bingDirect = await searchImagesWithBing(`${vendor} ${title}`, undefined, 5);
+    const rawResults = await searchImagesWithBing(broadQuery, undefined, 8);
+    // Simulate the filters applied in the broad fallback
+    const filtered = rawResults.map((r: {imageUrl: string; domain: string}) => {
+      const lower = r.imageUrl.toLowerCase();
+      const blocked = lower.includes('amazon.') || lower.includes('ebay.') || lower.includes('facebook.');
+      const invalidExt = lower.endsWith('.svg');
+      const noImage = lower.includes('no-image') || lower.includes('placeholder');
+      const defaultFilter = /(?:^|[/_-])default(?:[-_.]|$)/.test(lower);
+      const editorial = lower.includes('/blog/') || lower.includes('/news/') || lower.includes('/post/');
+      const rejected = blocked || invalidExt || noImage || defaultFilter || editorial;
+      return { imageUrl: r.imageUrl.slice(0, 90), domain: r.domain, rejected, reason: rejected ? (blocked?'blocked':invalidExt?'svg':noImage?'noimage':defaultFilter?'default':editorial?'editorial':'?') : null };
+    });
+    bingDirect = { query: broadQuery, total: rawResults.length, filtered };
   } catch (err) {
     bingDirect = { error: String(err) };
   }
