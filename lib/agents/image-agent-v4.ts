@@ -1304,7 +1304,10 @@ function isValidImageUrl(url: string): boolean {
     lower.includes('placeholder') ||
     lower.includes('no-image') ||
     lower.includes('noimage') ||
-    lower.includes('default') ||
+    // Match placeholder "default" patterns but NOT PrestaShop CDN paths like
+    // "large_default", "square_large_default", "medium_default" which are
+    // legitimate product images, not placeholders.
+    /(?:^|[/_-])default(?:[-_.]|$)/.test(lower) ||
     lower.includes('/logo') ||
     lower.includes('-logo') ||
     lower.includes('_logo') ||
