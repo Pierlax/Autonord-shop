@@ -432,6 +432,39 @@ async function searchGCSImageDirect(
     }
   }
 
+  // ─── Fallback: broad search without domain filter ───────────────────────────
+  // Runs only when all domain-restricted queries returned nothing.
+  // Useful for niche/Italian brands not stocked on UK/US tool retailers.
+  // Lower confidence → vision validation always required.
+  // NOTE: /wp-content/uploads/ is intentionally NOT filtered here —
+  // many legitimate Italian WooCommerce stores host product images there.
+  const broadQueries: string[] = [];
+  if (primaryCode) broadQueries.push(`"${brand}" "${primaryCode}"`);
+  broadQueries.push(`"${brand}" ${titleWords.join(' ')}`);
+
+  for (const query of broadQueries) {
+    try {
+      const imageResults = await searchProductImages(query, undefined, 5);
+      for (const imgResult of imageResults) {
+        if (isBlockedDomain(imgResult.imageUrl)) continue;
+        if (!isValidImageUrl(imgResult.imageUrl)) continue;
+        const urlLower = imgResult.imageUrl.toLowerCase();
+        // Only skip clearly editorial pages (blogs/news), not generic WP media
+        if (urlLower.includes('/blog/') || urlLower.includes('/news/') || urlLower.includes('/post/')) continue;
+        if (!(await validateImageDownloadable(imgResult.imageUrl))) continue;
+        console.log(`[ImageAgent V4] ✅ GCS broad fallback: ${imgResult.imageUrl.substring(0, 100)} (${imgResult.domain})`);
+        return {
+          found: true,
+          imageUrl: maximizeImageUrl(imgResult.imageUrl),
+          domain: imgResult.domain,
+          confidence: 'medium',
+        };
+      }
+    } catch (e) {
+      console.log(`[ImageAgent V4] GCS broad fallback error for "${query}": ${e}`);
+    }
+  }
+
   return { found: false, imageUrl: null, domain: null, confidence: 'low' };
 }
 
