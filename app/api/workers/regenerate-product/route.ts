@@ -655,7 +655,8 @@ async function runEnrichmentPipeline(payload: WorkerPayload, startTime: number):
       payload.vendor,
       payload.productType || '',
       payload.sku || '',
-      'full'
+      'full',
+      { barcode: payload.barcode ?? undefined }
     );
     
     console.log(`[Worker V5] RAG completed: success=${ragResult.success}, sources=${ragResult.metadata.sourcesQueried.length}`);

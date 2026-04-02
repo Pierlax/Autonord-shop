@@ -14,6 +14,7 @@ export {
   JTBD_TRANSFORMATIONS,
   containsBannedPhrases,
   checkKrugCompliance,
+  checkLanguageQuality,
   transformSpecToJobBenefit,
   injectPragmaticTruth,
   runTriadTest,

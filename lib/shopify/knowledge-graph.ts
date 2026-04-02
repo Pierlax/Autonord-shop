@@ -514,14 +514,46 @@ export class PowerToolKnowledgeGraph {
       }
     }
 
-    // Suggest features based on category
+    // Suggest features based on category (R2 fix: dynamic instead of hardcoded brushless+LED)
     const suggestedFeatures: KGNode[] = [];
-    // All professional tools should have brushless
-    const brushless = this.graph.nodes.get('feature_brushless');
-    if (brushless) suggestedFeatures.push(brushless);
-    
-    const led = this.graph.nodes.get('feature_led_light');
-    if (led) suggestedFeatures.push(led);
+
+    // Category-to-feature mapping covering all product types in the catalog
+    const CATEGORY_FEATURE_MAP: Record<string, string[]> = {
+      // Portable power tools
+      drill_driver:      ['feature_brushless', 'feature_variable_speed', 'feature_led_light'],
+      impact_driver:     ['feature_brushless', 'feature_led_light'],
+      impact_wrench:     ['feature_brushless', 'feature_variable_speed'],
+      hammer_drill:      ['feature_brushless', 'feature_variable_speed', 'feature_led_light'],
+      angle_grinder:     ['feature_brushless', 'feature_kickback_protection'],
+      circular_saw:      ['feature_brushless', 'feature_dust_extraction'],
+      reciprocating_saw: ['feature_brushless', 'feature_led_light'],
+      jigsaw:            ['feature_brushless', 'feature_variable_speed', 'feature_dust_extraction'],
+      planer:            ['feature_brushless', 'feature_dust_extraction'],
+      router:            ['feature_brushless', 'feature_variable_speed'],
+      // Heavy equipment
+      mini_excavator:    ['feature_diesel_engine', 'feature_hydraulic_system', 'feature_quick_coupler'],
+      excavator_bucket:  ['feature_hydraulic_system', 'feature_quick_coupler'],
+      demolition_hammer: ['feature_hydraulic_system'],
+      // Generators
+      generator:         ['feature_avr_regulation', 'feature_electric_start', 'feature_diesel_engine'],
+      // Construction
+      tile_cutter:       ['feature_diamond_blade', 'feature_variable_speed'],
+      concrete_mixer:    ['feature_electric_start'],
+    };
+
+    const featureIds = categoryId ? (CATEGORY_FEATURE_MAP[categoryId] ?? []) : [];
+    for (const fId of featureIds) {
+      const f = this.graph.nodes.get(fId);
+      if (f) suggestedFeatures.push(f);
+    }
+
+    // Fallback for unknown/unmapped categories
+    if (suggestedFeatures.length === 0) {
+      const brushless = this.graph.nodes.get('feature_brushless');
+      if (brushless) suggestedFeatures.push(brushless);
+      const led = this.graph.nodes.get('feature_led_light');
+      if (led) suggestedFeatures.push(led);
+    }
 
     return {
       brandInfo,

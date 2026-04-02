@@ -8,6 +8,7 @@
 import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
 import { optionalEnv } from '@/lib/env';
+import { cachedGenericDynamic } from '@/lib/shopify/rag-cache';
 
 const log = loggers.blog;
 import {
@@ -508,7 +509,7 @@ export async function researchProductSentiment(
     .filter(q => q.source.includes('reddit') || q.source.includes('garage'))
     .map(q => q.quote);
   
-  return {
+  const result: ForumResearchResult = {
     product: productName,
     postsAnalyzed: uniquePosts.length,
     sentiment,
@@ -518,6 +519,19 @@ export async function researchProductSentiment(
     englishInsights,
     rawPosts: uniquePosts,
   };
+
+  // R6 Phase B: persist sentiment data so the product pipeline (ai-enrichment-v3) can read it.
+  // Cache key is deterministic by product name — shared across blog and product pipelines.
+  const cacheKey = `sentiment:v1:${productName.toLowerCase().replace(/\s+/g, '_').slice(0, 60)}`;
+  const SENTIMENT_TTL_MS = 24 * 60 * 60 * 1000; // 24h — forums don't change hourly
+  try {
+    // Fire-and-forget: don't block on cache write
+    cachedGenericDynamic(cacheKey, async () => result, () => SENTIMENT_TTL_MS).catch(() => undefined);
+  } catch {
+    // Cache unavailable — not critical
+  }
+
+  return result;
 }
 
 /**

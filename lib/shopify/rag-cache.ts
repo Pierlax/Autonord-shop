@@ -557,3 +557,19 @@ export async function cachedGenericDynamic<T>(
   await cache.setRawJson(prefixedKey, result, getTtlMs(result));
   return result;
 }
+
+/**
+ * Read-only cache lookup. Returns the stored value or null on miss.
+ * R6 fix: used by the product pipeline to read blog sentiment data without
+ * triggering a recompute.
+ *
+ * Uses the same `gen:v1:` prefix as cachedGenericDynamic so keys match.
+ */
+export async function readCacheJson<T>(cacheKey: string): Promise<T | null> {
+  try {
+    const cache = getCacheManager();
+    return await cache.getRawJson<T>(`gen:v1:${cacheKey}`);
+  } catch {
+    return null;
+  }
+}

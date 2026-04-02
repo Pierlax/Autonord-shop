@@ -439,6 +439,22 @@ export const BANNED_PHRASES = [
   'risultati straordinari',
   'esperienza unica',
   'servizio impeccabile',
+
+  // Italian AI markers (merged from quality-control.ts ROBOTIC_PATTERNS — R4)
+  'il presente articolo',
+  "l'obiettivo di questo",
+  'è importante notare che',
+  'è fondamentale sottolineare',
+  'non si può negare che',
+  'in conclusione, possiamo affermare',
+  'come abbiamo visto',
+  'assolutamente eccezionale',
+  'straordinariamente',
+  'incredibilmente innovativo',
+  'leader indiscusso',
+  'il migliore in assoluto',
+  'massimizzare l\'efficienza',
+  'a 360 gradi',
 ];
 
 /**
@@ -447,6 +463,28 @@ export const BANNED_PHRASES = [
 export function containsBannedPhrases(content: string): string[] {
   const lowerContent = content.toLowerCase();
   return BANNED_PHRASES.filter(phrase => lowerContent.includes(phrase.toLowerCase()));
+}
+
+/**
+ * Check for English words that should be Italian (merged from quality-control.ts — R4)
+ * Returns list of issues as strings.
+ */
+export function checkLanguageQuality(text: string): string[] {
+  const issues: string[] = [];
+  const checks: { pattern: RegExp; suggestion: string }[] = [
+    { pattern: /\bperformance\b/gi, suggestion: 'prestazioni' },
+    { pattern: /\bfeature\b/gi, suggestion: 'funzionalità/caratteristica' },
+    { pattern: /\bfeedback\b/gi, suggestion: 'riscontro/opinione' },
+    { pattern: /\buser-friendly\b/gi, suggestion: 'facile da usare' },
+    { pattern: /\bstate-of-the-art\b/gi, suggestion: "all'avanguardia" },
+  ];
+  for (const { pattern, suggestion } of checks) {
+    if (pattern.test(text)) {
+      const match = text.match(pattern);
+      issues.push(`Parola inglese rilevata: "${match?.[0]}" → considera "${suggestion}"`);
+    }
+  }
+  return issues;
 }
 
 // =============================================================================

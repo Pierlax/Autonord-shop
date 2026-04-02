@@ -352,6 +352,23 @@ export async function validateAndCorrect(
     content.expertOpinion || '',
   ].filter(Boolean).join('\n');
 
+  // Deterministic structure pre-check (merged from quality-control.ts — R4)
+  const textOnly = fullText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const wordCount = textOnly.split(' ').filter(Boolean).length;
+  if (wordCount < 150) {
+    console.warn(`[TAYA Police] ⚠️ Content too short: ${wordCount} words (min 150)`);
+  }
+  const h2Count = (content.description.match(/<h2/gi) || []).length;
+  if (h2Count < 2) {
+    console.warn(`[TAYA Police] ⚠️ Description has only ${h2Count} H2 section(s) (recommended: 2+)`);
+  }
+  if (content.pros.length < 3) {
+    console.warn(`[TAYA Police] ⚠️ Only ${content.pros.length} pros (recommended: 3+)`);
+  }
+  if (content.cons.length < 2) {
+    console.warn(`[TAYA Police] ⚠️ Only ${content.cons.length} cons (recommended: 2+) — may seem promotional`);
+  }
+
   const triadScore = runTriadTest(fullText);
   console.log(
     `[TAYA Police] Triad scores — TAYA: ${triadScore.taya.score} KRUG: ${triadScore.krug.score} JTBD: ${triadScore.jtbd.score} → ${triadScore.overall.action}`

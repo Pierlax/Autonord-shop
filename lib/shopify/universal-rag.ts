@@ -291,7 +291,8 @@ export class UniversalRAGPipeline {
     vendor: string,
     productType: string,
     sku: string,
-    enrichmentType: 'specs' | 'description' | 'pros_cons' | 'faqs' | 'full' = 'full'
+    enrichmentType: 'specs' | 'description' | 'pros_cons' | 'faqs' | 'full' = 'full',
+    options?: { barcode?: string; existingDescription?: string }
   ): Promise<UniversalRAGResult> {
     const state: PipelineState = {
       startTime: Date.now(),
@@ -445,7 +446,8 @@ export class UniversalRAGPipeline {
         routingDecision,
         granularityDecision,
         fusionPlan,
-        state
+        state,
+        options?.barcode ?? undefined
       );
 
       // V2: Inject corpus items into retrieval data so the existing fusion/
@@ -651,7 +653,8 @@ export class UniversalRAGPipeline {
     routingDecision: RoutingDecision | undefined,
     granularityDecision: GranularityDecision | undefined,
     fusionPlan: FusionPlan | undefined,
-    state: PipelineState
+    state: PipelineState,
+    barcode?: string
   ): Promise<Map<SourceType, any[]>> {
     const retrievedData = new Map<SourceType, any[]>();
     
@@ -682,7 +685,7 @@ export class UniversalRAGPipeline {
     // Execute retrieval for each source (in parallel)
     const retrievalPromises = sourcesToQuery.map(async (source) => {
       try {
-        const queries = getOptimizedQueries(productTitle, vendor, sku, source);
+        const queries = getOptimizedQueries(productTitle, vendor, sku, source, barcode);
         
         // Execute retrieval using whitelisted RAG sources
         const results = await this.executeSourceAwareRetrieval(

@@ -325,18 +325,20 @@ export async function routeProductQuery(
 
 /**
  * Get search queries optimized for each source type
+ * R5 fix: accepts optional barcode/EAN for more precise searches
  */
 export function getOptimizedQueries(
   productTitle: string,
   vendor: string,
   sku: string,
-  sourceType: SourceType
+  sourceType: SourceType,
+  barcode?: string
 ): string[] {
   const baseQueries: Record<SourceType, string[]> = {
     official_specs: [
       `${vendor} ${productTitle} scheda tecnica`,
       `${vendor} ${productTitle} specifications datasheet`,
-      `${productTitle} ${sku} specs`,
+      barcode ? `${barcode} ${vendor} specs` : `${productTitle} ${sku} specs`,
     ],
     official_manuals: [
       `${vendor} ${productTitle} manuale PDF`,
@@ -346,7 +348,7 @@ export function getOptimizedQueries(
     retailer_data: [
       `${productTitle} ${vendor} Amazon`,
       `${productTitle} prezzo Italia`,
-      `${sku} ${vendor}`,
+      barcode ? `${barcode} ${vendor}` : `${sku} ${vendor}`,
     ],
     user_reviews: [
       `${productTitle} recensioni`,

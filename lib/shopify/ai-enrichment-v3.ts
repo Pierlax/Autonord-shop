@@ -56,6 +56,8 @@ import {
 import { UniversalRAGResult } from './universal-rag';
 import { TwoPhaseQAResult, AtomicFact } from './two-phase-qa';
 import { getProductMemoryContext, recordMemoryUsage } from '@/lib/agent-memory';
+import { readCacheJson } from '@/lib/shopify/rag-cache';
+import type { ForumResearchResult } from '@/lib/blog-researcher/sentiment';
 
 // =============================================================================
 // CLIENT INITIALIZATION
@@ -207,13 +209,35 @@ function enrichWithKnowledgeGraph(
 
   return {
     brandInfo: context.brandInfo ? JSON.stringify(context.brandInfo.properties) : null,
-    categoryInfo: context.categoryInfo ? context.categoryInfo.name : null,
-    // Prefer RAG-discovered battery system (extracted from actual product text) over static KG lookup
-    batterySystem: ragKgContext?.batterySystem ?? (context.batterySystem ? context.batterySystem.name : null),
-    suitableForTrades: context.suitableForTrades.map(t => t.name),
-    relatedUseCases: context.relatedUseCases.map(u => u.name),
+    // R3 fix: serialize full category properties (description + powerRange/discSizes) instead of just name
+    categoryInfo: context.categoryInfo ? JSON.stringify({
+      name: context.categoryInfo.name,
+      description: context.categoryInfo.properties.description ?? null,
+      powerRange: context.categoryInfo.properties.powerRange ?? context.categoryInfo.properties.discSizes ?? null,
+    }) : null,
+    // R3 fix: serialize full battery properties (voltage + capacities) instead of just name
+    batterySystem: ragKgContext?.batterySystem ?? (context.batterySystem
+      ? JSON.stringify({
+          name: context.batterySystem.name,
+          voltage: context.batterySystem.properties.voltage ?? null,
+          capacities: context.batterySystem.properties.capacities ?? null,
+        })
+      : null),
+    // R3 fix: include workEnvironment in trade names
+    suitableForTrades: context.suitableForTrades.map(t => {
+      const env = t.properties.workEnvironment;
+      return env ? `${t.name} (${env})` : t.name;
+    }),
+    relatedUseCases: context.relatedUseCases.map(u => {
+      const accessories = u.properties.accessories as string[] | undefined;
+      return accessories?.length ? `${u.name} [accessori: ${accessories.join(', ')}]` : u.name;
+    }),
     crossSellSuggestions: crossSell,
-    suggestedFeatures: context.suggestedFeatures.map(f => f.name),
+    // R3 fix: include feature benefits instead of just name
+    suggestedFeatures: context.suggestedFeatures.map(f => {
+      const benefits = f.properties.benefits as string[] | undefined;
+      return benefits?.length ? `${f.name} (${benefits.join(', ')})` : f.name;
+    }),
   };
 }
 
@@ -482,8 +506,21 @@ export async function generateProductContentV3(
     log.info(`[AI-V3] AgeMem context loaded: ${memoryContext.summary}`);
   }
 
-  // Step 5: Build enhanced prompt with REAL data from RAG + QA + KG + AgeMem
-  const userPrompt = buildEnhancedPromptV3(product, brand, ragEvidence, qaFacts, kgContext, memoryContext.promptSection);
+  // Step 4.7: R6 Phase B — read blog sentiment cache (populated by blog-researcher pipeline)
+  // Key must match what sentiment.ts writes: cachedGenericDynamic uses 'gen:v1:' prefix internally
+  const sentimentCacheKey = `sentiment:v1:${product.title.toLowerCase().replace(/\s+/g, '_').slice(0, 60)}`;
+  let sentimentData: ForumResearchResult | null = null;
+  try {
+    sentimentData = await readCacheJson<ForumResearchResult>(sentimentCacheKey);
+    if (sentimentData) {
+      log.info(`[AI-V3] Forum sentiment cache hit: ${sentimentData.postsAnalyzed} posts analyzed`);
+    }
+  } catch {
+    // Sentiment cache not available — not critical
+  }
+
+  // Step 5: Build enhanced prompt with REAL data from RAG + QA + KG + AgeMem + Sentiment
+  const userPrompt = buildEnhancedPromptV3(product, brand, ragEvidence, qaFacts, kgContext, memoryContext.promptSection, sentimentData);
 
   // Step 6: Generate content with LLM
   log.info('[AI-V3] Step 6: Generating content with LLM (using RAG+QA context)...');
@@ -790,7 +827,8 @@ function buildEnhancedPromptV3(
   ragEvidence: RAGEvidence,
   qaFacts: QAFacts | null,
   kgContext: EnrichedProductDataV3['knowledgeGraphContext'],
-  memoryPromptSection: string = ''
+  memoryPromptSection: string = '',
+  sentimentData: ForumResearchResult | null = null
 ): string {
   const sku = product.variants[0]?.sku || 'N/A';
   
@@ -907,6 +945,25 @@ IMPORTANTE: Per questi dati in conflitto, usa la qualifica "circa" o "tipicament
     ? `\n${memoryPromptSection}\n---\n`
     : '';
 
+  // === SECTION 8: Blog Sentiment Bridge — real forum opinions (R6 Phase B) ===
+  let sentimentSection = '';
+  if (sentimentData && sentimentData.postsAnalyzed > 0) {
+    const problems = sentimentData.topProblems.slice(0, 3).map(p => `- ${p.issue} (${p.severity})`).join('\n');
+    const praises = sentimentData.topPraises.slice(0, 3).map(p => `- ${p}`).join('\n');
+    const quotes = sentimentData.sentiment.quotes.slice(0, 2).map(q => `- "${q.quote}" — ${q.source}`).join('\n');
+    sentimentSection = `\n## OPINIONI REALI DAI FORUM (${sentimentData.postsAnalyzed} post analizzati — blog pipeline)
+Usa questi dati per arricchire i pro/contro con opinioni autentiche. NON inventare variazioni.
+
+**Problemi segnalati dagli utenti:**
+${problems || '- Nessun problema ricorrente identificato'}
+
+**Punti di forza apprezzati:**
+${praises || '- Nessun elogio specifico identificato'}
+
+**Citazioni dirette:**
+${quotes || '- Nessuna citazione disponibile'}`;
+  }
+
   return `Genera contenuti per questo prodotto usando SOLO i dati verificati che ti fornisco.
 Questi dati provengono da ricerca web REALE (UniversalRAG) e verifica fatti (TwoPhaseQA).
 NON inventare dati. Se un'informazione non è presente, non includerla.
@@ -923,6 +980,7 @@ ${qaReasoningSection}
 ${benchmarkSection}
 ${kgSection}
 ${conflictsWarning}
+${sentimentSection}
 
 ## ISTRUZIONI
 
