@@ -60,7 +60,7 @@ async function adminFetch(query: string, variables?: Record<string, unknown>) {
         'X-Shopify-Access-Token': SHOPIFY_ADMIN_TOKEN,
       },
       body: JSON.stringify({ query, variables }),
-      cache: 'no-store',
+      next: { revalidate: 300 }, // Blog rarely changes — cache 5 min
     });
 
     if (!response.ok) {

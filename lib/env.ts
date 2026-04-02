@@ -77,6 +77,10 @@ interface OptionalEnv {
   NEXT_PUBLIC_BASE_URL?: string;
   /** Node environment */
   NODE_ENV?: string;
+  /** Secret for admin dashboard and admin API endpoints */
+  ADMIN_SECRET?: string;
+  /** Secret for Danea sync and publish-all endpoints */
+  SYNC_SECRET?: string;
 }
 
 // =============================================================================

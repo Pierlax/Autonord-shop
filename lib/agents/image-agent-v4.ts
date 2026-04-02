@@ -13,7 +13,7 @@
 
 import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { performWebSearch, searchProductImages, searchImagesWithBing } from '@/lib/shopify/search-client';
-import { cachedGeneric } from '@/lib/shopify/rag-cache';
+import { cachedGenericDynamic } from '@/lib/shopify/rag-cache';
 
 // =============================================================================
 // CONFIG
@@ -157,10 +157,15 @@ function generateImageCacheKey(title: string, vendor: string, sku: string | null
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
+/** 7 days in ms — used for successful image cache entries */
+const IMAGE_SUCCESS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** 30 minutes in ms — used for failure cache entries (P2 fix: short TTL for transient failures) */
+const IMAGE_FAILURE_TTL_MS = 30 * 60 * 1000;
+
 /**
  * Cached version of findProductImage.
- * Results are stored for 7 days (same TTL as RAG image intent).
- * On cache hit, skips all HTTP requests entirely.
+ * Successful results are stored for 7 days; failures for 30 minutes so that
+ * transient network/DNS issues don't lock a product out of image discovery for a week.
  *
  * @param ragPageUrls - Product page URLs already discovered by UniversalRAG.
  *   These come from trusted whitelisted domains and are context-validated
@@ -178,9 +183,11 @@ export async function findProductImage(
   visualClues?: string[]
 ): Promise<ImageAgentV4Result> {
   const cacheKey = generateImageCacheKey(title, vendor, sku, barcode);
-  return cachedGeneric<ImageAgentV4Result>(
+  return cachedGenericDynamic<ImageAgentV4Result>(
     cacheKey,
     () => findProductImageUncached(title, vendor, sku, barcode, ragPageUrls, visualClues),
+    // P2 fix: short TTL for failures so transient issues don't block re-attempts for 7 days
+    (result) => result.success ? IMAGE_SUCCESS_TTL_MS : IMAGE_FAILURE_TTL_MS,
   );
 }
 

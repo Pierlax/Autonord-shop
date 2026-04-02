@@ -6,7 +6,7 @@
 // senza passare per QStash.
 
 const BASE_URL  = 'https://autonord-shop.vercel.app';
-const TOKEN     = 'autonord-cron-2024-xK9mP2vL8nQ4';
+const TOKEN     = process.env.CRON_SECRET || (() => { throw new Error('CRON_SECRET env var not set — run: CRON_SECRET=... node test-worker.js'); })();
 const ENDPOINT  = `${BASE_URL}/api/workers/regenerate-product`;
 
 // Prodotto di test reale dal catalogo Danea (Milwaukee M18 CAG115XPDB)

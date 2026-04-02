@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+function isAuthorized(request: NextRequest): boolean {
+  const secret = process.env.ADMIN_SECRET;
+  if (!secret) return false; // fail-closed: deny all if not configured
+  const auth = request.headers.get('authorization') ?? request.headers.get('Authorization') ?? '';
+  return auth === `Bearer ${secret}`;
+}
+
 const SHOPIFY_STORE = 'autonord-service.myshopify.com';
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN!;
 
 export async function POST(request: NextRequest) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   const productId = request.nextUrl.searchParams.get('productId');
   
   if (!productId) {

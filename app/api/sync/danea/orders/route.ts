@@ -15,12 +15,14 @@ const log = loggers.sync;
 // Verify sync secret for security
 function verifySecret(request: NextRequest): boolean {
   const secret = process.env.SYNC_SECRET;
-  if (!secret) return true;
-  
+  const cronSecret = process.env.CRON_SECRET;
+  // Fail-closed: deny all if neither secret is configured
+  if (!secret && !cronSecret) return false;
   const authHeader = request.headers.get('Authorization');
   const providedSecret = authHeader?.replace('Bearer ', '');
-  
-  return providedSecret === secret;
+  if (secret && providedSecret === secret) return true;
+  if (cronSecret && providedSecret === cronSecret) return true;
+  return false;
 }
 
 export async function GET(request: NextRequest) {

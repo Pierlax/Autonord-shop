@@ -509,9 +509,36 @@ export async function generateProductContentV3(
   }
   const provenance = generateContentProvenance(productId, product.title, provenanceResult.tracker.getAllFacts());
 
-  // Step 7: Verification (placeholder for now)
+  // Step 7: Fact Verification — cross-check generated numbers against verified QA data
   const verificationStart = Date.now();
-  // TODO: Add verification step
+  if (qaFacts && qaFacts.verifiedSpecs.length > 0) {
+    // Extract all numbers that appear in verified QA facts
+    const verifiedNumbers = new Set(
+      qaFacts.verifiedSpecs.flatMap(s => (s.answer.match(/\d+(?:[.,]\d+)?/g) || []))
+    );
+    // Also include unverified spec numbers (medium confidence — still from real RAG data)
+    for (const s of qaFacts.unverifiedSpecs) {
+      for (const n of (s.answer.match(/\d+(?:[.,]\d+)?/g) || [])) {
+        verifiedNumbers.add(n);
+      }
+    }
+
+    // Find numeric values in the generated description that don't appear in any source
+    const generatedNumbers = content.description.match(/\d+(?:[.,]\d+)?/g) || [];
+    const unverifiedNumbers = generatedNumbers.filter(n => {
+      const num = n.replace(',', '.');
+      // Accept the number if it (or a close form) appears in verified data
+      return !verifiedNumbers.has(n) && !verifiedNumbers.has(num);
+    });
+
+    if (unverifiedNumbers.length > 0) {
+      log.warn(
+        `[AI-V3] Step 7 Verification: ${unverifiedNumbers.length} number(s) in description not found in QA-verified data: ${unverifiedNumbers.join(', ')} — review for hallucination`
+      );
+    } else {
+      log.info('[AI-V3] Step 7 Verification: all numbers in description are grounded in QA data ✓');
+    }
+  }
   timings.verification = Date.now() - verificationStart;
   
   // Step 8: Extract accessories from RAG data
@@ -902,7 +929,7 @@ ${conflictsWarning}
 1. Usa le specifiche tecniche SOLO se verificate da TwoPhaseQA
 2. Integra i punti di forza/debolezza del QA nei pro/contro
 3. Usa i dati RAG reali per arricchire la descrizione con dettagli concreti
-4. Se i dati tecnici specifici non sono disponibili, descrivi i benefici TIPICI della categoria (Knowledge Graph) — NON commentare mai la mancanza di dati
+4. Se un dato tecnico non è presente nei dati verificati sopra, NON includerlo nell'output — scrivi meno ma solo cose verificate. Mai inventare specifiche, mai descrivere "benefici tipici della categoria" come se fossero dati reali di questo prodotto
 5. Usa il contesto del Knowledge Graph per i mestieri e casi d'uso
 6. Collega ogni specifica a un beneficio lavorativo concreto (JTBD)
 7. MAI usare "questo prodotto", "questo articolo", "questo utensile" — usa sempre il nome del prodotto o una perifrasi (es. "la chiodatrice", "l'avvitatore", "il trapano")
@@ -935,7 +962,7 @@ async function generateWithLLMV3(
       system: SYSTEM_PROMPT_V3,
       prompt: userPrompt,
       maxTokens: 2500,
-      temperature: 0.6,
+      temperature: 0.3, // P2 fix: lowered from 0.6 — factual structured output needs determinism
     });
 
     const content = result.text;

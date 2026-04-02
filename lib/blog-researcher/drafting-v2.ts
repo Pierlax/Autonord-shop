@@ -74,145 +74,37 @@ export interface EnhancedArticleDraft {
 // =============================================================================
 
 /**
- * Search whitelist sources for technical data
+ * Search whitelist sources for technical data.
+ *
+ * NOTE (P0 fix): The previous implementation asked Gemini to "generate realistic specs"
+ * from known sources — this was hallucination-by-design (invented numbers presented as
+ * real measurements). Real scraping of protoolreviews.com / toolguyd.com / tooltalk.com
+ * is not yet implemented. Until it is, we return empty arrays so the article is written
+ * only from actual forum quotes and real RAG data, with no fabricated tables.
  */
 async function searchWhitelistSources(
-  productName: string
+  _productName: string
 ): Promise<{ specs: TechnicalSpec[]; sources: ArticleData['sources'] }> {
-  const specs: TechnicalSpec[] = [];
-  const sources: ArticleData['sources'] = [];
-  
-  // For now, we'll use Gemini to extract specs from known sources
-  // In production, this would scrape or use APIs
-  const prompt = `Sei un ricercatore tecnico. Cerca informazioni su "${productName}" dalle seguenti fonti autorevoli:
-
-FONTI PRIORITARIE:
-1. protoolreviews.com - Dati tecnici, benchmark, test runtime
-2. toolguyd.com - Analisi feature, hands-on review
-3. tooltalk.com - Opinioni utenti, durabilità
-
-Genera specifiche tecniche REALISTICHE basate su quello che queste fonti tipicamente riportano per questo tipo di prodotto.
-
-Rispondi in JSON:
-{
-  "specs": [
-    {
-      "name": "Coppia massima",
-      "value": "valore con unità",
-      "source": "nome fonte"
-    }
-  ],
-  "sourcesUsed": [
-    {
-      "name": "Pro Tool Reviews",
-      "url": "https://protoolreviews.com/...",
-      "dataUsed": "specifiche tecniche e benchmark"
-    }
-  ]
-}
-
-IMPORTANTE: Genera dati plausibili e realistici per un elettroutensile professionale.`;
-
-  try {
-    const result = await generateTextSafe({
-      prompt,
-      maxTokens: 2000,
-      temperature: 0.5,
-    });
-    const content = result.text;
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { specs, sources };
-    
-    const data = JSON.parse(jsonMatch[0]);
-    
-    for (const spec of data.specs || []) {
-      specs.push({
-        name: spec.name,
-        product1Value: spec.value,
-        note: spec.source ? `Fonte: ${spec.source}` : undefined,
-      });
-    }
-    
-    for (const source of data.sourcesUsed || []) {
-      sources.push({
-        name: source.name,
-        url: source.url,
-        dataUsed: source.dataUsed,
-      });
-    }
-    
-  } catch (error) {
-    log.error('[DraftingV2] Error searching whitelist sources:', error);
-  }
-  
-  return { specs, sources };
+  // TODO: implement real HTTP scraping of whitelist domains (P1 roadmap)
+  log.info('[DraftingV2] searchWhitelistSources: real scraping not yet implemented — returning empty specs to prevent hallucination');
+  return { specs: [], sources: [] };
 }
 
 /**
- * Search whitelist sources for comparison data
+ * Search whitelist sources for comparison data.
+ *
+ * NOTE (P0 fix): The previous implementation asked Gemini to fabricate comparative
+ * tables with winner/loser decisions — hallucinated data presented with source citations
+ * to non-existent URLs. Real scraping is not yet implemented.
+ * Until it is, we return empty arrays so comparisons are written only from real data.
  */
 async function searchComparisonSpecs(
-  product1: string,
-  product2: string
+  _product1: string,
+  _product2: string
 ): Promise<{ specs: TechnicalSpec[]; sources: ArticleData['sources'] }> {
-  const specs: TechnicalSpec[] = [];
-  const sources: ArticleData['sources'] = [];
-  const prompt = `Sei un ricercatore tecnico. Confronta "${product1}" vs "${product2}" usando dati da:
-
-FONTI PRIORITARIE:
-1. protoolreviews.com - Benchmark comparativi, test runtime
-2. toolguyd.com - Confronti feature-by-feature
-3. tooltalk.com - Opinioni comparative utenti
-
-Genera una tabella comparativa REALISTICA con almeno 8 specifiche.
-
-Rispondi in JSON:
-{
-  "specs": [
-    {
-      "name": "Coppia massima",
-      "product1Value": "valore",
-      "product2Value": "valore",
-      "unit": "Nm",
-      "winner": "product1|product2|tie"
-    }
-  ],
-  "sourcesUsed": [
-    {
-      "name": "Pro Tool Reviews",
-      "url": "https://protoolreviews.com/...",
-      "dataUsed": "test comparativo coppia"
-    }
-  ]
-}`;
-
-  try {
-    const result = await generateTextSafe({
-      prompt,
-      maxTokens: 2500,
-      temperature: 0.5,
-    });
-    const content = result.text;
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { specs, sources };
-    
-    const data = JSON.parse(jsonMatch[0]);
-    
-    specs.push(...(data.specs || []));
-    
-    for (const source of data.sourcesUsed || []) {
-      sources.push({
-        name: source.name,
-        url: source.url,
-        dataUsed: source.dataUsed,
-      });
-    }
-    
-  } catch (error) {
-    log.error('[DraftingV2] Error searching comparison specs:', error);
-  }
-  
-  return { specs, sources };
+  // TODO: implement real HTTP scraping of whitelist domains (P1 roadmap)
+  log.info('[DraftingV2] searchComparisonSpecs: real scraping not yet implemented — returning empty specs to prevent hallucination');
+  return { specs: [], sources: [] };
 }
 
 // =============================================================================

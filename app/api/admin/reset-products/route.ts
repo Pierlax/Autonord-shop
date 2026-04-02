@@ -15,6 +15,13 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 
+function isAuthorized(request: NextRequest): boolean {
+  const secret = process.env.ADMIN_SECRET;
+  if (!secret) return false;
+  const auth = request.headers.get('authorization') ?? '';
+  return auth === `Bearer ${secret}`;
+}
+
 export const maxDuration = 60; // Allow up to 5 minutes for bulk reset
 
 const SHOPIFY_STORE = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN;
@@ -198,6 +205,9 @@ async function resetProductTags(product: ProductNode): Promise<{
 // =============================================================================
 
 export async function POST(request: NextRequest) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   try {
     const { searchParams } = new URL(request.url);
     const resetAll = searchParams.get('all') === 'true';
@@ -298,6 +308,9 @@ export async function POST(request: NextRequest) {
 // =============================================================================
 
 export async function GET(request: NextRequest) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   try {
     const taggedCount = await countTaggedProducts();
 

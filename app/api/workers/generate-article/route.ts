@@ -8,9 +8,17 @@ export const maxDuration = 300;
 
 import { NextRequest, NextResponse } from 'next/server';
 import { generateTextSafe } from '@/lib/shopify/ai-client';
+import { env } from '@/lib/env';
 
 const SHOPIFY_STORE = 'autonord-service.myshopify.com';
 const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN!;
+
+function isAuthorized(request: NextRequest): boolean {
+  const secret = env.CRON_SECRET;
+  if (!secret) return false;
+  const auth = request.headers.get('authorization') ?? '';
+  return auth === `Bearer ${secret}`;
+}
 
 interface ArticlePayload {
   id: number;
@@ -187,7 +195,9 @@ async function createArticle(
 }
 
 export async function POST(request: NextRequest) {
-  // Skip signature verification for now (same as enrich-product worker)
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   const startTime = Date.now();
 

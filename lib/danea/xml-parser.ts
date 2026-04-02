@@ -1,15 +1,22 @@
 /**
  * Danea EasyFatt XML Parser
- * 
+ *
  * Parses XML exports from Danea EasyFatt software.
  * Supports both full and incremental sync modes.
- * 
+ *
+ * Uses fast-xml-parser (v4) instead of custom regex — eliminates ReDoS risk
+ * and handles CDATA, attributes and nested tags correctly.
+ *
  * Reference: https://www.danea.it/software/easyfatt/ecommerce/integrazione/invio-prodotti/
  */
 
+import { XMLParser } from 'fast-xml-parser';
 import { ParsedProduct } from './types';
 
-// Danea XML Product structure
+/** Maximum number of products accepted in a single payload (OOM guard) */
+const MAX_PRODUCTS = 10_000;
+
+// Danea XML Product structure (internal)
 interface DaneaXMLProduct {
   InternalID?: string;
   Code?: string;
@@ -20,18 +27,18 @@ interface DaneaXMLProduct {
   ProducerName?: string;
   Barcode?: string;
   Um?: string;
-  NetPrice1?: string;
-  NetPrice2?: string;
-  GrossPrice1?: string;
-  GrossPrice2?: string;
-  AvailableQty?: string;
-  OrderedQty?: string;
-  MinStock?: string;
+  NetPrice1?: string | number;
+  NetPrice2?: string | number;
+  GrossPrice1?: string | number;
+  GrossPrice2?: string | number;
+  AvailableQty?: string | number;
+  OrderedQty?: string | number;
+  MinStock?: string | number;
   Notes?: string;
   ImageFileName?: string;
   SupplierCode?: string;
   SupplierName?: string;
-  SupplierNetPrice?: string;
+  SupplierNetPrice?: string | number;
   CustomField1?: string;
   CustomField2?: string;
   CustomField3?: string;
@@ -50,205 +57,152 @@ export interface DaneaXMLParseResult {
   deletedProductCodes: string[];
 }
 
-/**
- * Extract text content between XML tags.
- * Handles both plain text and CDATA sections: <Tag><![CDATA[content]]></Tag>
- * Also decodes basic XML entities (&amp; &lt; &gt; &quot; &apos;).
- */
-function getTagContent(xml: string, tagName: string): string | null {
-  // Match CDATA section first, then plain text
-  const regex = new RegExp(
-    `<${tagName}[^>]*>\\s*(?:<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>|([^<]*))</${tagName}>`,
-    'i'
-  );
-  const match = xml.match(regex);
-  if (!match) return null;
-
-  // Group 1: CDATA content; Group 2: plain text content
-  const raw = (match[1] ?? match[2] ?? '').trim();
-
-  // Decode basic XML entities
-  return raw
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
-}
+/** Shared fast-xml-parser instance (stateless, safe to reuse) */
+const parser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: '@_',
+  cdataPropName: '__cdata',
+  isArray: (_name, jpath) => jpath.endsWith('.Product'), // always array even for single product
+  parseTagValue: false,   // keep all values as strings — we parse numbers ourselves
+  trimValues: true,
+});
 
 /**
- * Get attribute value from a tag
+ * Safely coerce a value from the parsed tree to a string.
+ * fast-xml-parser may return a string, a number, or an object with __cdata.
  */
-function getAttributeValue(xml: string, tagName: string, attrName: string): string | null {
-  const tagRegex = new RegExp(`<${tagName}[^>]*>`, 'i');
-  const tagMatch = xml.match(tagRegex);
-  if (!tagMatch) return null;
-  
-  const attrRegex = new RegExp(`${attrName}="([^"]*)"`, 'i');
-  const attrMatch = tagMatch[0].match(attrRegex);
-  return attrMatch ? attrMatch[1] : null;
-}
-
-/**
- * Extract all Product elements from XML section
- */
-function extractProducts(xml: string, sectionTag: string): string[] {
-  const sectionRegex = new RegExp(`<${sectionTag}[^>]*>([\\s\\S]*?)</${sectionTag}>`, 'i');
-  const sectionMatch = xml.match(sectionRegex);
-  if (!sectionMatch) return [];
-  
-  const sectionContent = sectionMatch[1];
-  const productRegex = /<Product[^>]*>([\s\S]*?)<\/Product>/gi;
-  const products: string[] = [];
-  let match;
-  
-  while ((match = productRegex.exec(sectionContent)) !== null) {
-    products.push(match[0]);
+function toString(val: unknown): string {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'object' && val !== null && '__cdata' in (val as Record<string, unknown>)) {
+    return String((val as Record<string, unknown>).__cdata ?? '');
   }
-  
-  return products;
+  return String(val);
 }
 
 /**
- * Parse a single Product XML element
+ * Parse price string from Danea XML (dot as decimal separator).
  */
-function parseProductXML(productXml: string): DaneaXMLProduct {
-  const product: DaneaXMLProduct = {};
-  
-  const fields = [
-    'InternalID', 'Code', 'Description', 'DescriptionHTML', 
-    'Category', 'Subcategory', 'ProducerName', 'Barcode', 'Um',
-    'NetPrice1', 'NetPrice2', 'GrossPrice1', 'GrossPrice2',
-    'AvailableQty', 'OrderedQty', 'MinStock', 'Notes', 'ImageFileName',
-    'SupplierCode', 'SupplierName', 'SupplierNetPrice',
-    'CustomField1', 'CustomField2', 'CustomField3', 'CustomField4'
-  ];
-  
-  for (const field of fields) {
-    const value = getTagContent(productXml, field);
-    if (value !== null) {
-      (product as Record<string, string>)[field] = value;
-    }
-  }
-  
-  return product;
-}
-
-/**
- * Parse price string from Danea XML
- */
-function parsePrice(priceStr: string | undefined): number | null {
-  if (!priceStr || priceStr.trim() === '') return null;
-  
-  // Danea uses dot as decimal separator in XML
-  const num = parseFloat(priceStr.replace(',', '.'));
+function parsePrice(priceVal: unknown): number | null {
+  const str = toString(priceVal).trim();
+  if (!str) return null;
+  const num = parseFloat(str.replace(',', '.'));
   return isNaN(num) ? null : num;
 }
 
 /**
- * Parse quantity from Danea XML
+ * Parse quantity from Danea XML.
  */
-function parseQuantity(qtyStr: string | undefined): number {
-  if (!qtyStr || qtyStr.trim() === '') return 0;
-  const num = parseInt(qtyStr, 10);
+function parseQuantity(qtyVal: unknown): number {
+  const str = toString(qtyVal).trim();
+  if (!str) return 0;
+  const num = parseInt(str, 10);
   return isNaN(num) ? 0 : Math.max(0, num);
 }
 
 /**
- * Convert Danea XML product to our ParsedProduct format
+ * Convert a raw parsed product node to our internal ParsedProduct format.
  */
-function convertToProduct(xmlProduct: DaneaXMLProduct): ParsedProduct | null {
-  // Code is required
-  if (!xmlProduct.Code || xmlProduct.Code.trim() === '') {
-    return null;
-  }
-  
-  // Use HTML description if available, fallback to plain text
-  const description = xmlProduct.DescriptionHTML || xmlProduct.Notes || null;
-  
-  // Use GrossPrice (IVA inclusa) if available, otherwise NetPrice
-  const price = parsePrice(xmlProduct.GrossPrice1) || parsePrice(xmlProduct.NetPrice1);
-  const compareAtPrice = parsePrice(xmlProduct.GrossPrice2) || parsePrice(xmlProduct.NetPrice2);
-  
+function convertToProduct(raw: DaneaXMLProduct): ParsedProduct | null {
+  const code = toString(raw.Code).trim();
+  if (!code) return null;
+
+  const description = toString(raw.DescriptionHTML) || toString(raw.Notes) || null;
+  const price = parsePrice(raw.GrossPrice1) ?? parsePrice(raw.NetPrice1);
+  const compareAtPrice = parsePrice(raw.GrossPrice2) ?? parsePrice(raw.NetPrice2);
+
   return {
-    daneaCode: xmlProduct.Code.trim(),
-    supplierCode: xmlProduct.SupplierCode?.trim() || null,
-    title: xmlProduct.Description?.trim() || xmlProduct.Code.trim(),
-    description,
-    category: xmlProduct.Category?.trim() || null,
-    manufacturer: xmlProduct.ProducerName?.trim() || null,
+    daneaCode: code,
+    supplierCode: toString(raw.SupplierCode).trim() || null,
+    title: toString(raw.Description).trim() || code,
+    description: description || null,
+    category: toString(raw.Category).trim() || null,
+    manufacturer: toString(raw.ProducerName).trim() || null,
     price,
     compareAtPrice,
-    costPrice: parsePrice(xmlProduct.SupplierNetPrice),
-    quantity: parseQuantity(xmlProduct.AvailableQty),
-    unit: xmlProduct.Um?.trim() || 'PZ',
-    barcode: xmlProduct.Barcode?.trim() || null,
-    ecommerce: true, // If sent via XML, assume it's for e-commerce
-    notes: xmlProduct.Notes?.trim() || null,
+    costPrice: parsePrice(raw.SupplierNetPrice),
+    quantity: parseQuantity(raw.AvailableQty),
+    unit: toString(raw.Um).trim() || 'PZ',
+    barcode: toString(raw.Barcode).trim() || null,
+    ecommerce: true,
+    notes: toString(raw.Notes).trim() || null,
   };
 }
 
 /**
- * Parse Danea EasyFatt XML content
+ * Normalise a section of the parsed tree to an array of product nodes.
+ * fast-xml-parser returns an array when isArray matches, but falls back
+ * to a plain object when only one element exists (and no override is set).
+ */
+function toProductArray(section: unknown): DaneaXMLProduct[] {
+  if (!section) return [];
+  const raw = (section as Record<string, unknown>).Product;
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw as DaneaXMLProduct[];
+  return [raw as DaneaXMLProduct];
+}
+
+/**
+ * Parse Danea EasyFatt XML content.
+ *
+ * @throws {Error} if the document exceeds MAX_PRODUCTS items (OOM guard).
  */
 export function parseDaneaXML(xmlContent: string): DaneaXMLParseResult {
+  const doc = parser.parse(xmlContent) as Record<string, unknown>;
+  const root = (doc.EasyfattProducts ?? {}) as Record<string, unknown>;
+
+  const mode: DaneaSyncMode =
+    toString(root['@_Mode']).toLowerCase() === 'incremental' ? 'incremental' : 'full';
+
+  const warehouse = toString(root['@_Warehouse']) || undefined;
+
   const result: DaneaXMLParseResult = {
-    mode: 'full',
+    mode,
+    warehouse,
     products: [],
     updatedProducts: [],
     deletedProductCodes: [],
   };
-  
-  // Get sync mode
-  const mode = getAttributeValue(xmlContent, 'EasyfattProducts', 'Mode');
-  if (mode === 'incremental') {
-    result.mode = 'incremental';
-  }
-  
-  // Get warehouse if present
-  const warehouse = getAttributeValue(xmlContent, 'EasyfattProducts', 'Warehouse');
-  if (warehouse) {
-    result.warehouse = warehouse;
-  }
-  
-  if (result.mode === 'full') {
-    // Full sync: all products in <Products> section
-    const productXmls = extractProducts(xmlContent, 'Products');
-    
-    for (const productXml of productXmls) {
-      const xmlProduct = parseProductXML(productXml);
-      const product = convertToProduct(xmlProduct);
-      if (product) {
-        result.products.push(product);
-      }
+
+  if (mode === 'full') {
+    const rawProducts = toProductArray(root.Products);
+    if (rawProducts.length > MAX_PRODUCTS) {
+      throw new Error(
+        `[DaneaXML] Payload too large: ${rawProducts.length} products exceed the limit of ${MAX_PRODUCTS}. ` +
+        'Split the export into smaller batches.'
+      );
+    }
+    for (const raw of rawProducts) {
+      const p = convertToProduct(raw);
+      if (p) result.products.push(p);
     }
   } else {
-    // Incremental sync: updated and deleted products
-    const updatedXmls = extractProducts(xmlContent, 'UpdatedProducts');
-    const deletedXmls = extractProducts(xmlContent, 'DeletedProducts');
-    
-    for (const productXml of updatedXmls) {
-      const xmlProduct = parseProductXML(productXml);
-      const product = convertToProduct(xmlProduct);
-      if (product) {
-        result.updatedProducts.push(product);
-      }
+    const rawUpdated = toProductArray(root.UpdatedProducts);
+    const rawDeleted = toProductArray(root.DeletedProducts);
+
+    const totalItems = rawUpdated.length + rawDeleted.length;
+    if (totalItems > MAX_PRODUCTS) {
+      throw new Error(
+        `[DaneaXML] Payload too large: ${totalItems} items exceed the limit of ${MAX_PRODUCTS}.`
+      );
     }
-    
-    for (const productXml of deletedXmls) {
-      const xmlProduct = parseProductXML(productXml);
-      if (xmlProduct.Code) {
-        result.deletedProductCodes.push(xmlProduct.Code.trim());
-      }
+
+    for (const raw of rawUpdated) {
+      const p = convertToProduct(raw);
+      if (p) result.updatedProducts.push(p);
+    }
+    for (const raw of rawDeleted) {
+      const code = toString(raw.Code).trim();
+      if (code) result.deletedProductCodes.push(code);
     }
   }
-  
+
   return result;
 }
 
 /**
- * Check if content is Danea XML format
+ * Check if content is Danea XML format.
+ * Requires the root element to be <EasyfattProducts> — not just any XML with a <Product> tag.
  */
 export function isDaneaXML(content: string): boolean {
-  return content.includes('<EasyfattProducts') || content.includes('<Product>');
+  return content.includes('<EasyfattProducts');
 }

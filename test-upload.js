@@ -8,7 +8,7 @@ const path = require('path');
 
 const FILE_PATH = path.join(__dirname, 'test.xlsx');
 const URL = 'https://autonord-shop.vercel.app/api/sync/danea?onlyEcommerce=true&limit=5';
-const TOKEN = 'autonord-cron-2024-xK9mP2vL8nQ4';
+const TOKEN = process.env.CRON_SECRET || (() => { throw new Error('CRON_SECRET env var not set — run: CRON_SECRET=... node test-upload.js'); })();
 
 async function main() {
   if (!fs.existsSync(FILE_PATH)) {

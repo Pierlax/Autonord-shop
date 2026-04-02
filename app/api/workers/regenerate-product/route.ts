@@ -768,6 +768,22 @@ async function runEnrichmentPipeline(payload: WorkerPayload, startTime: number):
       console.log('[Worker V5] Content passed TAYA validation');
     }
 
+    // P0 fix: Enforce Triad Score — block publication on RIFIUTA or REVISIONE_MAGGIORE
+    const triadAction = validationResult.triadScore?.overall.action;
+    if (triadAction === 'RIFIUTA' || triadAction === 'REVISIONE_MAGGIORE') {
+      console.warn(`[Worker V5] ⛔ TAYA Triad Score = ${triadAction} — blocking Shopify publish. Product will remain in draft.`);
+      return NextResponse.json({
+        success: false,
+        error: `Content blocked by TAYA Police (Triad Score: ${triadAction})`,
+        product: payload.title,
+        triadScore: validationResult.triadScore,
+        timeMs: Date.now() - startTime,
+      }, { status: 422 });
+    }
+    if (triadAction === 'REVISIONE_MINORE') {
+      console.warn(`[Worker V5] ⚠️ TAYA Triad Score = REVISIONE_MINORE — publishing but flagging for review.`);
+    }
+
     // ===========================================
     // STEP 7: Shopify — tutti i campi + immagine (staged) + publish
     // ===========================================

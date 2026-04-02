@@ -22,6 +22,21 @@ import { SearchResult } from './search-client';
 const log = loggers.shopify;
 
 // =============================================================================
+// TIMEOUT HELPER
+// =============================================================================
+
+/**
+ * Races a promise against a timeout. Returns `fallback` if the timeout fires first.
+ * Used to prevent Redis calls from blocking indefinitely.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>(resolve => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
+// =============================================================================
 // TYPES
 // =============================================================================
 
@@ -176,14 +191,22 @@ class RedisCacheBackend implements CacheBackend {
 
   private async redisCommand(command: string[]): Promise<any> {
     return redisCircuitBreaker.execute(async () => {
-      const response = await fetch(`${this.baseUrl}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(command),
-      });
+      const response = await withTimeout(
+        fetch(`${this.baseUrl}`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(command),
+        }),
+        5000,
+        null as any,
+      );
+
+      if (!response) {
+        throw new Error('Redis request timed out after 5000ms');
+      }
 
       if (!response.ok) {
         throw new Error(`Redis HTTP ${response.status}: ${response.statusText}`);
@@ -507,5 +530,30 @@ export async function cachedGeneric<T>(
 
   const result = await compute();
   await cache.setRawJson(prefixedKey, result, ttlMs);
+  return result;
+}
+
+/**
+ * Like cachedGeneric but lets the caller choose the TTL based on the computed result.
+ * Useful when success and failure should have different TTLs (e.g. image agent failures
+ * should expire in 30 min, successes in 7 days).
+ *
+ * @param getTtlMs - Called with the computed result; returns the TTL to use in ms
+ */
+export async function cachedGenericDynamic<T>(
+  cacheKey: string,
+  compute: () => Promise<T>,
+  getTtlMs: (result: T) => number
+): Promise<T> {
+  const cache = getCacheManager();
+  const prefixedKey = `gen:v1:${cacheKey}`;
+
+  const cached = await cache.getRawJson<T>(prefixedKey);
+  if (cached !== null) {
+    return cached;
+  }
+
+  const result = await compute();
+  await cache.setRawJson(prefixedKey, result, getTtlMs(result));
   return result;
 }

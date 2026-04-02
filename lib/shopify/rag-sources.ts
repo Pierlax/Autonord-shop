@@ -365,8 +365,9 @@ export function sourceTypeToSearchIntent(
 ): SearchIntent {
   switch (sourceType) {
     case 'official_specs':
-    case 'official_manuals':
       return 'specs';
+    case 'official_manuals':
+      return 'manuals'; // P1 fix: manuals domains (manualslib.com) must use 'manuals' intent, not 'specs'
     case 'retailer_data':
       return 'images'; // Retailers are best for images
     case 'user_reviews':

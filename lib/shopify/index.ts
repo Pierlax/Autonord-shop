@@ -27,7 +27,7 @@ async function ShopifyData(query: string, variables?: object) {
         'X-Shopify-Storefront-Access-Token': storefrontAccessToken,
       },
       body: JSON.stringify({ query, variables }),
-      cache: 'no-store', // Ensure fresh data for B2B stock
+      next: { revalidate: 60 }, // Cache for 60s — revalidated on-demand via ISR
     });
 
     if (!response.ok) {

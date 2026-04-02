@@ -420,10 +420,12 @@ export class UniversalRAGPipeline {
         this.log(state, `Granularity: ${granularityDecision.level} (max ${granularityDecision.maxTokens} tokens, confidence: ${granularityDecision.confidence})`);
       }
       
-      // Step 4: Create fusion plan
+      // Step 4: Create fusion plan — pass pre-computed routing and granularity decisions
+      // to avoid duplicate LLM calls (P1 fix: createFusionPlan previously re-ran both
+      // routeProductQuery and determineGranularity even though they were already computed above)
       let fusionPlan: FusionPlan | undefined;
       if (this.config.enableProactiveFusion) {
-        fusionPlan = await createFusionPlan(productTitle, vendor, productType, enrichmentType);
+        fusionPlan = await createFusionPlan(productTitle, vendor, productType, enrichmentType, routingDecision, granularityDecision);
         
         // Optimize based on constraints
         fusionPlan = optimizeFusionPlan(fusionPlan, {
@@ -463,6 +465,23 @@ export class UniversalRAGPipeline {
           granularityDecision = adapted;
         } else {
           this.log(state, `Granularity stable: ${granularityDecision.level} (density: ${density.toFixed(2)})`);
+        }
+      }
+
+      // P2 fix: Gate mock results — strip simulated search results from retrievedData
+      // before they enter fusion, evidence graph, and KG extraction.
+      // Mock results carry provider='mock' or contain '[MOCK DATA]' in their content.
+      const MOCK_CONTENT_MARKERS = ['[MOCK DATA]', 'simulated search result', 'Configure a search API key', 'mock-result-'];
+      for (const [sourceKey, results] of Array.from(retrievedData.entries())) {
+        if (!Array.isArray(results)) continue;
+        const filtered = results.filter((r: any) => {
+          if (r?.provider === 'mock') return false;
+          const text = r?.snippet || r?.content || r?.title || '';
+          return !MOCK_CONTENT_MARKERS.some(m => typeof text === 'string' && text.includes(m));
+        });
+        if (filtered.length < results.length) {
+          this.log(state, `Mock gate: removed ${results.length - filtered.length} mock results from source '${sourceKey}'`);
+          retrievedData.set(sourceKey, filtered);
         }
       }
 
@@ -1309,12 +1328,40 @@ export class UniversalRAGPipeline {
         }
       }
 
-      // Re-evaluate with updated retrieval data
-      // (corpus is already injected into retrievedData; we re-evaluate based on
-      //  the evidence graph which captures the original corpus — this is intentional:
-      //  the second pass improves upstream data, and the evaluator reflects pre-pass state)
-      const newEval = await evaluateCorpus(currentCorpus, evidenceGraph, productTitle, vendor);
-      const newItems = retrievedData.get('official_specs')?.length ?? 0;
+      // P1 fix (evaluator-optimizer stale corpus): build an updated CorpusCollection
+      // from the new gap-query results so the re-evaluation reflects the additional data.
+      // Previously this used `currentCorpus` (unchanged), making the loop unable to
+      // measure any improvement from the second pass.
+      const allNewResults: any[] = retrievedData.get('official_specs') ?? [];
+      const newCorpusItems: import('./corpus-builder').CorpusItem[] = allNewResults
+        .slice(currentCorpus.totalItems) // only items added in this pass
+        .map((r: any, i: number) => ({
+          id: `gap-${pass}-${i}`,
+          type: 'paragraph' as import('./corpus-builder').CorpusType,
+          modality: 'text' as import('./corpus-builder').CorpusModality,
+          content: r.snippet || r.content || r.title || '',
+          url: r.url || r.link || '',
+          title: r.title || '',
+          domain: (() => { try { return new URL(r.url || r.link || 'https://unknown').hostname; } catch { return 'unknown'; } })(),
+          confidence: 0.6,
+          tokenEstimate: Math.ceil((r.snippet || r.content || '').length / 4),
+          metadata: { intent: 'specs' },
+        }));
+
+      const updatedCorpus: import('./corpus-builder').CorpusCollection = newCorpusItems.length > 0 ? {
+        ...currentCorpus,
+        items: [...currentCorpus.items, ...newCorpusItems],
+        byType: {
+          ...currentCorpus.byType,
+          paragraph: [...(currentCorpus.byType.paragraph ?? []), ...newCorpusItems],
+        },
+        totalItems: currentCorpus.totalItems + newCorpusItems.length,
+        totalTokens: currentCorpus.totalTokens + newCorpusItems.reduce((s, c) => s + c.tokenEstimate, 0),
+      } : currentCorpus;
+
+      const newEval = await evaluateCorpus(updatedCorpus, evidenceGraph, productTitle, vendor);
+      currentCorpus = updatedCorpus; // carry updated corpus to next pass
+      const newItems = allNewResults.length;
 
       passes.push({
         passNumber: pass,

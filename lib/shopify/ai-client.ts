@@ -210,16 +210,25 @@ export async function generateTextSafe(options: GenerateTextOptions): Promise<Ge
       // Distributed rate limit check (Redis sliding window)
       await checkRateLimit();
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30_000);
+
       const baseConfig = {
         model,
         system:          options.system,
         maxOutputTokens: Math.min(options.maxTokens ?? 4096, MAX_TOKENS_HARD_LIMIT),
         temperature:     options.temperature ?? 0.7,
+        abortSignal:     controller.signal,
       };
 
-      const result = options.messages
-        ? await generateText({ ...baseConfig, messages: options.messages })
-        : await generateText({ ...baseConfig, prompt: options.prompt ?? '' });
+      let result;
+      try {
+        result = options.messages
+          ? await generateText({ ...baseConfig, messages: options.messages })
+          : await generateText({ ...baseConfig, prompt: options.prompt ?? '' });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       const usage = {
         promptTokens:     result.usage?.inputTokens  ?? 0,
@@ -284,6 +293,9 @@ export async function generateObjectSafe<T>(options: GenerateObjectOptions<T>): 
     try {
       await checkRateLimit();
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30_000);
+
       const baseObjConfig = {
         model,
         system:          options.system,
@@ -291,11 +303,17 @@ export async function generateObjectSafe<T>(options: GenerateObjectOptions<T>): 
         schemaName:      options.schemaName,
         maxOutputTokens: Math.min(options.maxTokens ?? 4096, MAX_TOKENS_HARD_LIMIT),
         temperature:     options.temperature ?? 0.3,
+        abortSignal:     controller.signal,
       };
 
-      const result = options.messages
-        ? await generateObject({ ...baseObjConfig, messages: options.messages })
-        : await generateObject({ ...baseObjConfig, prompt: options.prompt ?? '' });
+      let result;
+      try {
+        result = options.messages
+          ? await generateObject({ ...baseObjConfig, messages: options.messages })
+          : await generateObject({ ...baseObjConfig, prompt: options.prompt ?? '' });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       const usage = {
         promptTokens:     result.usage?.inputTokens  ?? 0,

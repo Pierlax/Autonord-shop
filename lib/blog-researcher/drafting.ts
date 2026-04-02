@@ -75,7 +75,7 @@ Marcus Sheridan ha costruito un'azienda da milioni di dollari rispondendo onesta
 - ✅ Iniziare con una situazione concreta o una domanda
 - ✅ Usare sottotitoli che siano mini-risposte (non solo "Caratteristiche")
 - ✅ Includere almeno un'opinione personale controcorrente
-- ✅ Citare esperienze reali (anche inventate ma plausibili)
+- ✅ Citare esperienze reali dei professionisti del settore (solo opinioni autentiche dai forum, mai inventate)
 - ✅ Dare consigli actionable che il lettore può usare subito
 
 ## FORMATTAZIONE HTML

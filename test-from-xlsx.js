@@ -7,7 +7,7 @@
 const xlsx = require('xlsx');
 
 const BASE_URL = 'https://autonord-shop.vercel.app';
-const TOKEN    = 'autonord-cron-2024-xK9mP2vL8nQ4';
+const TOKEN    = process.env.CRON_SECRET || (() => { throw new Error('CRON_SECRET env var not set — copy .env.local and run: CRON_SECRET=... node test-from-xlsx.js'); })();
 const ENDPOINT = `${BASE_URL}/api/workers/regenerate-product`;
 
 const TIMEOUT_MS   = 180_000; // 3 minuti per prodotto (pipeline completa)

@@ -128,19 +128,23 @@ const SOURCE_EVIDENCE_MAPPING: Record<SourceType, EvidenceType[]> = {
 };
 
 /**
- * Create a proactive fusion plan based on query analysis
+ * Create a proactive fusion plan based on query analysis.
+ *
+ * P1 fix: accepts pre-computed routing and granularity decisions to avoid
+ * duplicate LLM calls. UniversalRAG already runs both earlier in the pipeline;
+ * passing them here prevents 2 extra Gemini calls per product enrichment.
  */
 export async function createFusionPlan(
   productTitle: string,
   vendor: string,
   productType: string,
-  enrichmentType: 'specs' | 'description' | 'pros_cons' | 'faqs' | 'full'
+  enrichmentType: 'specs' | 'description' | 'pros_cons' | 'faqs' | 'full',
+  precomputedRouting?: RoutingDecision,
+  precomputedGranularity?: GranularityDecision
 ): Promise<FusionPlan> {
-  // Get routing decision
-  const routingDecision = await routeProductQuery(productTitle, vendor, productType);
-  
-  // Get granularity decision
-  const granularityDecision = await determineGranularity(productTitle, vendor, enrichmentType);
+  // Reuse pre-computed decisions when available — avoids duplicate LLM calls
+  const routingDecision = precomputedRouting ?? await routeProductQuery(productTitle, vendor, productType);
+  const granularityDecision = precomputedGranularity ?? await determineGranularity(productTitle, vendor, enrichmentType);
   
   // Determine fusion strategy based on enrichment type
   const strategyMapping: Record<string, { strategy: FusionStrategy; evidenceTypes: EvidenceType[] }> = {

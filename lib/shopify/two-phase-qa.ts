@@ -366,9 +366,10 @@ Considerando i dati tecnici, ragiona su:
 - Per quali usi NON è adatto (e perché, basandoti sui numeri)?
 
 2. COMPARISON (vs Media Categoria)
-Confronta i numeri con la media della categoria:
-- Dove eccelle rispetto alla concorrenza?
-- Dove è sotto la media?
+Confronta i numeri SOLO se hai dati verificati da fonti (non inventare medie):
+- Dove eccelle rispetto alla concorrenza (basandoti sui fatti verificati sopra)?
+- Dove è sotto la media (solo se puoi supportarlo con un dato concreto)?
+- Se non hai dati di confronto, lascia i campi vuoti — NON inventare medie di categoria
 
 3. RECOMMENDATION (Verdetto Onesto)
 Dai un verdetto chiaro e sbilanciato:

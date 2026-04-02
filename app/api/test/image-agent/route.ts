@@ -9,11 +9,21 @@ import { findProductImage } from '@/lib/agents/image-agent-v4';
 import { searchProductImages, searchImagesWithBing } from '@/lib/shopify/search-client';
 import { UniversalRAGPipeline } from '@/lib/shopify/universal-rag';
 
+function isAuthorized(request: NextRequest): boolean {
+  const secret = process.env.ADMIN_SECRET;
+  if (!secret) return false;
+  const auth = request.headers.get('authorization') ?? '';
+  return auth === `Bearer ${secret}`;
+}
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   const { searchParams } = new URL(request.url);
   const title   = searchParams.get('title')   ?? 'Batteria M18 5.0Ah';
   const vendor  = searchParams.get('vendor')  ?? 'Milwaukee';

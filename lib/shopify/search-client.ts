@@ -65,6 +65,43 @@ function detectProvider(): SearchProvider {
 }
 
 // =============================================================================
+// GOOGLE CSE DAILY QUOTA TRACKER (100 free queries/day)
+// =============================================================================
+
+async function checkGoogleQuota(): Promise<boolean> {
+  const redisUrl   = process.env.UPSTASH_REDIS_REST_URL;
+  const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!redisUrl || !redisToken) return true; // no Redis — allow (graceful degradation)
+
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const key   = `cse:count:${today}`;
+
+  try {
+    const incrRes = await fetch(`${redisUrl}/incr/${key}`, {
+      headers: { Authorization: `Bearer ${redisToken}` },
+    });
+    if (!incrRes.ok) return true; // Redis error — allow
+    const data = await incrRes.json() as { result?: number };
+    const count = data.result ?? 0;
+
+    if (count === 1) {
+      // First use today — set 25-hour TTL so the key expires after the day rolls over
+      await fetch(`${redisUrl}/expire/${key}/90000`, {
+        headers: { Authorization: `Bearer ${redisToken}` },
+      }).catch(() => {/* fire-and-forget */});
+    }
+
+    if (count > 100) {
+      log.warn(`[SearchClient] Google CSE daily quota exhausted (${count}/100) — falling back to Bing`);
+      return false; // quota exceeded
+    }
+    return true; // within quota
+  } catch {
+    return true; // network error — allow
+  }
+}
+
+// =============================================================================
 // MAIN SEARCH FUNCTION
 // =============================================================================
 
@@ -150,6 +187,11 @@ async function searchWithGoogle(
     num: String(num),
     lr: `lang_${language}`,
   });
+
+  if (!(await checkGoogleQuota())) {
+    // Quota exhausted — caller will fall back to Bing
+    return [];
+  }
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10_000);
@@ -495,6 +537,11 @@ async function searchImagesWithGoogle(
     imgType: 'photo',
     imgSize: 'large',
   });
+
+  if (!(await checkGoogleQuota())) {
+    // Quota exhausted — caller will fall back to Bing
+    return [];
+  }
 
   const response = await fetch(`https://www.googleapis.com/customsearch/v1?${params.toString()}`);
   if (!response.ok) {

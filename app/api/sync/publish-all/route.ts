@@ -14,18 +14,16 @@ import { publishAllProductsToOnlineStore } from '@/lib/danea/shopify-sync';
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify SYNC_SECRET if configured
+    // Fail-closed auth: deny all if neither SYNC_SECRET nor CRON_SECRET is configured
     const syncSecret = process.env.SYNC_SECRET;
-    if (syncSecret) {
-      const authHeader = request.headers.get('authorization');
-      const providedSecret = authHeader?.replace('Bearer ', '');
-      
-      if (providedSecret !== syncSecret) {
-        return NextResponse.json(
-          { error: 'Unauthorized - Invalid SYNC_SECRET' },
-          { status: 401 }
-        );
-      }
+    const cronSecret = process.env.CRON_SECRET;
+    if (!syncSecret && !cronSecret) {
+      return NextResponse.json({ error: 'Unauthorized - No secret configured' }, { status: 401 });
+    }
+    const authHeader = request.headers.get('authorization') ?? '';
+    const providedSecret = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    if (!(syncSecret && providedSecret === syncSecret) && !(cronSecret && providedSecret === cronSecret)) {
+      return NextResponse.json({ error: 'Unauthorized - Invalid secret' }, { status: 401 });
     }
 
     console.log('[publish-all] Starting to publish all products to Online Store...');

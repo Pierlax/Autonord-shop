@@ -14,6 +14,15 @@ import { loggers } from '@/lib/logger';
 
 const log = loggers.shopify;
 
+// P2 fix: in-process cache for routing decisions keyed by normalized productType.
+// Routing for "trapano a percussione" or "avvitatore" doesn't change between products —
+// caching avoids an LLM call on every product in the same category.
+const _routingCache = new Map<string, RoutingDecision>();
+
+function _routingCacheKey(productType: string): string {
+  return productType.toLowerCase().trim().replace(/\s+/g, '_').slice(0, 64);
+}
+
 // Source types available for all product categories (power tools, excavators, generators, construction, vehicle parts)
 export type SourceType = 
   | 'official_specs'      // Manufacturer specifications, datasheets
@@ -265,7 +274,12 @@ export async function ensembleRoute(
 }
 
 /**
- * Main routing function for product enrichment
+ * Main routing function for product enrichment.
+ *
+ * P2 fix: caches routing decisions by normalized productType. Products of the same
+ * category (e.g. "trapano a percussione") always route to the same source types —
+ * calling the LLM for every product is wasteful. The cache lives in-process for the
+ * lifetime of the serverless function (warm starts reuse it; cold starts recompute).
  */
 export async function routeProductQuery(
   productTitle: string,
@@ -273,16 +287,26 @@ export async function routeProductQuery(
   productType: string,
   specificQuery?: string
 ): Promise<RoutingDecision> {
+  // Check routing cache for this product type (ignores product-specific title/vendor)
+  if (!specificQuery && productType) {
+    const cacheKey = _routingCacheKey(productType);
+    const cached = _routingCache.get(cacheKey);
+    if (cached) {
+      log.info(`[SourceRouter] Cache hit for productType="${productType}" — skipping LLM routing call`);
+      return cached;
+    }
+  }
+
   // For product enrichment, we need comprehensive data
   // Build a composite query that covers all aspects
-  const enrichmentQuery = specificQuery || 
+  const enrichmentQuery = specificQuery ||
     `Specifiche tecniche, caratteristiche, pro e contro, accessori compatibili per ${productTitle}`;
-  
+
   const productContext = { title: productTitle, vendor, productType };
-  
+
   // Use ensemble routing for best results
   const decision = await ensembleRoute(enrichmentQuery, productContext);
-  
+
   // For product enrichment, always include official specs
   if (!decision.primarySources.includes('official_specs')) {
     decision.primarySources.unshift('official_specs');
@@ -290,7 +314,12 @@ export async function routeProductQuery(
       decision.primarySources.pop();
     }
   }
-  
+
+  // Store in cache for future calls with the same product type
+  if (!specificQuery && productType) {
+    _routingCache.set(_routingCacheKey(productType), decision);
+  }
+
   return decision;
 }
 

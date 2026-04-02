@@ -8,6 +8,13 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 
+function isAuthorized(request: NextRequest): boolean {
+  const secret = process.env.ADMIN_SECRET;
+  if (!secret) return false; // fail-closed: deny all if not configured
+  const auth = request.headers.get('authorization') ?? request.headers.get('Authorization') ?? '';
+  return auth === `Bearer ${secret}`;
+}
+
 export const maxDuration = 60;
 
 const SHOPIFY_STORE = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN;
@@ -35,6 +42,9 @@ async function shopifyGraphQL(query: string, variables?: Record<string, unknown>
 }
 
 export async function GET(request: NextRequest) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   try {
     // Fetch ALL products with pagination
     const allProducts: { id: string; title: string; tags: string[]; handle: string }[] = [];
