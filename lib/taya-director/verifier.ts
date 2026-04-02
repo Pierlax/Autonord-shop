@@ -435,3 +435,45 @@ export async function verifyAndRegenerateLoop(
     improved: attempts > 1,
   };
 }
+
+// ============================================================================
+// Lightweight fact-check for the product pipeline — R9 (Simplification Audit)
+// ============================================================================
+
+/**
+ * Quick fact-coverage check for use inside the product pipeline (route.ts).
+ * Uses threshold 0.6 (vs 0.8 for the nightly director run) to avoid blocking
+ * publication on minor gaps.
+ *
+ * Returns null (no-op) when:
+ *   - No verified facts are available (QA was skipped)
+ *   - Fewer than 3 verified facts (not enough signal)
+ *
+ * Never throws — logs a warning and resolves to null on any error.
+ */
+export async function quickFactCheck(
+  content: {
+    description: string;
+    pros: string[];
+    cons: string[];
+    faqs: Array<{ question: string; answer: string }>;
+  },
+  verifiedFacts: string[],
+  rawSpecs: Record<string, string>
+): Promise<{ coverageScore: number; missingFacts: string[] } | null> {
+  if (verifiedFacts.length < 3) return null;
+
+  try {
+    const coverage = await checkFactCoverage(
+      { ...content, idealFor: [], notIdealFor: [] },
+      { title: '', brand: '', sku: '', rawSpecs, researchData: '', verifiedFacts }
+    );
+    return {
+      coverageScore: coverage.score,
+      missingFacts: coverage.missingFacts,
+    };
+  } catch (err) {
+    log.warn('[Verifier] quickFactCheck failed (non-blocking):', err);
+    return null;
+  }
+}

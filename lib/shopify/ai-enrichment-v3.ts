@@ -58,6 +58,7 @@ import { TwoPhaseQAResult, AtomicFact } from './two-phase-qa';
 import { getProductMemoryContext, recordMemoryUsage } from '@/lib/agent-memory';
 import { readCacheJson } from '@/lib/shopify/rag-cache';
 import type { ForumResearchResult } from '@/lib/blog-researcher/sentiment';
+import { extractRAGEvidence as extractRAGEvidenceShared, type RAGEvidence } from './rag-evidence-extractor';
 
 // =============================================================================
 // CLIENT INITIALIZATION
@@ -303,7 +304,7 @@ function trackProvenanceFromRAGandQA(
         const primarySource: SourceAttribution = {
           name: sourceLabel,
           type: mapRagSourceToAttribution(sourceLabel),
-          reliability: item.confidence ? parseFloat(item.confidence) / 100 : 0.7,
+          reliability: item.confidence ? parseFloat(String(item.confidence)) / 100 : 0.7,
           extractedAt: new Date(),
         };
         const ragFactId = tracker.registerFact(
@@ -313,7 +314,7 @@ function trackProvenanceFromRAGandQA(
         );
         // Evidence items that carry a confidence score came through fusion — record it
         if (item.confidence) {
-          const conf = parseFloat(item.confidence);
+          const conf = parseFloat(String(item.confidence));
           tracker.updateAfterFusion(
             ragFactId,
             content.substring(0, 200),
@@ -657,14 +658,7 @@ export async function generateProductContentV3(
 // RAG + QA DATA EXTRACTION HELPERS
 // =============================================================================
 
-interface RAGEvidence {
-  snippets: { text: string; source: string; confidence?: string }[];
-  benchmarkContext: string | null;
-  brandProfile: string | null;
-  competitors: string[];
-  conflicts: string[];
-  accessories: { name: string; reason: string }[];
-}
+// RAGEvidence type is imported from rag-evidence-extractor.ts (R8)
 
 interface QAFacts {
   verifiedSpecs: { question: string; answer: string; source: string }[];
@@ -678,93 +672,10 @@ interface QAFacts {
   caveats: string[];
 }
 
-/**
- * Extracts structured evidence from the UniversalRAG result.
- */
+// R8: extractRAGEvidence is now imported from rag-evidence-extractor.ts
+// Thin wrapper to keep internal callers on the same name
 function extractRAGEvidence(ragResult: UniversalRAGResult): RAGEvidence {
-  const evidence: RAGEvidence = {
-    snippets: [],
-    benchmarkContext: null,
-    brandProfile: null,
-    competitors: [],
-    conflicts: [],
-    accessories: [],
-  };
-
-  if (!ragResult.success || !ragResult.data) {
-    return evidence;
-  }
-
-  const data = ragResult.data;
-
-  // Markers that identify mock/fake search results — skip these entirely
-  const MOCK_MARKERS = ['[MOCK DATA]', 'simulated search result', 'Configure a search API key', 'mock-result-'];
-
-  function isMockSnippet(text: string): boolean {
-    return MOCK_MARKERS.some(m => text.includes(m));
-  }
-
-  // Extract evidence snippets
-  if (data.evidence && Array.isArray(data.evidence)) {
-    for (const item of data.evidence) {
-      const text = item.content || item.text || item.snippet || '';
-      const source = item.source || item.sourceType || 'unknown';
-      if (text && typeof text === 'string' && text.length > 5 && !isMockSnippet(text)) {
-        evidence.snippets.push({
-          text,
-          source,
-          confidence: item.confidence,
-        });
-      }
-    }
-  }
-
-  // Extract from source-keyed data (fallback)
-  if (evidence.snippets.length === 0 && typeof data === 'object') {
-    for (const [key, value] of Object.entries(data)) {
-      if (['benchmarkContext', 'brandProfile', 'competitors', 'confidence', 'coverage', 'conflicts', 'error'].includes(key)) {
-        continue;
-      }
-      if (Array.isArray(value)) {
-        for (const item of value) {
-          const text = typeof item === 'string' ? item : (item?.content || item?.text || item?.snippet || '');
-          if (text && typeof text === 'string' && text.length > 5 && !isMockSnippet(text)) {
-            evidence.snippets.push({ text, source: key });
-          }
-        }
-      } else if (typeof value === 'string' && value.length > 20 && !isMockSnippet(value)) {
-        evidence.snippets.push({ text: value, source: key });
-      }
-    }
-  }
-
-  // Benchmark context
-  if (data.benchmarkContext && typeof data.benchmarkContext === 'string') {
-    evidence.benchmarkContext = data.benchmarkContext;
-  }
-
-  // Brand profile
-  if (data.brandProfile) {
-    evidence.brandProfile = typeof data.brandProfile === 'string'
-      ? data.brandProfile
-      : JSON.stringify(data.brandProfile);
-  }
-
-  // Competitors
-  if (data.competitors && Array.isArray(data.competitors)) {
-    evidence.competitors = data.competitors.map((c: any) => 
-      typeof c === 'string' ? c : (c.name || c.title || JSON.stringify(c))
-    );
-  }
-
-  // Conflicts (also filter mock data)
-  if (data.conflicts && Array.isArray(data.conflicts)) {
-    evidence.conflicts = data.conflicts
-      .map((c: any) => typeof c === 'string' ? c : (c.description || c.field || JSON.stringify(c)))
-      .filter((c: string) => !isMockSnippet(c));
-  }
-
-  return evidence;
+  return extractRAGEvidenceShared(ragResult);
 }
 
 /**

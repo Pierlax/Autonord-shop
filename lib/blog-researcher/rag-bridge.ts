@@ -24,6 +24,7 @@ import { buildCorpus, corpusToContext, CorpusCollection } from '@/lib/shopify/co
 import { buildEvidenceGraph, EvidenceGraph, EvidenceGraphSummary } from '@/lib/shopify/evidence-graph';
 import { DiscoveredSource, DiscoveryIntent } from '@/lib/shopify/source-discovery';
 import { FORUM_SOURCES, WHITELIST_SOURCES } from './sources';
+import { OFFICIAL_BRAND_DOMAINS } from '@/lib/shopify/rag-sources';
 
 const log = loggers.blog;
 
@@ -212,12 +213,8 @@ function selectIntents(signal: BlogTopicSignal): BlogDiscoveryIntent[] {
 // ---------------------------------------------------------------------------
 
 const REDDIT_DOMAINS = new Set(['reddit.com', 'old.reddit.com', 'www.reddit.com']);
-const OFFICIAL_BRAND_DOMAINS = new Set([
-  'milwaukeetool.eu', 'milwaukeetool.it', 'milwaukeetool.com',
-  'makita.it', 'makita.com', 'dewalt.it', 'dewalt.com',
-  'bosch-professional.com', 'metabo.com', 'festool.it',
-  'hikoki-powertools.it', 'hilti.com', 'hilti.it',
-]);
+// R10 fix: imported from rag-sources.ts instead of duplicating the list here
+// (OFFICIAL_BRAND_DOMAINS is re-exported from @/lib/shopify/rag-sources)
 
 function classifySourceType(domain: string, intent: BlogDiscoveryIntent): BlogSourceType {
   const d = domain.replace(/^www\./, '');

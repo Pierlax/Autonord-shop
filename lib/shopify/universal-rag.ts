@@ -199,10 +199,67 @@ const DEFAULT_CONFIG: UniversalRAGConfig = {
   debugMode: false,
 };
 
+/**
+ * Typed shape of UniversalRAGResult.data — R1 (Simplification Audit).
+ *
+ * Previously typed as `any`, forcing defensive parsing in every consumer.
+ * Observed runtime variants are captured as union types where needed.
+ *
+ * Note: field presence is optional because the data object is built
+ * incrementally across pipeline steps and may be partial on early exits.
+ */
+export interface RAGOutputData {
+  /** Evidence items collected from web search + fusion */
+  evidence?: Array<{
+    // Proactive-fusion format
+    field?: string;
+    value?: string;
+    sources?: Array<{ source: string; confidence: number }>;
+    evidenceType?: string;
+    isVerified?: boolean;
+    // Search-result format
+    content?: string;
+    text?: string;
+    snippet?: string;
+    source?: string;
+    sourceType?: string;
+    confidence?: string | number;
+    url?: string;
+    title?: string;
+    description?: string;
+  }>;
+
+  /** V2 corpus context string (pre-built by CorpusBuilder) */
+  v2CorpusContext?: string;
+  /** V2 evidence graph context string */
+  v2EvidenceGraphContext?: string;
+
+  /** Benchmark / Ancora di Verità */
+  benchmarkContext?: string;
+  brandProfile?: string | Record<string, unknown>;
+  competitors?: Array<string | { name?: string; title?: string }>;
+
+  /** Conflict resolution from proactive-fusion */
+  conflicts?: Array<string | { field?: string; description?: string }>;
+
+  /** Confidence + coverage scores from fusion */
+  confidence?: number;
+  coverage?: number;
+
+  /** Short product description if extracted directly */
+  description?: string;
+
+  /** Error message on failure */
+  error?: string;
+
+  /** Catch-all for source-keyed retrieval data (e.g. official_specs: [...]) */
+  [sourceKey: string]: unknown;
+}
+
 // Pipeline execution result
 export interface UniversalRAGResult {
   success: boolean;
-  data: any;
+  data: RAGOutputData;
   knowledgeGraphContext?: {
     brandInfo: string | null;
     categoryInfo: string | null;
@@ -828,7 +885,7 @@ export class UniversalRAGPipeline {
    */
   private createResult(
     success: boolean,
-    data: any,
+    data: RAGOutputData,
     state: PipelineState,
     metadata: Partial<UniversalRAGResult['metadata']>
   ): UniversalRAGResult {

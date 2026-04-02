@@ -60,6 +60,7 @@ import { ShopifyProductWebhookPayload } from '@/lib/shopify/webhook-types';
 import { findProductImage, ImageAgentV4Result } from '@/lib/agents/image-agent-v4';
 import { uploadProductImageToShopify, ImageUploadResult } from '@/lib/shopify/image-upload';
 import { validateAndCorrect, CleanedContent } from '@/lib/agents/taya-police';
+import { quickFactCheck } from '@/lib/taya-director/verifier';
 import { formatProvenanceDisplay } from '@/lib/shopify/provenance-tracking';
 import { getKGStore } from '@/lib/shopify/kg-store';
 import { getKnowledgeGraph } from '@/lib/shopify/knowledge-graph';
@@ -783,6 +784,38 @@ async function runEnrichmentPipeline(payload: WorkerPayload, startTime: number):
     }
     if (triadAction === 'REVISIONE_MINORE') {
       console.warn(`[Worker V5] ⚠️ TAYA Triad Score = REVISIONE_MINORE — publishing but flagging for review.`);
+    }
+
+    // ===========================================
+    // STEP 6: Quick Fact-Check (R9) — lightweight coverage check,
+    //         non-blocking: logs warning in metafields but never blocks publish.
+    // ===========================================
+    if (qaResult) {
+      try {
+        const verifiedFacts = qaResult.simpleQA.rawFacts
+          .filter(f => f.verified && f.answer !== 'NON TROVATO')
+          .map(f => `${f.question}: ${f.answer}`);
+        const rawSpecs = Object.fromEntries(
+          qaResult.simpleQA.rawFacts
+            .filter(f => f.answer !== 'NON TROVATO')
+            .map(f => [f.question, f.answer])
+        );
+        const factCheckResult = await quickFactCheck(
+          validationResult.content,
+          verifiedFacts,
+          rawSpecs
+        );
+        if (factCheckResult) {
+          const { coverageScore, missingFacts } = factCheckResult;
+          if (coverageScore < 60) {
+            console.warn(`[Worker V5] ⚠️ R9 Quick Fact-Check: coverage ${coverageScore}% < 60% — missing: ${missingFacts.slice(0, 3).join(', ')}`);
+          } else {
+            console.log(`[Worker V5] R9 Quick Fact-Check: coverage ${coverageScore}% ✓`);
+          }
+        }
+      } catch (factCheckErr) {
+        console.warn('[Worker V5] R9 Quick Fact-Check failed (non-blocking):', factCheckErr);
+      }
     }
 
     // ===========================================

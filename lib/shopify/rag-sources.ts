@@ -67,6 +67,12 @@ export const OFFICIAL_BRANDS: readonly string[] = [
 ] as const;
 
 /**
+ * Set of official brand domains, exported for shared use.
+ * R10 fix: rag-bridge.ts previously duplicated this list — now imports from here.
+ */
+export const OFFICIAL_BRAND_DOMAINS: ReadonlySet<string> = new Set(OFFICIAL_BRANDS);
+
+/**
  * Trusted retailers with excellent product photos and descriptions.
  * Best for: high-resolution images, detailed product descriptions, pricing.
  */
