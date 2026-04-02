@@ -194,20 +194,13 @@ export async function GET(request: NextRequest) {
   const querySecret = searchParams.get('secret');
   const cronHeader = request.headers.get('x-vercel-cron-secret');
   
-  const isAuthorized = 
+  const isAuthorized =
     authHeader === `Bearer ${env.CRON_SECRET}` ||
     querySecret === env.CRON_SECRET ||
-    !!cronHeader;
+    cronHeader === env.CRON_SECRET;
 
   if (!isAuthorized) {
-    // Permetti accesso per vedere lo stato (senza processare)
-    const stats = await getProductStats();
-    return NextResponse.json({
-      message: 'Auto-process cron job status (read-only, auth required to process)',
-      stats,
-      nextRun: 'Every 2 hours',
-      productsPerRun: PRODUCTS_PER_RUN,
-    });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   // Esegui il processamento

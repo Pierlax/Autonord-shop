@@ -8,21 +8,33 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { Receiver } from '@upstash/qstash';
 import { executeSkill } from '@/lib/skills/registry';
 import { loadAllSkills } from '@/lib/skills/loader';
 import type { SkillContext } from '@/lib/skills/types';
 import { createLogger } from '@/lib/logger';
-import { env } from '@/lib/env';
+import { env, optionalEnv } from '@/lib/env';
 
 const log = createLogger('gateway-api');
 
 // Allow up to 300 seconds for AI pipelines
 export const maxDuration = 300;
 
-function isAuthorized(request: NextRequest): boolean {
-  // QStash requests are signed — trust them if upstash-signature header is present
-  if (request.headers.get('upstash-signature')) {
-    return true;
+async function isAuthorized(request: NextRequest, rawBody: string): Promise<boolean> {
+  const upstashSignature = request.headers.get('upstash-signature');
+  if (upstashSignature) {
+    const currentKey = optionalEnv.QSTASH_CURRENT_SIGNING_KEY;
+    const nextKey = optionalEnv.QSTASH_NEXT_SIGNING_KEY;
+    if (!currentKey || !nextKey) {
+      log.warn('QStash signing keys not configured — rejecting signed request');
+      return false;
+    }
+    try {
+      const receiver = new Receiver({ currentSigningKey: currentKey, nextSigningKey: nextKey });
+      return await receiver.verify({ signature: upstashSignature, body: rawBody });
+    } catch {
+      return false;
+    }
   }
   // Direct calls (cron, manual) must supply CRON_SECRET
   const authHeader = request.headers.get('authorization');
@@ -30,7 +42,10 @@ function isAuthorized(request: NextRequest): boolean {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAuthorized(request)) {
+  // Read raw body once — required for QStash signature verification
+  const rawBody = await request.text();
+
+  if (!(await isAuthorized(request, rawBody))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -38,7 +53,7 @@ export async function POST(request: NextRequest) {
     // Ensure skills are loaded
     loadAllSkills();
 
-    const body = await request.json();
+    const body = JSON.parse(rawBody);
     const { skillName, context } = body as {
       skillName: string;
       context: SkillContext;

@@ -58,6 +58,7 @@ async function redisSet(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(command),
+      signal: AbortSignal.timeout(5_000),
     });
     const data = await resp.json() as { result: string | null };
     return data.result;
@@ -80,6 +81,7 @@ async function redisDel(key: string): Promise<void> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(['DEL', key]),
+      signal: AbortSignal.timeout(5_000),
     });
   } catch (err) {
     log.error(`[Lock] Redis DEL failed for key ${key}:`, err);

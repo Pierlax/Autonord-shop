@@ -218,12 +218,18 @@ export function decodeFileBuffer(buffer: ArrayBuffer): string {
  * Parse Danea CSV content into normalized products.
  * Deduplicates by daneaCode — last record wins (with a warning log).
  */
+const MAX_CSV_RECORDS = 10_000;
+
 export function parseDaneaCSV(csvContent: string): ParsedProduct[] {
   const records = parseCSV(csvContent);
   const products: ParsedProduct[] = [];
   const seenCodes = new Map<string, number>(); // daneaCode → index in products[]
 
-  for (const record of records) {
+  if (records.length > MAX_CSV_RECORDS) {
+    log.warn(`[DaneaCSV] Payload exceeds MAX_CSV_RECORDS (${records.length} > ${MAX_CSV_RECORDS}) — truncating`);
+  }
+
+  for (const record of records.slice(0, MAX_CSV_RECORDS)) {
     const product = normalizeDaneaRecord(record);
     if (!product) continue;
 

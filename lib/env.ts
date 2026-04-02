@@ -45,6 +45,10 @@ interface OptionalEnv {
   SHOPIFY_WEBHOOK_SECRET?: string;
   /** Upstash QStash token for async job queuing */
   QSTASH_TOKEN?: string;
+  /** Upstash QStash current signing key (for Receiver.verify) */
+  QSTASH_CURRENT_SIGNING_KEY?: string;
+  /** Upstash QStash next signing key (for Receiver.verify key rotation) */
+  QSTASH_NEXT_SIGNING_KEY?: string;
   /** Google Custom Search API key */
   GOOGLE_SEARCH_API_KEY?: string;
   /** Google Custom Search engine ID */

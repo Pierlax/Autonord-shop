@@ -26,7 +26,7 @@ function isAuthorized(request: NextRequest): boolean {
   const authHeader = request.headers.get('authorization');
   const querySecret = request.nextUrl.searchParams.get('secret');
   // Allow in development
-  if (optionalEnv.NODE_ENV === 'development') return true;
+  if (optionalEnv.NODE_ENV === 'development') { console.warn('[Security] Dev bypass active — auth skipped (NODE_ENV=development)'); return true; }
   return authHeader === `Bearer ${env.CRON_SECRET}` || querySecret === env.CRON_SECRET;
 }
 

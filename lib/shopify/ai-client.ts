@@ -98,9 +98,12 @@ function getRatelimit(): Ratelimit | null {
 /**
  * Simple sliding-window rate limiter backed by an in-process timestamp array.
  * Used when Redis is not configured (dev) or when Redis is down (prod failsafe).
- * Limits to MAX_RPM requests per 60-second window, same as the Redis limiter.
+ * Deliberately more conservative than the Redis limiter (5 RPM vs MAX_RPM) so a
+ * Redis outage cannot be leveraged to bypass rate limiting.
  */
 const _inMemoryRequests: number[] = [];
+/** Conservative RPM cap for the in-memory fallback (Redis down / dev mode). */
+const IN_MEMORY_MAX_RPM = 5;
 
 async function inMemoryRateLimit(): Promise<void> {
   const now = Date.now();
@@ -111,10 +114,10 @@ async function inMemoryRateLimit(): Promise<void> {
     _inMemoryRequests.shift();
   }
 
-  if (_inMemoryRequests.length >= MAX_RPM) {
+  if (_inMemoryRequests.length >= IN_MEMORY_MAX_RPM) {
     const oldest = _inMemoryRequests[0];
     const waitMs = windowMs - (now - oldest) + 100; // small buffer
-    log.info(`[AIClient] In-memory rate limit reached (${MAX_RPM} RPM) — waiting ${waitMs}ms`);
+    log.info(`[AIClient] In-memory rate limit reached (${IN_MEMORY_MAX_RPM} RPM) — waiting ${waitMs}ms`);
     await new Promise<void>(resolve => setTimeout(resolve, waitMs));
     // Re-evict after wait
     const nowAfter = Date.now();

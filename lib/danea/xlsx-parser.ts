@@ -48,6 +48,9 @@ export function parseDaneaXLSX(buffer: ArrayBuffer | Buffer): ParsedProduct[] {
   const products: ParsedProduct[] = [];
   const seenCodes = new Map<string, number>(); // daneaCode → index in products[]
 
+  const MAX_XLSX_RECORDS = 10_000;
+  let totalRecords = 0;
+
   // Iterate all sheets — Danea sometimes splits data across multiple sheets
   for (const sheetName of wb.SheetNames) {
     const ws = wb.Sheets[sheetName];
@@ -60,6 +63,11 @@ export function parseDaneaXLSX(buffer: ArrayBuffer | Buffer): ParsedProduct[] {
     });
 
     for (const record of records) {
+      if (totalRecords >= MAX_XLSX_RECORDS) {
+        log.warn(`[DaneaXLSX] MAX_XLSX_RECORDS (${MAX_XLSX_RECORDS}) reached — truncating remaining rows`);
+        break;
+      }
+      totalRecords++;
       const product = normalizeDaneaRecord(record);
       if (!product) continue;
 

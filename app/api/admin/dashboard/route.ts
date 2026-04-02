@@ -29,7 +29,7 @@ function verifyAdmin(request: NextRequest): boolean {
   if (adminSecret && secret === adminSecret) return true;
 
   // Dev mode
-  if (process.env.NODE_ENV === 'development') return true;
+  if (process.env.NODE_ENV === 'development') { console.warn('[Security] Dev bypass active — auth skipped (NODE_ENV=development)'); return true; }
 
   return false;
 }

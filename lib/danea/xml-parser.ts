@@ -65,6 +65,7 @@ const parser = new XMLParser({
   isArray: (_name, jpath) => jpath.endsWith('.Product'), // always array even for single product
   parseTagValue: false,   // keep all values as strings — we parse numbers ourselves
   trimValues: true,
+  processEntities: false, // disable entity expansion to prevent XXE
 });
 
 /**

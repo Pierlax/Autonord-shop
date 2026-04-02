@@ -27,17 +27,20 @@ function getConfig(): ShopifyAdminConfig {
 }
 
 /**
- * Make a request to the Shopify Admin API
+ * Make a request to the Shopify Admin API.
+ * Automatically retries on 429 (rate-limited) with exponential backoff,
+ * and logs the API call-limit bucket after each request.
  */
 async function shopifyAdminRequest<T>(
   endpoint: string,
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
-  body?: object
+  body?: object,
+  _attempt = 1
 ): Promise<T> {
   const { shopDomain, accessToken } = getConfig();
-  
+
   const url = `https://${shopDomain}/admin/api/${SHOPIFY_ADMIN_API_VERSION}${endpoint}`;
-  
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15_000);
   let response: Response;
@@ -53,6 +56,21 @@ async function shopifyAdminRequest<T>(
     });
   } finally {
     clearTimeout(timeoutId);
+  }
+
+  // Log API call-limit bucket so we can monitor headroom
+  const callLimit = response.headers.get('X-Shopify-Shop-Api-Call-Limit');
+  if (callLimit) {
+    log.debug(`[AdminAPI] call-limit: ${callLimit}`);
+  }
+
+  // Retry on 429 with exponential backoff (max 3 attempts)
+  if (response.status === 429 && _attempt <= 3) {
+    const retryAfter = Number(response.headers.get('Retry-After') ?? 2);
+    const backoff = Math.max(retryAfter, _attempt * 2) * 1000;
+    log.warn(`[AdminAPI] Rate limited (429), retrying in ${backoff}ms (attempt ${_attempt}/3)`);
+    await new Promise(resolve => setTimeout(resolve, backoff));
+    return shopifyAdminRequest<T>(endpoint, method, body, _attempt + 1);
   }
 
   if (!response.ok) {

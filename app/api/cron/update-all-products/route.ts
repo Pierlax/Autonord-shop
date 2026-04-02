@@ -81,6 +81,7 @@ async function getAllProducts(): Promise<ShopifyProduct[]> {
         query,
         variables: { cursor },
       }),
+      signal: AbortSignal.timeout(15_000),
     });
 
     const result = await response.json();

@@ -148,6 +148,12 @@ export async function POST(request: NextRequest) {
     } else if (contentType.includes('text/csv') || contentType.includes('text/plain')) {
       // Raw CSV content
       const csvContent = await request.text();
+      if (csvContent.length > MAX_FILE_SIZE_BYTES) {
+        return NextResponse.json(
+          { error: 'Payload Too Large', message: 'File must be under 50 MB' },
+          { status: 413 }
+        );
+      }
       products = parseDaneaCSV(csvContent);
 
     } else if (contentType.includes('application/json')) {

@@ -187,6 +187,7 @@ async function redisCmd(command: (string | number)[]): Promise<unknown> {
       method: 'POST',
       headers: { Authorization: `Bearer ${cfg.token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(command),
+      signal: AbortSignal.timeout(5_000),
     });
     const data = await res.json() as { result?: unknown };
     return data.result ?? null;
@@ -236,6 +237,7 @@ async function redisPipeline(commands: (string | number)[][]): Promise<unknown[]
       method: 'POST',
       headers: { Authorization: `Bearer ${cfg.token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(commands),
+      signal: AbortSignal.timeout(5_000),
     });
     const data = await res.json() as Array<{ result?: unknown }>;
     return data.map(r => r.result ?? null);

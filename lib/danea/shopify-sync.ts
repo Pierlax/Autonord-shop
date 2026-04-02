@@ -38,6 +38,7 @@ async function shopifyAdminRequest<T>(
       'X-Shopify-Access-Token': env.SHOPIFY_ADMIN_ACCESS_TOKEN,
     },
     body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) {
@@ -66,6 +67,7 @@ async function shopifyGraphQLRequest<T>(query: string, variables?: Record<string
       'X-Shopify-Access-Token': env.SHOPIFY_ADMIN_ACCESS_TOKEN,
     },
     body: JSON.stringify({ query, variables }),
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) {

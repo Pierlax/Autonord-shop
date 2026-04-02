@@ -54,6 +54,7 @@ async function redisCmd(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(command),
+    signal: AbortSignal.timeout(5_000),
   });
 
   if (!res.ok) {
@@ -81,6 +82,7 @@ async function redisPipeline(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(commands),
+    signal: AbortSignal.timeout(5_000),
   });
 
   if (!res.ok) {

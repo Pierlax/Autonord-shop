@@ -69,7 +69,7 @@ export function ProductFAQ({ productTitle, brandName, category }: ProductFAQProp
       {/* Schema Markup */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema).replace(/</g, '\\u003c') }}
       />
 
       <div className="flex items-center gap-3 mb-6">

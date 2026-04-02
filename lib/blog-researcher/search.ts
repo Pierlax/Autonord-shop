@@ -103,7 +103,7 @@ async function fetchRedditPosts(subreddit: string, limit = 50): Promise<RedditPo
   try {
     const response = await fetch(
       `https://www.reddit.com/r/${subreddit}/hot.json?limit=${limit}`,
-      { headers: { 'User-Agent': 'AutonordBlogResearcher/1.0 (professional tool research)' } }
+      { headers: { 'User-Agent': 'AutonordBlogResearcher/1.0 (professional tool research)' }, signal: AbortSignal.timeout(10_000) }
     );
 
     if (!response.ok) {

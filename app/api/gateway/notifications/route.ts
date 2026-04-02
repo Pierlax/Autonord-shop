@@ -19,7 +19,7 @@ function verifyAdmin(request: NextRequest): boolean {
   const authHeader = request.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret && authHeader === `Bearer ${cronSecret}`) return true;
-  if (process.env.NODE_ENV === 'development') return true;
+  if (process.env.NODE_ENV === 'development') { console.warn('[Security] Dev bypass active — auth skipped (NODE_ENV=development)'); return true; }
   return false;
 }
 

@@ -14,7 +14,7 @@ function isAuthorized(request: NextRequest): boolean {
   const urlSecret = new URL(request.url).searchParams.get('secret');
   if (authHeader === `Bearer ${secret}`) return true;
   if (urlSecret === secret) return true;
-  if (process.env.NODE_ENV === 'development') return true;
+  if (process.env.NODE_ENV === 'development') { console.warn('[Security] Dev bypass active — auth skipped (NODE_ENV=development)'); return true; }
   return false;
 }
 

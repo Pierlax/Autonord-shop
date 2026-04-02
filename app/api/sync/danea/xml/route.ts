@@ -98,11 +98,17 @@ export async function POST(request: NextRequest) {
     } else if (contentType.includes('application/xml') || contentType.includes('text/xml')) {
       // Direct XML body
       xmlContent = await request.text();
+      if (xmlContent.length > MAX_FILE_SIZE_BYTES) {
+        return new NextResponse('Error: File must be under 50 MB', { status: 413 });
+      }
     } else {
       // Try to read as text anyway
       xmlContent = await request.text();
+      if (xmlContent.length > MAX_FILE_SIZE_BYTES) {
+        return new NextResponse('Error: File must be under 50 MB', { status: 413 });
+      }
     }
-    
+
     if (!xmlContent || xmlContent.trim() === '') {
       log.error('No XML content received');
       return new NextResponse('Error: No XML content received', { status: 400 });

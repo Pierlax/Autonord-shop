@@ -32,6 +32,7 @@ export const maxDuration = 300;
 
 import { NextRequest, NextResponse } from 'next/server';
 import { generateTextSafe } from '@/lib/shopify/ai-client';
+import { Receiver } from '@upstash/qstash';
 
 // Phase 1 imports (security)
 import { env, optionalEnv, toShopifyGid } from '@/lib/env';
@@ -239,17 +240,27 @@ function generateExpertOpinion(
 /**
  * Verifies that the request is authorized.
  * Accepts either:
- * 1. A valid Upstash QStash signature (for queued jobs)
+ * 1. A cryptographically verified Upstash QStash signature (for queued jobs)
  * 2. A Bearer token matching the CRON_SECRET (for direct cron calls)
  */
-function isAuthorized(request: NextRequest): boolean {
+async function isAuthorized(request: NextRequest, rawBody: string): Promise<boolean> {
   const upstashSignature = request.headers.get('upstash-signature');
-  
-  // QStash requests are signed — trust them if signature is present
+
   if (upstashSignature) {
-    return true;
+    const currentKey = optionalEnv.QSTASH_CURRENT_SIGNING_KEY;
+    const nextKey = optionalEnv.QSTASH_NEXT_SIGNING_KEY;
+    if (!currentKey || !nextKey) {
+      console.warn('[Worker] QStash signing keys not configured — rejecting signed request');
+      return false;
+    }
+    try {
+      const receiver = new Receiver({ currentSigningKey: currentKey, nextSigningKey: nextKey });
+      return await receiver.verify({ signature: upstashSignature, body: rawBody });
+    } catch {
+      return false;
+    }
   }
-  
+
   // For direct calls (cron jobs, manual triggers), verify CRON_SECRET
   const authHeader = request.headers.get('authorization');
   return authHeader === `Bearer ${env.CRON_SECRET}`;
@@ -437,6 +448,7 @@ async function updateShopifyProductWithMetafields(
           },
         },
       }),
+      signal: AbortSignal.timeout(15_000),
     });
 
     const result = await response.json();
@@ -496,6 +508,7 @@ async function getOnlineStorePublicationId(): Promise<string | null> {
       body: JSON.stringify({
         query: `query { publications(first: 10) { edges { node { id name } } } }`,
       }),
+      signal: AbortSignal.timeout(15_000),
     });
     const data = await resp.json();
     const edges: Array<{ node: { id: string; name: string } }> = data.data?.publications?.edges || [];
@@ -538,6 +551,7 @@ async function publishProductToOnlineStore(productGid: string): Promise<void> {
         `,
         variables: { id: productGid, input: [{ publicationId }] },
       }),
+      signal: AbortSignal.timeout(15_000),
     });
 
     const data = await resp.json();
@@ -557,14 +571,17 @@ async function publishProductToOnlineStore(productGid: string): Promise<void> {
 
 export async function POST(request: NextRequest) {
   try {
-    // Auth check (secure: uses CRON_SECRET from env, no hardcoded tokens)
-    if (!isAuthorized(request)) {
+    // Read raw body once — required for QStash signature verification
+    const rawBody = await request.text();
+
+    // Auth check (QStash crypto verification or CRON_SECRET bearer token)
+    if (!(await isAuthorized(request, rawBody))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     let payload: WorkerPayload;
     try {
-      payload = WorkerPayloadSchema.parse(await request.json());
+      payload = WorkerPayloadSchema.parse(JSON.parse(rawBody));
     } catch (validationError) {
       return NextResponse.json(
         { error: 'Invalid payload', details: validationError instanceof Error ? validationError.message : String(validationError) },

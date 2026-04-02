@@ -62,6 +62,7 @@ async function addProductImageByUrl(
           media: [{ originalSource: imageUrl, alt: altText, mediaContentType: 'IMAGE' }],
         },
       }),
+      signal: AbortSignal.timeout(15_000),
     });
 
     const data = await res.json() as {
@@ -173,6 +174,7 @@ export async function uploadProductImageToShopify(
           }],
         },
       }),
+      signal: AbortSignal.timeout(15_000),
     });
 
     const stagedData = await stagedResp.json() as {

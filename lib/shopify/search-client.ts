@@ -543,7 +543,9 @@ async function searchImagesWithGoogle(
     return [];
   }
 
-  const response = await fetch(`https://www.googleapis.com/customsearch/v1?${params.toString()}`);
+  const response = await fetch(`https://www.googleapis.com/customsearch/v1?${params.toString()}`, {
+    signal: AbortSignal.timeout(10_000),
+  });
   if (!response.ok) {
     throw new Error(`Google Custom Search Images HTTP ${response.status}: ${response.statusText}`);
   }

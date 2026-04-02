@@ -29,6 +29,7 @@ async function adminFetch(query: string, variables?: object) {
       },
       body: JSON.stringify({ query, variables }),
       next: { revalidate: 60, tags: ['products'] },
+      signal: AbortSignal.timeout(15_000),
     });
 
     if (!response.ok) {

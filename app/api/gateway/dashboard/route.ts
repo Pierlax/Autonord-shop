@@ -25,6 +25,7 @@ function verifyAdmin(request: NextRequest): boolean {
 
   // Allow in development
   if (process.env.NODE_ENV === 'development') {
+    console.warn('[Security] Dev bypass active — auth skipped (NODE_ENV=development)');
     return true;
   }
 

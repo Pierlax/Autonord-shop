@@ -232,17 +232,22 @@ ${plan.summary}
 ${highItems ? `\nVIOLAZIONI CRITICHE:\n${highItems}` : '\nNessuna violazione critica trovata.'}
   `.trim();
 
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${resendKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: 'TAYA Improver <noreply@autonord.com>',
-      to: [toEmail],
-      subject: `[Autonord] TAYA Report: ${plan.totalViolations} violazioni (${plan.bySeverity.high} critiche)`,
-      text: body,
-    }),
-  });
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${resendKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'TAYA Improver <noreply@autonord.com>',
+        to: [toEmail],
+        subject: `[Autonord] TAYA Report: ${plan.totalViolations} violazioni (${plan.bySeverity.high} critiche)`,
+        text: body,
+      }),
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch (err) {
+    console.warn('[taya-improver] Email notification failed (non-blocking):', err);
+  }
 }

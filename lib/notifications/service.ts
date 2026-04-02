@@ -138,6 +138,7 @@ async function sendEmailNotification(
         subject: `[${severityLabel}] ${title}`,
         html,
       }),
+      signal: AbortSignal.timeout(5_000),
     });
 
     if (!response.ok) {

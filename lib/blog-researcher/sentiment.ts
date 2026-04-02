@@ -91,6 +91,7 @@ async function searchReddit(query: string, subreddits: string[]): Promise<ForumP
         headers: {
           'User-Agent': 'AutonordBlogResearcher/2.0',
         },
+        signal: AbortSignal.timeout(10_000),
       });
       
       if (!response.ok) {
@@ -160,8 +161,8 @@ async function searchWithGoogleCustomSearch(
     const searchQuery = `${query} ${italianForumSites}`;
     const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(searchQuery)}&num=10&lr=lang_it`;
     
-    const response = await fetch(url);
-    
+    const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+
     if (!response.ok) {
       log.info(`[Sentiment] Google Custom Search failed: ${response.status}`);
       return posts;
@@ -212,6 +213,7 @@ async function searchWithGoogleFallback(query: string): Promise<ForumPost[]> {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         },
+        signal: AbortSignal.timeout(10_000),
       });
       
       if (!response.ok) {

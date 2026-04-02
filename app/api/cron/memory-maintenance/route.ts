@@ -19,7 +19,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 function isAuthorized(request: NextRequest): boolean {
-  if (optionalEnv.NODE_ENV === 'development') return true;
+  if (optionalEnv.NODE_ENV === 'development') { console.warn('[Security] Dev bypass active — auth skipped (NODE_ENV=development)'); return true; }
   const authHeader = request.headers.get('authorization');
   const querySecret = request.nextUrl.searchParams.get('secret');
   return authHeader === `Bearer ${env.CRON_SECRET}` || querySecret === env.CRON_SECRET;

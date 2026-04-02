@@ -40,7 +40,7 @@ function verifyAdmin(request: NextRequest): boolean {
   if (cronSecret && secret === cronSecret) return true;
   if (adminSecret && secret === adminSecret) return true;
 
-  if (process.env.NODE_ENV === 'development') return true;
+  if (process.env.NODE_ENV === 'development') { console.warn('[Security] Dev bypass active — auth skipped (NODE_ENV=development)'); return true; }
 
   return false;
 }
