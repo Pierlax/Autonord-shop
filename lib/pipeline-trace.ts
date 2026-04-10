@@ -39,6 +39,10 @@
  *   // Called automatically by cachedSearch() on cache hit.
  */
 
+// async_hooks is Node.js-only. In client bundles, next.config.mjs resolves it to
+// an empty module via `resolve.fallback: { async_hooks: false }`, so
+// AsyncLocalStorage will be undefined. All functions below guard against that
+// and become safe no-ops in the browser.
 import { AsyncLocalStorage } from 'async_hooks';
 
 // ---------------------------------------------------------------------------
@@ -72,7 +76,12 @@ export interface PipelineTrace {
 // AsyncLocalStorage context
 // ---------------------------------------------------------------------------
 
-const _traceStorage = new AsyncLocalStorage<PipelineTrace>();
+// Guard: AsyncLocalStorage is undefined in client bundles (async_hooks → {}).
+// All trace functions check for null storage and become no-ops in the browser.
+const _traceStorage: AsyncLocalStorage<PipelineTrace> | null =
+  typeof AsyncLocalStorage === 'function'
+    ? new AsyncLocalStorage<PipelineTrace>()
+    : null;
 
 // ---------------------------------------------------------------------------
 // Structured JSON-lines emitter
@@ -137,7 +146,7 @@ export async function runWithTrace<T>(
     ...(metadata?.sku ? { sku: metadata.sku } : {}),
   });
 
-  const result = await _traceStorage.run(trace, fn);
+  const result = await (_traceStorage ? _traceStorage.run(trace, fn) : fn());
 
   const totalMs = Date.now() - trace.startTime.getTime();
   const totalAiCalls = trace.steps.reduce((s, step) => s + step.aiCalls, 0);
@@ -165,7 +174,7 @@ export async function runWithTrace<T>(
  * Returns undefined if called outside a runWithTrace() scope.
  */
 export function getCurrentTrace(): PipelineTrace | undefined {
-  return _traceStorage.getStore();
+  return _traceStorage?.getStore();
 }
 
 /**
@@ -173,7 +182,7 @@ export function getCurrentTrace(): PipelineTrace | undefined {
  * Returns null when not in a trace context.
  */
 export function getCurrentTraceId(): string | null {
-  return _traceStorage.getStore()?.traceId ?? null;
+  return _traceStorage?.getStore()?.traceId ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,7 +200,7 @@ export function getCurrentTraceId(): string | null {
  *   finally { endTraceStep(idx); }
  */
 export function startTraceStep(name: string): number {
-  const trace = _traceStorage.getStore();
+  const trace = _traceStorage?.getStore();
   if (!trace) return -1;
   const step: TraceStep = {
     name,
@@ -210,7 +219,7 @@ export function startTraceStep(name: string): number {
  * Safe to call with stepIdx = -1 (no-op).
  */
 export function endTraceStep(stepIdx: number): void {
-  const trace = _traceStorage.getStore();
+  const trace = _traceStorage?.getStore();
   if (!trace || stepIdx < 0 || stepIdx >= trace.steps.length) return;
 
   const step = trace.steps[stepIdx];
@@ -237,7 +246,7 @@ export function endTraceStep(stepIdx: number): void {
  * Use in catch blocks to record failures without throwing.
  */
 export function addStepError(stepIdx: number, message: string): void {
-  const trace = _traceStorage.getStore();
+  const trace = _traceStorage?.getStore();
   if (!trace || stepIdx < 0 || stepIdx >= trace.steps.length) return;
   trace.steps[stepIdx].errors.push(message);
 }
@@ -247,7 +256,7 @@ export function addStepError(stepIdx: number, message: string): void {
  * Useful for recording TAYA triad score or content quality dimensions.
  */
 export function setStepQuality(stepIdx: number, score: number): void {
-  const trace = _traceStorage.getStore();
+  const trace = _traceStorage?.getStore();
   if (!trace || stepIdx < 0 || stepIdx >= trace.steps.length) return;
   trace.steps[stepIdx].qualityScore = score;
 }
@@ -261,7 +270,7 @@ export function setStepQuality(stepIdx: number, score: number): void {
  * Called automatically by generateTextSafe() — do not call manually.
  */
 export function recordAiCallToCurrentStep(tokensUsed: number): void {
-  const trace = _traceStorage.getStore();
+  const trace = _traceStorage?.getStore();
   if (!trace || trace.steps.length === 0) return;
   // Record against the last open step (the most recently started one)
   const step = trace.steps[trace.steps.length - 1];
@@ -274,7 +283,7 @@ export function recordAiCallToCurrentStep(tokensUsed: number): void {
  * Called automatically by cachedSearch() on cache hit — do not call manually.
  */
 export function recordCacheHitToCurrentStep(): void {
-  const trace = _traceStorage.getStore();
+  const trace = _traceStorage?.getStore();
   if (!trace || trace.steps.length === 0) return;
   const step = trace.steps[trace.steps.length - 1];
   step.cacheHits += 1;
@@ -289,7 +298,7 @@ export function recordCacheHitToCurrentStep(): void {
  * Returns empty object outside a trace context.
  */
 export function getStepTimings(): Record<string, number> {
-  const trace = _traceStorage.getStore();
+  const trace = _traceStorage?.getStore();
   if (!trace) return {};
   const timings: Record<string, number> = {};
   for (const step of trace.steps) {

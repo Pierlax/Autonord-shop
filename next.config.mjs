@@ -5,6 +5,18 @@ const nextConfig = {
       bodySizeLimit: '10mb',
     },
   },
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      // async_hooks is Node.js only — replace with empty module in client bundles.
+      // pipeline-trace.ts guards against undefined AsyncLocalStorage so all
+      // trace functions become no-ops in the browser.
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        async_hooks: false,
+      };
+    }
+    return config;
+  },
   images: {
     formats: ['image/avif', 'image/webp'],
     remotePatterns: [
