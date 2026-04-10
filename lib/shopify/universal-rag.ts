@@ -100,6 +100,7 @@ import {
   CorpusCollection,
 } from './corpus-builder';
 import { enrichCorpusItems } from './page-extractor';
+import { rerankCorpusItems } from './rag-reranker';
 import {
   buildEvidenceGraph,
   EvidenceGraph,
@@ -167,6 +168,13 @@ export interface UniversalRAGConfig {
    * Adds ~3-8 s to total pipeline time (parallel, concurrency=3).
    */
   enablePageExtraction: boolean;
+  /**
+   * Semantic reranking: score top-20 corpus items with a single Gemini Flash
+   * batch call and reorder by relevance to the product. Items scoring < 2/10
+   * are filtered out to reduce noise in downstream QA.
+   * Adds ~1 AI call (~200 ms) to the pipeline.
+   */
+  enableReranking: boolean;
   /** Layer 7 – memory: Session evidence graph. */
   enableEvidenceGraph: boolean;
   /** Layer 7 – loop: Evaluator-Optimizer iterative retrieval. */
@@ -196,6 +204,7 @@ const DEFAULT_CONFIG: UniversalRAGConfig = {
   enableDomainNavigation: true,
   enableCorpusBuilder: true,
   enablePageExtraction: true,
+  enableReranking: true,
   enableEvidenceGraph: true,
   enableEvaluatorOptimizer: true,
   navigationBudgetPerDomain: 5,
@@ -1481,6 +1490,31 @@ export class UniversalRAGPipeline {
           }, {} as typeof corpus.byType),
         };
         this.log(state, `R1 PageExtract: tokens ${beforeTokens} → ${enrichedTokens} (+${enrichedTokens - beforeTokens})`);
+      }
+
+      // Semantic Reranking — score top-20 items with a single Gemini Flash batch call,
+      // reorder by relevance, and filter out items scoring < 2/10.
+      // Runs after R1 so scores reflect full page content, not just short snippets.
+      if (this.config.enableReranking && corpus.totalItems > 1) {
+        const { items: rerankedItems, filteredCount } = await rerankCorpusItems(
+          corpus.items,
+          productTitle,
+          vendor,
+          productType,
+        );
+        const rerankedTokens = rerankedItems.reduce((sum, i) => sum + i.tokenEstimate, 0);
+        corpus = {
+          ...corpus,
+          items: rerankedItems,
+          totalItems: rerankedItems.length,
+          totalTokens: rerankedTokens,
+          byType: rerankedItems.reduce((acc, item) => {
+            if (!acc[item.type]) acc[item.type] = [];
+            acc[item.type]!.push(item);
+            return acc;
+          }, {} as typeof corpus.byType),
+        };
+        this.log(state, `Reranker: ${filteredCount} items filtered, ${rerankedItems.length} kept, ${rerankedTokens} tokens`);
       }
     } else {
       corpus = {
