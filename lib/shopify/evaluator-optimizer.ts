@@ -75,6 +75,132 @@ function getQualityThreshold(corpusSize: number): number {
 const LLM_EVAL_RANGE = { min: 0.30, max: 0.70 };
 
 // ---------------------------------------------------------------------------
+// Spec coverage — contextual gap detection
+// ---------------------------------------------------------------------------
+
+/**
+ * A measurable product specification: pattern to detect its presence in text,
+ * Italian label for gap messages, and query suffixes for targeted retrieval.
+ */
+interface SpecField {
+  key: string;
+  /** Italian label shown in gap log messages. */
+  label: string;
+  /**
+   * Detects this spec in a corpus text string.
+   * Must NOT use the /g flag — avoids the stateful lastIndex bug.
+   */
+  pattern: RegExp;
+  /** [0] Italian query suffix, [1] English query suffix. */
+  queryTerms: [string, string];
+}
+
+const SPEC_FIELDS: SpecField[] = [
+  {
+    key: 'peso',
+    label: 'peso (kg)',
+    pattern: /\b\d[\d.,]*\s*kg\b/i,
+    queryTerms: ['peso kg scheda tecnica', 'weight kg specifications'],
+  },
+  {
+    key: 'potenza',
+    label: 'potenza (W/kW)',
+    pattern: /\b\d[\d.,]*\s*(kW|watt|W)\b(?!\w)/i,
+    queryTerms: ['potenza W watt specifiche', 'power output specifications'],
+  },
+  {
+    key: 'coppia',
+    label: 'coppia massima (Nm)',
+    pattern: /\b\d[\d.,]*\s*Nm\b/,
+    queryTerms: ['coppia massima Nm specifiche', 'torque Nm specifications'],
+  },
+  {
+    key: 'tensione',
+    label: 'tensione (V)',
+    pattern: /\b\d[\d.,]*\s*V\b(?!\w)/i,
+    queryTerms: ['tensione volt specifiche', 'voltage specifications'],
+  },
+  {
+    key: 'batteria_ah',
+    label: 'capacità batteria (Ah)',
+    pattern: /\b\d[\d.,]*\s*Ah\b/i,
+    queryTerms: ['capacità batteria Ah', 'battery capacity Ah'],
+  },
+  {
+    key: 'velocita',
+    label: 'velocità (rpm)',
+    pattern: /\b\d[\d.,]*\s*rpm\b/i,
+    queryTerms: ['giri minuto rpm velocità', 'rpm no-load speed'],
+  },
+  {
+    key: 'rumore',
+    label: 'livello sonoro (dB)',
+    pattern: /\b\d[\d.,]*\s*dB(\(A\))?\b/i,
+    queryTerms: ['livello sonoro dB emissione acustica', 'noise level dB specifications'],
+  },
+  {
+    key: 'pressione',
+    label: 'pressione massima (bar)',
+    pattern: /\b\d[\d.,]*\s*bar\b/i,
+    queryTerms: ['pressione massima bar specifiche', 'max pressure bar specifications'],
+  },
+  {
+    key: 'portata',
+    label: 'portata (l/min)',
+    pattern: /\b\d[\d.,]*\s*(l\/min|litri\/min|m3\/h|m³\/h)\b/i,
+    queryTerms: ['portata litri minuto specifiche', 'flow rate specifications'],
+  },
+];
+
+/** Fast key → SpecField lookup. */
+const SPEC_BY_KEY = new Map<string, SpecField>(SPEC_FIELDS.map(s => [s.key, s]));
+
+/**
+ * Scans the full corpus text for numeric spec values.
+ * Returns the set of spec keys that are already present in at least one item.
+ */
+function scanCorpusForPresentSpecs(corpus: CorpusCollection): Set<string> {
+  const allText = corpus.items.map(i => i.content).join('\n');
+  const present = new Set<string>();
+  for (const spec of SPEC_FIELDS) {
+    if (spec.pattern.test(allText)) present.add(spec.key);
+  }
+  return present;
+}
+
+/**
+ * Returns the spec keys that are typically expected for a product of this type.
+ * Uses keyword matching on the product title — no AI call needed.
+ */
+function inferExpectedSpecKeys(productTitle: string): string[] {
+  const t = productTitle.toLowerCase();
+
+  if (/trapano|avvitatore|tassellatore|drill|driver|impact/.test(t))
+    return ['coppia', 'peso', 'tensione', 'batteria_ah', 'velocita'];
+
+  if (/smerigliatrice|grinder|flessibile|levigatrice|sander|polisher/.test(t))
+    return ['potenza', 'peso', 'velocita'];
+
+  if (/compressore|compressor/.test(t))
+    return ['pressione', 'portata', 'potenza', 'peso'];
+
+  if (/generatore|generator|elettrogeno/.test(t))
+    return ['potenza', 'peso'];
+
+  if (/sega|seghetto|troncatrice|saw|jigsaw|circular/.test(t))
+    return ['potenza', 'peso', 'velocita'];
+
+  if (/saldatrice|welder|mig|tig|mma/.test(t))
+    return ['potenza', 'tensione', 'peso'];
+
+  if (/fresatrice|router|pialla|planer/.test(t))
+    return ['potenza', 'peso', 'velocita'];
+
+  // Generic power tools — check the two most universal specs
+  return ['potenza', 'peso'];
+}
+
+// ---------------------------------------------------------------------------
 // Evaluation
 // ---------------------------------------------------------------------------
 
@@ -107,7 +233,7 @@ export async function evaluateCorpus(
     if (budgetExhausted) {
       log.info(`[EvaluatorOptimizer] W8: AI budget exhausted — using rule-based eval`);
     }
-    return buildEvaluationResult(ruleScore, corpus, summary, conflicts.length, 'rule-based', qualityThreshold);
+    return buildEvaluationResult(ruleScore, corpus, summary, conflicts.length, 'rule-based', qualityThreshold, productTitle);
   }
 
   // Slow path — LLM for borderline cases
@@ -157,14 +283,14 @@ Rispondi SOLO con JSON valido:
       coherenceScore: typeof parsed.coherenceScore === 'number' ? parsed.coherenceScore : 0.7,
       coverageScore: corpus.coverageScore,
       needsSecondPass: llmScore < qualityThreshold,
-      gaps: Array.isArray(parsed.gaps) ? parsed.gaps : identifyGaps(corpus, summary),
+      gaps: Array.isArray(parsed.gaps) ? parsed.gaps : identifyGaps(corpus, summary, productTitle),
       strengths: Array.isArray(parsed.strengths) ? parsed.strengths : identifyStrengths(corpus, summary),
       conflictsFound: conflicts.length,
       reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : `LLM score=${llmScore.toFixed(2)}`,
     };
   } catch (err) {
     log.error('[EvaluatorOptimizer] LLM evaluation failed, using rule-based fallback:', err);
-    return buildEvaluationResult(ruleScore, corpus, summary, conflicts.length, 'rule-based (LLM failed)', qualityThreshold);
+    return buildEvaluationResult(ruleScore, corpus, summary, conflicts.length, 'rule-based (LLM failed)', qualityThreshold, productTitle);
   }
 }
 
@@ -175,17 +301,61 @@ Rispondi SOLO con JSON valido:
 /**
  * Generate targeted search queries to fill the gaps identified by the evaluator.
  *
+ * When `corpus` is provided the function performs **contextual gap analysis**:
+ * it scans what numeric specs are already present in the corpus, then generates
+ * queries that specifically target the missing ones.  Example: if the corpus
+ * already contains "800 W" and "135 Nm" but no weight value, it emits
+ * `"Milwaukee M18 BLPD2 peso kg scheda tecnica"` instead of the generic
+ * `"Milwaukee M18 BLPD2 scheda tecnica specifiche datasheet"`.
+ *
+ * Without `corpus` (or on fallback) the original template-based approach is used.
+ *
  * Called by UniversalRAG when needsSecondPass is true.
  */
 export function generateGapQueries(
   gaps: string[],
   productTitle: string,
   vendor: string,
-  sku?: string | null
+  sku?: string | null,
+  corpus?: CorpusCollection | null,
 ): string[] {
   const base = sku ? `${vendor} ${productTitle} ${sku}` : `${vendor} ${productTitle}`;
   const queries: string[] = [];
 
+  // -------------------------------------------------------------------------
+  // 1. Corpus-aware spec queries
+  //    Inspect what numeric specs are present → target only the missing ones.
+  // -------------------------------------------------------------------------
+  if (corpus && corpus.totalItems > 0) {
+    const presentSpecs = scanCorpusForPresentSpecs(corpus);
+    const expectedKeys  = inferExpectedSpecKeys(productTitle);
+    const missingKeys   = expectedKeys.filter(k => !presentSpecs.has(k));
+
+    if (missingKeys.length > 0) {
+      const presentLabels = expectedKeys
+        .filter(k => presentSpecs.has(k))
+        .map(k => SPEC_BY_KEY.get(k)?.label ?? k)
+        .join(', ');
+      const missingLabels = missingKeys.map(k => SPEC_BY_KEY.get(k)?.label ?? k).join(', ');
+      log.info(
+        `[EvaluatorOptimizer] Corpus ha: [${presentLabels || '—'}] ` +
+        `— spec mancanti: [${missingLabels}]`
+      );
+
+      for (const key of missingKeys) {
+        const spec = SPEC_BY_KEY.get(key);
+        if (!spec) continue;
+        queries.push(`${base} ${spec.queryTerms[0]}`); // Italian
+        queries.push(`${base} ${spec.queryTerms[1]}`); // English
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 2. Coarse-grain template queries (non-spec gaps: manual, reviews, images)
+  //    The generic 'scheda tecnica' template is suppressed when corpus-aware
+  //    queries already targeted individual spec values in block 1.
+  // -------------------------------------------------------------------------
   for (const gap of gaps) {
     const gapLow = gap.toLowerCase();
 
@@ -193,7 +363,8 @@ export function generateGapQueries(
       queries.push(`${base} manuale istruzioni PDF download`);
       queries.push(`${base} instruction manual PDF`);
     }
-    if (gapLow.includes('scheda tecnica') || gapLow.includes('specifiche')) {
+    // Generic datasheet query only when corpus is not available (no context)
+    if (!corpus && (gapLow.includes('scheda tecnica') || gapLow.includes('specifiche'))) {
       queries.push(`${base} scheda tecnica specifiche datasheet`);
       queries.push(`${base} technical specifications`);
     }
@@ -212,8 +383,8 @@ export function generateGapQueries(
     }
   }
 
-  // Deduplicate and cap
-  return Array.from(new Set(queries)).slice(0, 6);
+  // Deduplicate and cap (raised from 6 → 8 to accommodate per-spec queries)
+  return Array.from(new Set(queries)).slice(0, 8);
 }
 
 // ---------------------------------------------------------------------------
@@ -226,14 +397,15 @@ function buildEvaluationResult(
   summary: EvidenceGraphSummary,
   conflictCount: number,
   method: string,
-  threshold: number
+  threshold: number,
+  productTitle?: string,
 ): EvaluationResult {
   return {
     qualityScore: score,
     coherenceScore: conflictCount === 0 ? 0.90 : Math.max(0.50, 0.90 - conflictCount * 0.08),
     coverageScore: corpus.coverageScore,
     needsSecondPass: score < threshold,
-    gaps: identifyGaps(corpus, summary),
+    gaps: identifyGaps(corpus, summary, productTitle),
     strengths: identifyStrengths(corpus, summary),
     conflictsFound: conflictCount,
     reasoning: `${method}: score=${score.toFixed(2)}, items=${corpus.totalItems}`,
@@ -273,7 +445,11 @@ function computeRuleScore(
   return Math.max(0, Math.min(1, score));
 }
 
-function identifyGaps(corpus: CorpusCollection, summary: EvidenceGraphSummary): string[] {
+function identifyGaps(
+  corpus: CorpusCollection,
+  summary: EvidenceGraphSummary,
+  productTitle?: string,
+): string[] {
   const gaps: string[] = [];
   if (!corpus.hasPdf && summary.manualCount === 0) gaps.push('manuale PDF mancante');
   if (!corpus.hasTable && !(corpus.byType.spec_sheet?.length)) gaps.push('scheda tecnica strutturata mancante');
@@ -281,6 +457,18 @@ function identifyGaps(corpus: CorpusCollection, summary: EvidenceGraphSummary): 
   if (summary.reviewCount === 0) gaps.push('recensioni e opinioni mancanti');
   if (corpus.totalItems < 3) gaps.push('corpus insufficiente');
   if (!corpus.hasImage) gaps.push('immagini prodotto mancanti');
+
+  // Spec-level gap detection — only when corpus has content worth analysing
+  if (productTitle && corpus.totalItems > 0) {
+    const presentSpecs = scanCorpusForPresentSpecs(corpus);
+    const expectedKeys  = inferExpectedSpecKeys(productTitle);
+    const missingKeys   = expectedKeys.filter(k => !presentSpecs.has(k));
+    if (missingKeys.length > 0) {
+      const missingLabels = missingKeys.map(k => SPEC_BY_KEY.get(k)?.label ?? k).join(', ');
+      gaps.push(`specifiche numeriche incomplete: mancano ${missingLabels}`);
+    }
+  }
+
   return gaps;
 }
 

@@ -1644,7 +1644,7 @@ export class UniversalRAGPipeline {
     for (let pass = 1; pass <= this.config.maxRetrievalPasses; pass++) {
       if (!currentEval.needsSecondPass) break;
 
-      const gapQueries = generateGapQueries(currentEval.gaps, productTitle, vendor, sku);
+      const gapQueries = generateGapQueries(currentEval.gaps, productTitle, vendor, sku, currentCorpus);
       if (gapQueries.length === 0) break;
 
       this.log(state, `Optimizer pass ${pass}: running ${gapQueries.length} gap queries`);
