@@ -1576,7 +1576,7 @@ function crossCheckPhase2Consistency(
  * 3. Facts with confidence=high that failed both numeric and textual grounding
  *    (verified=false from groundingCheck) are forced to "NON TROVATO".
  */
-function hallucinationPostCheck(facts: AtomicFact[], evidenceText: string): AtomicFact[] {
+export function hallucinationPostCheck(facts: AtomicFact[], evidenceText: string): AtomicFact[] {
   if (!evidenceText) return facts;
 
   const normalizedEvidence = evidenceText.toLowerCase().replace(/\s+/g, ' ');
