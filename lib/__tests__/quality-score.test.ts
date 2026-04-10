@@ -61,6 +61,10 @@ const goodFacts: QAFacts = {
   strengths: [],
   weaknesses: [],
   idealFor: [],
+  notIdealFor: [],
+  verdict: 'Prodotto solido con buon rapporto qualità/prezzo.',
+  verdictConfidence: 'high',
+  caveats: [],
 };
 
 // ---------------------------------------------------------------------------

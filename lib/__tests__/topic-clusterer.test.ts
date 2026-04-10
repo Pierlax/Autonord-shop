@@ -28,6 +28,7 @@ function makeTopic(
     painPoint,
     searchIntent,
     frequency: 10,
+    avgEngagement: 50,
     samplePosts: [],
     articleAngle: '',
     targetAudience: 'elettricista',

@@ -99,6 +99,7 @@ import {
   corpusToSearchResults,
   CorpusCollection,
 } from './corpus-builder';
+import { enrichCorpusItems } from './page-extractor';
 import {
   buildEvidenceGraph,
   EvidenceGraph,
@@ -160,6 +161,12 @@ export interface UniversalRAGConfig {
   enableDomainNavigation: boolean;
   /** Layer 4: Build typed corpora (pdf, table, spec_sheet, …). */
   enableCorpusBuilder: boolean;
+  /**
+   * R1: After corpus build, fetch each result URL and replace the short
+   * search-engine snippet with up to 2000 chars of real page content.
+   * Adds ~3-8 s to total pipeline time (parallel, concurrency=3).
+   */
+  enablePageExtraction: boolean;
   /** Layer 7 – memory: Session evidence graph. */
   enableEvidenceGraph: boolean;
   /** Layer 7 – loop: Evaluator-Optimizer iterative retrieval. */
@@ -188,6 +195,7 @@ const DEFAULT_CONFIG: UniversalRAGConfig = {
   enableSourceDiscovery: true,
   enableDomainNavigation: true,
   enableCorpusBuilder: true,
+  enablePageExtraction: true,
   enableEvidenceGraph: true,
   enableEvaluatorOptimizer: true,
   navigationBudgetPerDomain: 5,
@@ -1455,6 +1463,24 @@ export class UniversalRAGPipeline {
         ];
         corpus = buildCorpus(mergedResources, discoveryResult.sources, this.config.maxTokenBudget);
         this.log(state, `W7: After cross-hop: ${corpus.totalItems} items, ${corpus.totalTokens} tokens`);
+      }
+
+      // R1: Page Content Extraction — replace short snippets with real page text
+      if (this.config.enablePageExtraction && corpus.totalItems > 0) {
+        const beforeTokens = corpus.totalTokens;
+        const enrichedItems = await enrichCorpusItems(corpus.items);
+        const enrichedTokens = enrichedItems.reduce((sum, i) => sum + i.tokenEstimate, 0);
+        corpus = {
+          ...corpus,
+          items: enrichedItems,
+          totalTokens: enrichedTokens,
+          byType: enrichedItems.reduce((acc, item) => {
+            if (!acc[item.type]) acc[item.type] = [];
+            acc[item.type]!.push(item);
+            return acc;
+          }, {} as typeof corpus.byType),
+        };
+        this.log(state, `R1 PageExtract: tokens ${beforeTokens} → ${enrichedTokens} (+${enrichedTokens - beforeTokens})`);
       }
     } else {
       corpus = {
