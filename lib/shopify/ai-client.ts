@@ -28,6 +28,7 @@ import { Redis } from '@upstash/redis';
 import { env, optionalEnv } from '@/lib/env';
 import { loggers } from '@/lib/logger';
 import { budgetManager } from '@/lib/shopify/ai-budget';
+import { recordAiCallToCurrentStep } from '@/lib/pipeline-trace';
 import type { z } from 'zod';
 
 const log = loggers.shopify;
@@ -241,6 +242,8 @@ export async function generateTextSafe(options: GenerateTextOptions): Promise<Ge
 
       // Fire-and-forget: persist token cost to Redis
       budgetManager.trackUsage(modelId, usage.promptTokens, usage.completionTokens);
+      // R2: Record AI call + tokens against the active pipeline trace step
+      recordAiCallToCurrentStep(usage.totalTokens);
 
       return { text: result.text, usage, model: modelId, retries };
 
@@ -325,6 +328,8 @@ export async function generateObjectSafe<T>(options: GenerateObjectOptions<T>): 
       };
 
       budgetManager.trackUsage(modelId, usage.promptTokens, usage.completionTokens);
+      // R2: Record AI call + tokens against the active pipeline trace step
+      recordAiCallToCurrentStep(usage.totalTokens);
 
       return { object: result.object, usage, model: modelId, retries };
 

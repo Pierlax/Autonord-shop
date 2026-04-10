@@ -34,6 +34,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { Receiver } from '@upstash/qstash';
 
+// R2: Distributed tracing
+import {
+  runWithTrace,
+  generateTraceId,
+  startTraceStep,
+  endTraceStep,
+  addStepError,
+  setStepQuality,
+} from '@/lib/pipeline-trace';
+
 // Phase 1 imports (security)
 import { env, optionalEnv, toShopifyGid } from '@/lib/env';
 import { z } from 'zod';
@@ -645,6 +655,11 @@ export async function POST(request: NextRequest) {
 
 // Extracted pipeline so the soft-timeout race can wrap it cleanly.
 async function runEnrichmentPipeline(payload: WorkerPayload, startTime: number): Promise<Response> {
+    // R2: Generate a unique traceId for this pipeline run and propagate it through
+    // all steps via AsyncLocalStorage. Every generateTextSafe() call and every
+    // cachedSearch() cache hit will be automatically attributed to the active step.
+    const traceId = generateTraceId();
+    return runWithTrace(traceId, async (): Promise<Response> => {
     // ===========================================
     // KG HYDRATE — Restore persisted dynamic state
     // ===========================================
@@ -656,7 +671,7 @@ async function runEnrichmentPipeline(payload: WorkerPayload, startTime: number):
     // STEP 1: UniversalRAG — Search verified info
     // ===========================================
     console.log('[Worker V5] Step 1: Running UniversalRAG with whitelisted sources...');
-    
+    const _stepRag = startTraceStep('universal-rag');
     const ragPipeline = new UniversalRAGPipeline({
       enableSourceRouting: true,
       enableGranularityAware: true,
@@ -677,13 +692,14 @@ async function runEnrichmentPipeline(payload: WorkerPayload, startTime: number):
       { barcode: payload.barcode ?? undefined }
     );
     
+    endTraceStep(_stepRag);
     console.log(`[Worker V5] RAG completed: success=${ragResult.success}, sources=${ragResult.metadata.sourcesQueried.length}`);
 
     // ===========================================
     // STEP 2: RagAdapter — Prepare data for QA
     // ===========================================
     console.log('[Worker V5] Step 2: Adapting RAG output for TwoPhaseQA...');
-    
+    const _stepAdapter = startTraceStep('rag-adapter');
     const adaptation: AdaptationResult = adaptRagToQa(
       ragResult,
       payload.title,
@@ -693,6 +709,7 @@ async function runEnrichmentPipeline(payload: WorkerPayload, startTime: number):
     );
     
     console.log(`[Worker V5] Adaptation: evidence=${adaptation.metadata.evidenceCount}, sources=${adaptation.metadata.contributingSources.join(',')}`);
+    endTraceStep(_stepAdapter);
     if (adaptation.metadata.warnings.length > 0) {
       console.log(`[Worker V5] Adapter warnings: ${adaptation.metadata.warnings.join('; ')}`);
     }
@@ -715,8 +732,10 @@ async function runEnrichmentPipeline(payload: WorkerPayload, startTime: number):
         const hasEnoughData =
           (adaptation.qaInput?.sourceData?.length ?? 0) > 100 ||
           (adaptation.qaInput?.structuredSources?.length ?? 0) > 0;
+        const _stepQa = startTraceStep('two-phase-qa');
         if (!hasEnoughData) {
           console.log('[Worker V5] QA: skipped (insufficient sourceData AND no structuredSources)');
+          endTraceStep(_stepQa);
           return {
             qaResult: null as TwoPhaseQAResult | null,
             qaContent: null as ReturnType<typeof twoPhaseQAToProductContent> | null,
@@ -731,23 +750,32 @@ async function runEnrichmentPipeline(payload: WorkerPayload, startTime: number):
             qaContent: content,
           };
         } catch (qaError) {
+          addStepError(_stepQa, qaError instanceof Error ? qaError.message : String(qaError));
           console.error('[Worker V5] TwoPhaseQA failed (non-fatal):', qaError instanceof Error ? qaError.message : String(qaError));
           return {
             qaResult: null as TwoPhaseQAResult | null,
             qaContent: null as ReturnType<typeof twoPhaseQAToProductContent> | null,
           };
+        } finally {
+          endTraceStep(_stepQa);
         }
       })(),
       // ImageAgent V4 — receives RAG-discovered page URLs as priority candidates.
       // These pages are from trusted domains and already confirmed to be about this product.
-      findProductImage(payload.title, payload.vendor, payload.sku, payload.barcode, ragResult.ragPageUrls, ragResult.visualClues).then(result => {
-        if (result.success) {
-          console.log(`[Worker V5] Image found via ${result.method}: ${result.source} (alt: "${result.imageAlt}")`);
-        } else {
-          console.log(`[Worker V5] No image after ${result.searchAttempts} attempts: ${result.error}`);
+      (async () => {
+        const _stepImage = startTraceStep('image-agent');
+        try {
+          const result = await findProductImage(payload.title, payload.vendor, payload.sku, payload.barcode, ragResult.ragPageUrls, ragResult.visualClues);
+          if (result.success) {
+            console.log(`[Worker V5] Image found via ${result.method}: ${result.source} (alt: "${result.imageAlt}")`);
+          } else {
+            console.log(`[Worker V5] No image after ${result.searchAttempts} attempts: ${result.error}`);
+          }
+          return result;
+        } finally {
+          endTraceStep(_stepImage);
         }
-        return result;
-      }),
+      })(),
     ]);
 
     const { qaResult, qaContent } = qaOutput;
@@ -757,35 +785,43 @@ async function runEnrichmentPipeline(payload: WorkerPayload, startTime: number):
     // FIX ARCHITETTURALE: V3 ora riceve i dati REALI da RAG + QA
     // ===========================================
     console.log('[Worker V5] Step 4: Running ai-enrichment-v3 (using RAG + QA data)...');
-    
+    const _stepV3 = startTraceStep('ai-enrichment-v3');
     const webhookPayload = toWebhookPayload(payload);
     const enrichedData = await generateProductContentV3(webhookPayload, ragResult, qaResult);
-    
+    endTraceStep(_stepV3);
     console.log(`[Worker V5] V3 content generated. Confidence: ${enrichedData.provenance.overallConfidence}%`);
 
     // ===========================================
     // STEP 5: TAYA Police — Content validation
     // ===========================================
     console.log('[Worker V5] Step 5: Running TAYA Police validation...');
-    
+    const _stepTaya = startTraceStep('taya-police');
     // FIX ARCHITETTURALE: V3 ora integra già i dati QA nel prompt.
     // Questo merge aggiuntivo serve come safety net per catturare eventuali
     // pro/contro QA che il LLM potrebbe aver omesso nella generazione.
-    const prosToValidate = qaContent 
+    const prosToValidate = qaContent
       ? [...qaContent.pros, ...enrichedData.pros.filter(p => !qaContent!.pros.some(qp => qp.includes(p.substring(0, 20))))]
       : enrichedData.pros;
-    
+
     const consToValidate = qaContent
       ? [...qaContent.cons, ...enrichedData.cons.filter(c => !qaContent!.cons.some(qc => qc.includes(c.substring(0, 20))))]
       : enrichedData.cons;
-    
+
     const validationResult = await validateAndCorrect({
       description: enrichedData.description,
       pros: prosToValidate,
       cons: consToValidate,
       faqs: enrichedData.faqs,
     });
-    
+    // Record TAYA triad score as quality dimension (0–1 scale from action severity)
+    const triadActionRaw = validationResult.triadScore?.overall.action;
+    const triadQuality = triadActionRaw === 'APPROVA' ? 1.0
+      : triadActionRaw === 'REVISIONE_MINORE' ? 0.7
+      : triadActionRaw === 'REVISIONE_MAGGIORE' ? 0.4
+      : triadActionRaw === 'RIFIUTA' ? 0.0
+      : 0.5;
+    setStepQuality(_stepTaya, triadQuality);
+    endTraceStep(_stepTaya);
     if (validationResult.wasFixed) {
       console.log(`[Worker V5] Fixed ${validationResult.violations.length} TAYA violations`);
     } else {
@@ -901,10 +937,10 @@ async function runEnrichmentPipeline(payload: WorkerPayload, startTime: number):
     // STEP 7: Shopify — tutti i campi + immagine (staged) + publish
     // ===========================================
     console.log('[Worker V5] Step 7: Aggiornamento Shopify (campi, metafield, immagine, publish)...');
-    
+    const _stepShopify = startTraceStep('shopify-update');
     // Normalize productId to GID format before passing to Shopify
     const productGid = toShopifyGid(payload.productId, 'Product');
-    
+
     const updateResult = await updateShopifyProductWithMetafields(
       productGid,
       enrichedData,
@@ -917,6 +953,10 @@ async function runEnrichmentPipeline(payload: WorkerPayload, startTime: number):
       qaResult?.complexQA.suitability.idealFor,
       qaResult?.complexQA.suitability.notIdealFor,
     );
+    if (!updateResult.success) {
+      addStepError(_stepShopify, updateResult.error ?? 'Shopify update failed');
+    }
+    endTraceStep(_stepShopify);
 
     const totalTime = Date.now() - startTime;
 
@@ -993,4 +1033,5 @@ async function runEnrichmentPipeline(payload: WorkerPayload, startTime: number):
         ragPageUrlsSample: ragResult.ragPageUrls?.slice(0, 3) ?? [],
       },
     });
+    }, { productId: payload.productId, sku: payload.sku ?? undefined });
 }

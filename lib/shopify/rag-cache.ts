@@ -18,6 +18,7 @@
 import { loggers } from '@/lib/logger';
 import { CircuitBreaker } from '@/lib/circuit-breaker';
 import { SearchResult } from './search-client';
+import { recordCacheHitToCurrentStep } from '@/lib/pipeline-trace';
 
 const log = loggers.shopify;
 
@@ -489,6 +490,8 @@ export async function cachedSearch(
   // 1. Check cache
   const cached = await cache.get(query, domainFilter);
   if (cached) {
+    // R2: Record cache hit against the active pipeline trace step
+    recordCacheHitToCurrentStep();
     return cached.results;
   }
 
