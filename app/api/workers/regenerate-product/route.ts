@@ -70,7 +70,8 @@ import {
 import { ShopifyProductWebhookPayload } from '@/lib/shopify/webhook-types';
 import { findProductImage, ImageAgentV4Result } from '@/lib/agents/image-agent-v4';
 import { uploadProductImageToShopify, ImageUploadResult } from '@/lib/shopify/image-upload';
-import { validateAndCorrect, CleanedContent } from '@/lib/agents/taya-police';
+import { validateAndCorrect, CleanedContent, getViolationStats, loadViolationStats } from '@/lib/agents/taya-police';
+import { loadViolations, saveViolations } from '@/lib/agents/violation-store';
 import { quickFactCheck, verifyAndRegenerateLoop } from '@/lib/taya-director/verifier';
 import { formatProvenanceDisplay } from '@/lib/shopify/provenance-tracking';
 import { getKGStore } from '@/lib/shopify/kg-store';
@@ -669,6 +670,17 @@ async function runEnrichmentPipeline(payload: WorkerPayload, startTime: number):
     await kgStore.hydrateKG(kg);
 
     // ===========================================
+    // D20 HYDRATE — Restore violation accumulator
+    // ===========================================
+    {
+      const storedViolations = await loadViolations();
+      if (storedViolations.length > 0) {
+        loadViolationStats(storedViolations);
+        console.log(`[Worker V5] D20: Loaded ${storedViolations.length} violation entries from Redis`);
+      }
+    }
+
+    // ===========================================
     // STEP 1: UniversalRAG — Search verified info
     // ===========================================
     console.log('[Worker V5] Step 1: Running UniversalRAG with whitelisted sources...');
@@ -1008,6 +1020,11 @@ async function runEnrichmentPipeline(payload: WorkerPayload, startTime: number):
     // KG FLUSH — Persist newly discovered dynamic state
     // ===========================================
     await kgStore.flushKG(kg);
+
+    // ===========================================
+    // D20 FLUSH — Persist violation accumulator
+    // ===========================================
+    await saveViolations(getViolationStats());
 
     // ===========================================
     // SUCCESS RESPONSE
