@@ -163,9 +163,11 @@ describe('scoreContentQuality() — completeness', () => {
   });
 
   it('gives partial completeness when only some sections are present', () => {
+    // description ≥ 100 chars → 1 point; pros ≥ 2 → 1 point; cons/faqs/specs missing → 0
+    // completeness = 2/5 = 0.40  → > 0 and < 1
     const partial = {
-      description: 'Un trapano a batteria professionale con 135 Nm di coppia per lavori strutturali.',
-      pros: ['135 Nm di coppia'],
+      description: 'Un trapano a batteria professionale con 135 Nm di coppia massima per lavori strutturali in cantiere.',
+      pros: ['135 Nm di coppia massima', 'Sistema M18 compatibile'],
       cons: [],        // missing
       faqs: [],        // missing
       specs: {},       // missing

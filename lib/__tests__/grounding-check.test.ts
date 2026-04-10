@@ -124,7 +124,8 @@ describe('groundingCheck() — textual claim grounding (D10)', () => {
   });
 
   it('downgrades "brushless" claim when evidence only mentions carbon-brush motor', () => {
-    const evidenceBrushed = 'Trapano con motore a spazzole. Peso 1.8 kg.';
+    // Evidence must be > 50 chars to pass the early-return guard in groundingCheck()
+    const evidenceBrushed = 'Trapano con motore a carboni, con spazzole di ricambio incluse. Peso netto 1.8 kg.';
     const facts = [fact('Tipo motore?', 'brushless')];
     const result = groundingCheck(facts, evidenceBrushed);
     expect(result[0].confidence).toBe('low');
