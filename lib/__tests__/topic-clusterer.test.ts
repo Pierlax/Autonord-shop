@@ -9,9 +9,18 @@
  *   would exceed the per-brand rolling window cap.
  */
 
-import { describe, it, expect } from 'vitest';
-import { clusterTopics, applyFrequencyCap } from '@/lib/blog-researcher/topic-clusterer';
+import { describe, it, expect, vi } from 'vitest';
+import { clusterTopics, clusterTopicsAsync, cosineSimilarity, applyFrequencyCap } from '@/lib/blog-researcher/topic-clusterer';
 import type { TopicCluster, RecentPublication } from '@/lib/blog-researcher/topic-clusterer';
+import { embedTexts } from '@/lib/shopify/ai-client';
+
+vi.mock('@/lib/shopify/ai-client', () => ({
+  embedTexts: vi.fn(),
+  generateTextSafe: vi.fn(),
+  generateObjectSafe: vi.fn(),
+}));
+
+const embedTextsMock = vi.mocked(embedTexts);
 import type { TopicAnalysis } from '@/lib/blog-researcher/analysis';
 
 // ---------------------------------------------------------------------------
@@ -215,5 +224,136 @@ describe('W-BR-5: applyFrequencyCap()', () => {
       windowDays: 7,
     });
     expect(filtered).toHaveLength(0); // brand extracted from title, cap applied
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cosine similarity unit tests
+// ---------------------------------------------------------------------------
+
+describe('cosineSimilarity()', () => {
+  it('returns 1.0 for identical vectors', () => {
+    const v = [0.1, 0.9, 0.3, 0.5];
+    expect(cosineSimilarity(v, v)).toBeCloseTo(1.0, 5);
+  });
+
+  it('returns 0 for orthogonal vectors', () => {
+    expect(cosineSimilarity([1, 0, 0], [0, 1, 0])).toBeCloseTo(0, 5);
+  });
+
+  it('returns 0 for an all-zero vector', () => {
+    expect(cosineSimilarity([0, 0, 0], [1, 2, 3])).toBe(0);
+  });
+
+  it('returns ~0.97 for nearly identical vectors', () => {
+    const a = [1.0, 0.0, 0.5];
+    const b = [0.9, 0.1, 0.5]; // very close
+    expect(cosineSimilarity(a, b)).toBeGreaterThan(0.95);
+  });
+
+  it('returns a low score for very different vectors', () => {
+    const a = [1, 0, 0, 0];
+    const b = [0, 0, 0, 1];
+    expect(cosineSimilarity(a, b)).toBeCloseTo(0, 5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hybrid clustering — clusterTopics() with explicit mock embeddings
+// ---------------------------------------------------------------------------
+
+describe('clusterTopics() with embeddings (hybrid mode)', () => {
+  it('clusters two semantically similar topics even with zero keyword overlap', () => {
+    const topics = [
+      makeTopic('Durata batterie Milwaukee M18', 'batteria finisce presto'),
+      makeTopic('Autonomia accumulatore Milwaukee', 'si scarica in fretta'),
+    ];
+
+    // Embeddings: high cosine similarity (0.95) — same semantic concept, different words
+    // hybrid = 0.70 × 0.95 + 0.30 × jaccard ≈ 0.665 + small → > HYBRID_THRESHOLD 0.55
+    const embedA = [1.0, 0.3, 0.0, 0.0];
+    const embedB = [0.95, 0.31, 0.01, 0.0]; // nearly identical direction
+
+    const clusters = clusterTopics(topics, [embedA, embedB]);
+    expect(clusters).toHaveLength(1);
+  });
+
+  it('keeps semantically unrelated topics in separate clusters', () => {
+    const topics = [
+      makeTopic('Milwaukee M18 batteria scarica', 'autonomia ridotta'),
+      makeTopic('Bosch compressore rumoroso', 'troppo rumore cantiere'),
+    ];
+
+    // Embeddings: low cosine similarity — different domains
+    const embedA = [1.0, 0.0, 0.0, 0.0];
+    const embedB = [0.0, 0.0, 1.0, 0.0]; // orthogonal
+
+    const clusters = clusterTopics(topics, [embedA, embedB]);
+    expect(clusters).toHaveLength(2);
+  });
+
+  it('falls back to Jaccard when embeddings array length mismatches topics', () => {
+    const topics = [
+      makeTopic('Avvitatore a batteria Milwaukee M18', 'batteria si scarica'),
+      makeTopic('Trapano cordless Milwaukee quale scegliere', 'quale cordless Milwaukee'),
+    ];
+
+    // Wrong length — should fall back to Jaccard, which clusters these two (synonym overlap)
+    const clusters = clusterTopics(topics, [[1, 0]]); // only 1 embedding for 2 topics
+    expect(clusters).toHaveLength(1); // Jaccard finds them similar via synonyms
+  });
+});
+
+// ---------------------------------------------------------------------------
+// clusterTopicsAsync() — uses mocked embedTexts
+// ---------------------------------------------------------------------------
+
+describe('clusterTopicsAsync()', () => {
+  it('uses embeddings when embedTexts succeeds', async () => {
+    const topics = [
+      makeTopic('Batteria Milwaukee M18 autonomia', 'si scarica presto'),
+      makeTopic('Durata accumulatore Milwaukee', 'finisce in 20 minuti'),
+    ];
+
+    // High-cosine embeddings → should cluster
+    const emb0 = [1.0, 0.2, 0.0];
+    const emb1 = [0.98, 0.21, 0.0];
+    embedTextsMock.mockResolvedValueOnce([emb0, emb1]);
+
+    const clusters = await clusterTopicsAsync(topics);
+    expect(clusters).toHaveLength(1);
+    expect(embedTextsMock).toHaveBeenCalledOnce();
+  });
+
+  it('falls back to Jaccard when embedTexts returns null', async () => {
+    embedTextsMock.mockResolvedValueOnce(null);
+
+    const topics = [
+      makeTopic('Avvitatore a batteria Milwaukee M18', 'batteria scarica'),
+      makeTopic('Trapano cordless Milwaukee quale scegliere', 'quale scegliere cordless'),
+    ];
+
+    // Jaccard finds these similar via synonym normalization
+    const clusters = await clusterTopicsAsync(topics);
+    expect(clusters).toHaveLength(1);
+  });
+
+  it('falls back to Jaccard when embedTexts throws', async () => {
+    embedTextsMock.mockRejectedValueOnce(new Error('API quota exceeded'));
+
+    const topics = [
+      makeTopic('Avvitatore a batteria Milwaukee M18', 'batteria scarica'),
+      makeTopic('Trapano cordless Milwaukee quale scegliere', 'quale scegliere cordless'),
+    ];
+
+    const clusters = await clusterTopicsAsync(topics);
+    expect(clusters).toHaveLength(1); // Jaccard still groups them
+  });
+
+  it('returns [] for empty input without calling embedTexts', async () => {
+    embedTextsMock.mockClear();
+    const clusters = await clusterTopicsAsync([]);
+    expect(clusters).toHaveLength(0);
+    expect(embedTextsMock).not.toHaveBeenCalled();
   });
 });

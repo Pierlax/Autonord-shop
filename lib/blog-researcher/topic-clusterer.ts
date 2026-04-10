@@ -17,6 +17,7 @@
 
 import { loggers } from '@/lib/logger';
 import { TopicAnalysis, scoreTopic } from './analysis';
+import { embedTexts } from '@/lib/shopify/ai-client';
 
 const log = loggers.blog;
 
@@ -215,18 +216,57 @@ function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
 }
 
 // ---------------------------------------------------------------------------
+// Cosine similarity (for embedding vectors)
+// ---------------------------------------------------------------------------
+
+/**
+ * Cosine similarity between two embedding vectors.
+ * Returns 0 when either vector is all-zero.
+ */
+export function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0, magA = 0, magB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot  += a[i] * b[i];
+    magA += a[i] * a[i];
+    magB += b[i] * b[i];
+  }
+  if (magA === 0 || magB === 0) return 0;
+  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
+}
+
+// ---------------------------------------------------------------------------
 // Clustering — greedy, O(n²) ma n < 30 per i topic analizzati
 // ---------------------------------------------------------------------------
 
-const CLUSTER_THRESHOLD = 0.18; // Jaccard: >18% overlap → stesso cluster
+/** Jaccard threshold — used when no embeddings are provided. */
+const CLUSTER_THRESHOLD = 0.18;
 
 /**
- * Raggruppa i topic in cluster per similarità keyword.
+ * Hybrid threshold — used when embeddings are available.
+ * hybrid = EMBED_WEIGHT × cosine + (1 - EMBED_WEIGHT) × jaccard
+ * 0.55 means cosine alone needs ≥ 0.79 to cluster, or cosine 0.70 + jaccard 0.17.
+ */
+const HYBRID_THRESHOLD = 0.55;
+
+/** Weight given to cosine similarity in the hybrid score (0–1). */
+const EMBED_WEIGHT = 0.70;
+
+/**
+ * Raggruppa i topic in cluster per similarità keyword (Jaccard) o semantica
+ * (cosine embedding) quando gli embedding sono disponibili.
+ *
  * Greedy: ogni topic viene assegnato al cluster esistente più simile
  * se la similarità supera la soglia; altrimenti crea un nuovo cluster.
+ *
+ * @param topics     Topic da raggruppare.
+ * @param embeddings Vettori embedding paralleli a `topics` (da embedTexts).
+ *                   Se omessi o null, usa il solo Jaccard (comportamento originale).
  */
-export function clusterTopics(topics: TopicAnalysis[]): TopicCluster[] {
+export function clusterTopics(topics: TopicAnalysis[], embeddings?: number[][] | null): TopicCluster[] {
   if (topics.length === 0) return [];
+
+  const useEmbeddings = embeddings != null && embeddings.length === topics.length;
+  const threshold = useEmbeddings ? HYBRID_THRESHOLD : CLUSTER_THRESHOLD;
 
   // Pre-calcola keyword per ogni topic
   const topicKeywords = topics.map(t => extractKeywords(t));
@@ -236,12 +276,19 @@ export function clusterTopics(topics: TopicAnalysis[]): TopicCluster[] {
 
   for (let i = 0; i < topics.length; i++) {
     let bestGroupIdx = -1;
-    let bestSimilarity = CLUSTER_THRESHOLD;
+    let bestSimilarity = threshold;
 
     for (let g = 0; g < groups.length; g++) {
       // Confronta con il rappresentante del gruppo (primo elemento)
       const repIdx = groups[g][0];
-      const sim = jaccardSimilarity(topicKeywords[i], topicKeywords[repIdx]);
+      let sim: number;
+      if (useEmbeddings) {
+        const cosine  = cosineSimilarity(embeddings![i], embeddings![repIdx]);
+        const jaccard = jaccardSimilarity(topicKeywords[i], topicKeywords[repIdx]);
+        sim = EMBED_WEIGHT * cosine + (1 - EMBED_WEIGHT) * jaccard;
+      } else {
+        sim = jaccardSimilarity(topicKeywords[i], topicKeywords[repIdx]);
+      }
       if (sim > bestSimilarity) {
         bestSimilarity = sim;
         bestGroupIdx = g;
@@ -256,6 +303,37 @@ export function clusterTopics(topics: TopicAnalysis[]): TopicCluster[] {
   }
 
   return groups.map(group => buildCluster(group, topics, topicKeywords));
+}
+
+/**
+ * Async variant of clusterTopics — fetches Gemini embeddings first, then
+ * runs hybrid (cosine + Jaccard) clustering.
+ *
+ * Falls back to pure-Jaccard clustering when:
+ *   - The embedding API call fails (network error, quota, etc.)
+ *   - Running in an environment without GOOGLE_GENERATIVE_AI_API_KEY
+ *
+ * Use this in route handlers and cron jobs.  Use the sync clusterTopics()
+ * directly in unit tests (pass mock embeddings as the second argument).
+ */
+export async function clusterTopicsAsync(topics: TopicAnalysis[]): Promise<TopicCluster[]> {
+  if (topics.length === 0) return [];
+
+  try {
+    const texts = topics.map(t =>
+      `${t.topic ?? ''} ${t.painPoint ?? ''} ${t.searchIntent ?? ''}`.trim()
+    );
+    const embeddings = await embedTexts(texts);
+    if (embeddings && embeddings.length === topics.length) {
+      log.info(`[TopicClusterer] Hybrid clustering with embeddings (${topics.length} topics)`);
+      return clusterTopics(topics, embeddings);
+    }
+  } catch (err) {
+    log.warn('[TopicClusterer] embedTexts failed — falling back to Jaccard clustering:', err);
+  }
+
+  log.info(`[TopicClusterer] Jaccard-only clustering (${topics.length} topics)`);
+  return clusterTopics(topics);
 }
 
 // ---------------------------------------------------------------------------

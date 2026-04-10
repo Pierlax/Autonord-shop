@@ -27,7 +27,7 @@ import { sendNotification } from '@/lib/blog-researcher/notifications';
 import { leaveNoteForProductAgent, shareCategoryGuideline } from '@/lib/agent-memory';
 import { discoverBlogSources } from '@/lib/blog-researcher/rag-bridge';
 import { generateArticleBrief, generateBriefedArticle } from '@/lib/blog-researcher/blog-brief';
-import { clusterTopics, pickBestCluster } from '@/lib/blog-researcher/topic-clusterer';
+import { clusterTopicsAsync, pickBestCluster } from '@/lib/blog-researcher/topic-clusterer';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
         ...t,
         samplePosts: Array.isArray(t.samplePosts) ? t.samplePosts.filter((p): p is string => typeof p === 'string') : [],
       }));
-      const clusters = clusterTopics(safeTopics);
+      const clusters = await clusterTopicsAsync(safeTopics);
       bestCluster = pickBestCluster(clusters);
       if (bestCluster?.representativeTopic) selectedTopic = bestCluster.representativeTopic;
       log.info(`[BlogResearcher] Clusters: ${clusters.length} | Best: "${bestCluster?.clusterLabel ?? 'none'}" (score=${bestCluster?.editorialScore ?? 0})`);

@@ -22,7 +22,7 @@
  */
 
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { generateText, generateObject, type ModelMessage } from 'ai';
+import { generateText, generateObject, embedMany, type ModelMessage } from 'ai';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { env, optionalEnv } from '@/lib/env';
@@ -348,6 +348,40 @@ export async function generateObjectSafe<T>(options: GenerateObjectOptions<T>): 
   }
 
   throw new Error('[AIClient] Max retries exceeded');
+}
+
+// =============================================================================
+// EMBED TEXTS
+// =============================================================================
+
+/**
+ * Embed a batch of texts using Gemini text-embedding-004.
+ *
+ * Returns a parallel array of embedding vectors (one per input text), or null
+ * when the API call fails so callers can fall back gracefully (e.g., to
+ * keyword-based Jaccard clustering).
+ *
+ * One HTTP round-trip regardless of batch size — costs ~$0.00002 / 1K tokens.
+ * Applies the shared rate limiter (1 token consumed from the global RPM budget).
+ *
+ * @param texts  Strings to embed (pass [] to get [] back immediately).
+ * @returns      Parallel number[][] or null on failure.
+ */
+export async function embedTexts(texts: string[]): Promise<number[][] | null> {
+  if (texts.length === 0) return [];
+
+  await checkRateLimit();
+
+  try {
+    const { embeddings } = await embedMany({
+      model: google.textEmbeddingModel('text-embedding-004'),
+      values: texts,
+    });
+    return embeddings;
+  } catch (err) {
+    log.warn('[AIClient] embedTexts failed (callers should fall back):', err);
+    return null;
+  }
 }
 
 // =============================================================================
