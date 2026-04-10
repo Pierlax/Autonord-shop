@@ -548,7 +548,7 @@ Rispondi in JSON con la struttura corretta:
     ].join(' ');
     const originalClaims = extractTechnicalTokens(originalText);
     const correctedClaims = extractTechnicalTokens(correctedText);
-    const newClaims = [...correctedClaims].filter(c => !originalClaims.has(c));
+    const newClaims = Array.from(correctedClaims).filter(c => !originalClaims.has(c));
     if (newClaims.length > 0) {
       console.warn(
         `[TAYA Police] W-TP-1: Correction added ${newClaims.length} new technical claim(s): ` +
