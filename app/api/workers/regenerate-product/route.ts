@@ -75,6 +75,7 @@ import { quickFactCheck, verifyAndRegenerateLoop } from '@/lib/taya-director/ver
 import { formatProvenanceDisplay } from '@/lib/shopify/provenance-tracking';
 import { getKGStore } from '@/lib/shopify/kg-store';
 import { getKnowledgeGraph } from '@/lib/shopify/knowledge-graph';
+import { selfConsistencyCheck } from '@/lib/shopify/self-consistency';
 
 // =============================================================================
 // CONFIG (from centralized env)
@@ -790,6 +791,40 @@ async function runEnrichmentPipeline(payload: WorkerPayload, startTime: number):
     const enrichedData = await generateProductContentV3(webhookPayload, ragResult, qaResult);
     endTraceStep(_stepV3);
     console.log(`[Worker V5] V3 content generated. Confidence: ${enrichedData.provenance.overallConfidence}%`);
+
+    // ===========================================
+    // STEP 4.5: Self-Consistency Check — numeric coherence across all sections
+    // Pure function (<5 ms, no AI call). Flags numbers that appear in two
+    // sections with different values, or contradict a verified QA fact.
+    // Non-blocking: conflicts are logged and recorded in dataQuality but
+    // never stop the pipeline — TAYA Police handles corrections downstream.
+    // ===========================================
+    {
+      const qaFacts = qaResult?.simpleQA.rawFacts ?? [];
+      const consistencyReport = selfConsistencyCheck(enrichedData, qaFacts);
+      if (!consistencyReport.isClean) {
+        const total = consistencyReport.conflicts.length + consistencyReport.qaConflicts.length;
+        console.warn(
+          `[Worker V5] ⚠️ Step 4.5 Self-Consistency: ${total} conflict(s) found ` +
+          `(cross-section: ${consistencyReport.conflicts.length}, ` +
+          `vs QA facts: ${consistencyReport.qaConflicts.length})`
+        );
+        for (const c of consistencyReport.conflicts) {
+          console.warn(`  [consistency] ${c.description}`);
+          enrichedData.dataQuality.manualCheckRequired.push(c.description);
+        }
+        for (const c of consistencyReport.qaConflicts) {
+          console.warn(`  [qa-conflict] ${c.description}`);
+          enrichedData.dataQuality.manualCheckRequired.push(c.description);
+        }
+        enrichedData.dataQuality.conflictsFound += total;
+      } else {
+        console.log(
+          `[Worker V5] Step 4.5 Self-Consistency: clean ` +
+          `(${consistencyReport.totalNumbersFound} numbers checked)`
+        );
+      }
+    }
 
     // ===========================================
     // STEP 5: TAYA Police — Content validation
