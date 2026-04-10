@@ -1,0 +1,35 @@
+{
+  "functions": {
+    "app/api/webhooks/enrich-product/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/cron/**/*.ts": {
+      "maxDuration": 60
+    },
+    "app/api/workers/regenerate-product/route.ts": {
+      "maxDuration": 300
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/blog-researcher",
+      "schedule": "0 8 * * 1"
+    },
+    {
+      "path": "/api/cron/taya-director",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/auto-process-products",
+      "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/cron/taya-improver",
+      "schedule": "0 3 * * 0"
+    },
+    {
+      "path": "/api/cron/memory-maintenance",
+      "schedule": "0 4 * * 0"
+    }
+  ]
+}

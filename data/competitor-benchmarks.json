@@ -1,0 +1,575 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2026-01-16",
+  "description": "Ancora di Verità - Dati di riferimento per confronti TAYA-compliant",
+  "categories": {
+    "trapani_a_percussione": {
+      "categoryName": "Trapani a Percussione",
+      "categorySlug": "trapani-percussione",
+      "benchmarks": {
+        "entry_level_price": "€120-180",
+        "professional_price": "€250-400",
+        "weight_range_kg": "1.6-2.4",
+        "torque_range_nm": "60-135",
+        "rpm_range": "0-2000",
+        "bpm_range": "0-32000"
+      },
+      "reference_products": [
+        {
+          "brand": "Milwaukee",
+          "model": "M18 FPD3-0X",
+          "sku": "4933479858",
+          "price_street": "€289-329",
+          "price_amazon": "€299",
+          "price_leroy_merlin": "€319",
+          "weight_kg": 2.1,
+          "torque_nm": 135,
+          "rpm_max": 2000,
+          "bpm_max": 32000,
+          "battery_platform": "M18",
+          "brushless": true,
+          "known_strengths": [
+            "Coppia massima della categoria",
+            "Ecosistema batterie vastissimo",
+            "Durabilità comprovata in cantiere",
+            "Garanzia 5 anni"
+          ],
+          "known_weaknesses": [
+            "Peso elevato rispetto ai competitor",
+            "Prezzo premium (+20% vs media)",
+            "Mandrino può avere gioco dopo uso intensivo",
+            "Batterie costose"
+          ],
+          "target_users": ["Impiantisti", "Muratori", "Elettricisti industriali"],
+          "not_for": ["Hobbisti", "Budget limitato", "Lavori leggeri"],
+          "last_verified": "2026-01-15",
+          "sources": ["protoolreviews.com", "toolguyd.com", "reddit.com/r/MilwaukeeTool"]
+        },
+        {
+          "brand": "Makita",
+          "model": "DHP486Z",
+          "sku": "DHP486Z",
+          "price_street": "€199-239",
+          "price_amazon": "€219",
+          "price_leroy_merlin": "€229",
+          "weight_kg": 1.9,
+          "torque_nm": 130,
+          "rpm_max": 2100,
+          "bpm_max": 38250,
+          "battery_platform": "LXT 18V",
+          "brushless": true,
+          "known_strengths": [
+            "Rapporto qualità/prezzo eccellente",
+            "Peso contenuto",
+            "Affidabilità giapponese",
+            "Batterie compatibili con 200+ utensili"
+          ],
+          "known_weaknesses": [
+            "Design conservativo",
+            "Illuminazione LED debole",
+            "Mandrino meno robusto del Milwaukee",
+            "Assistenza Italia lenta"
+          ],
+          "target_users": ["Elettricisti", "Installatori", "Artigiani polivalenti"],
+          "not_for": ["Lavori pesanti continui", "Chi cerca potenza massima"],
+          "last_verified": "2026-01-15",
+          "sources": ["protoolreviews.com", "toolguyd.com", "reddit.com/r/Makita"]
+        },
+        {
+          "brand": "DeWalt",
+          "model": "DCD996N-XJ",
+          "sku": "DCD996N",
+          "price_street": "€229-269",
+          "price_amazon": "€249",
+          "price_leroy_merlin": "€259",
+          "weight_kg": 2.0,
+          "torque_nm": 95,
+          "rpm_max": 2000,
+          "bpm_max": 38250,
+          "battery_platform": "XR 18V",
+          "brushless": true,
+          "known_strengths": [
+            "Ergonomia eccellente",
+            "Bilanciamento perfetto",
+            "Disponibilità ricambi",
+            "Rete assistenza capillare"
+          ],
+          "known_weaknesses": [
+            "Coppia inferiore ai competitor diretti",
+            "Batterie si scaricano in standby",
+            "Prezzo non giustificato dalle prestazioni",
+            "LED si spegne troppo presto"
+          ],
+          "target_users": ["Carpentieri", "Falegnami", "Lavori di precisione"],
+          "not_for": ["Foratura cemento pesante", "Chi cerca coppia massima"],
+          "last_verified": "2026-01-15",
+          "sources": ["protoolreviews.com", "toolguyd.com", "reddit.com/r/Dewalt"]
+        },
+        {
+          "brand": "Bosch",
+          "model": "GSB 18V-110 C",
+          "sku": "06019G030A",
+          "price_street": "€269-309",
+          "price_amazon": "€279",
+          "price_leroy_merlin": "€299",
+          "weight_kg": 2.1,
+          "torque_nm": 110,
+          "rpm_max": 2100,
+          "bpm_max": 31500,
+          "battery_platform": "ProCORE 18V",
+          "brushless": true,
+          "known_strengths": [
+            "Connettività Bluetooth",
+            "App per configurazione",
+            "Qualità costruttiva tedesca",
+            "Silenziosità"
+          ],
+          "known_weaknesses": [
+            "Ecosistema batterie limitato",
+            "Prezzo elevato per le prestazioni",
+            "App buggy",
+            "Meno potente dei competitor"
+          ],
+          "target_users": ["Professionisti tech-savvy", "Lavori di precisione"],
+          "not_for": ["Chi non usa app", "Lavori pesanti", "Budget limitato"],
+          "last_verified": "2026-01-15",
+          "sources": ["protoolreviews.com", "toolguyd.com"]
+        }
+      ],
+      "comparison_matrix": {
+        "best_power": "Milwaukee M18 FPD3",
+        "best_value": "Makita DHP486Z",
+        "best_ergonomics": "DeWalt DCD996N",
+        "best_tech": "Bosch GSB 18V-110 C",
+        "best_for_electricians": "Makita DHP486Z",
+        "best_for_masons": "Milwaukee M18 FPD3"
+      }
+    },
+    "avvitatori_a_impulsi": {
+      "categoryName": "Avvitatori a Impulsi",
+      "categorySlug": "avvitatori-impulsi",
+      "benchmarks": {
+        "entry_level_price": "€150-220",
+        "professional_price": "€280-450",
+        "weight_range_kg": "1.2-1.8",
+        "torque_range_nm": "180-300",
+        "rpm_range": "0-3000",
+        "ipm_range": "0-4000"
+      },
+      "reference_products": [
+        {
+          "brand": "Milwaukee",
+          "model": "M18 FMTIW2F12-0X",
+          "sku": "4933478450",
+          "price_street": "€359-399",
+          "price_amazon": "€379",
+          "price_leroy_merlin": "€399",
+          "weight_kg": 1.5,
+          "torque_nm": 339,
+          "rpm_max": 2400,
+          "ipm_max": 3200,
+          "battery_platform": "M18",
+          "brushless": true,
+          "known_strengths": [
+            "Coppia mostruosa (339 Nm)",
+            "Compatto per la potenza",
+            "4 modalità di velocità",
+            "Bolt Removal Mode"
+          ],
+          "known_weaknesses": [
+            "Prezzo elevato",
+            "Rumoroso",
+            "Consuma batteria velocemente",
+            "Overkill per lavori leggeri"
+          ],
+          "target_users": ["Meccanici", "Gommisti", "Carrozzieri"],
+          "not_for": ["Assemblaggio delicato", "Lavori domestici"],
+          "last_verified": "2026-01-15",
+          "sources": ["protoolreviews.com", "reddit.com/r/MilwaukeeTool"]
+        },
+        {
+          "brand": "Makita",
+          "model": "DTW300Z",
+          "sku": "DTW300Z",
+          "price_street": "€199-249",
+          "price_amazon": "€219",
+          "price_leroy_merlin": "€239",
+          "weight_kg": 1.6,
+          "torque_nm": 330,
+          "rpm_max": 2200,
+          "ipm_max": 3800,
+          "battery_platform": "LXT 18V",
+          "brushless": true,
+          "known_strengths": [
+            "Prezzo competitivo",
+            "Silenzioso per la categoria",
+            "Buon bilanciamento",
+            "Compatibilità LXT"
+          ],
+          "known_weaknesses": [
+            "Meno modalità del Milwaukee",
+            "Plastica esterna fragile",
+            "LED posizionato male"
+          ],
+          "target_users": ["Meccanici", "Impiantisti", "Manutentori"],
+          "not_for": ["Bulloni arrugginiti estremi"],
+          "last_verified": "2026-01-15",
+          "sources": ["protoolreviews.com", "reddit.com/r/Makita"]
+        },
+        {
+          "brand": "DeWalt",
+          "model": "DCF899N-XJ",
+          "sku": "DCF899N",
+          "price_street": "€289-329",
+          "price_amazon": "€299",
+          "price_leroy_merlin": "€319",
+          "weight_kg": 1.9,
+          "torque_nm": 950,
+          "rpm_max": 1900,
+          "ipm_max": 2400,
+          "battery_platform": "XR 18V",
+          "brushless": true,
+          "known_strengths": [
+            "Coppia massima assoluta (950 Nm)",
+            "Costruzione robustissima",
+            "3 velocità"
+          ],
+          "known_weaknesses": [
+            "Pesante",
+            "Ingombrante",
+            "Rumoroso",
+            "Difficile da usare in spazi stretti"
+          ],
+          "target_users": ["Gommisti professionali", "Meccanici pesanti"],
+          "not_for": ["Spazi ristretti", "Lavori di precisione"],
+          "last_verified": "2026-01-15",
+          "sources": ["protoolreviews.com", "reddit.com/r/Dewalt"]
+        }
+      ],
+      "comparison_matrix": {
+        "best_power": "DeWalt DCF899N",
+        "best_value": "Makita DTW300Z",
+        "best_compact": "Milwaukee M18 FMTIW2F12",
+        "best_for_mechanics": "Milwaukee M18 FMTIW2F12",
+        "best_for_tire_shops": "DeWalt DCF899N"
+      }
+    },
+    "smerigliatrici_angolari": {
+      "categoryName": "Smerigliatrici Angolari",
+      "categorySlug": "smerigliatrici",
+      "benchmarks": {
+        "entry_level_price": "€100-160",
+        "professional_price": "€200-350",
+        "weight_range_kg": "1.8-2.8",
+        "disc_diameter_mm": "115-125",
+        "rpm_range": "8000-11000"
+      },
+      "reference_products": [
+        {
+          "brand": "Milwaukee",
+          "model": "M18 FSAG125X-0X",
+          "sku": "4933478428",
+          "price_street": "€229-269",
+          "price_amazon": "€249",
+          "price_leroy_merlin": "€269",
+          "weight_kg": 2.3,
+          "disc_diameter_mm": 125,
+          "rpm_max": 8500,
+          "battery_platform": "M18",
+          "brushless": true,
+          "known_strengths": [
+            "Potenza equivalente a 1000W cablata",
+            "Freno disco rapido",
+            "Protezione anti-kickback",
+            "FIXTEC per cambio disco rapido"
+          ],
+          "known_weaknesses": [
+            "Pesante",
+            "Consuma batteria rapidamente",
+            "Costosa",
+            "Rumorosa"
+          ],
+          "target_users": ["Fabbri", "Saldatori", "Carpentieri metallici"],
+          "not_for": ["Lavori leggeri", "Uso occasionale"],
+          "last_verified": "2026-01-15",
+          "sources": ["protoolreviews.com", "reddit.com/r/MilwaukeeTool"]
+        },
+        {
+          "brand": "Makita",
+          "model": "DGA504Z",
+          "sku": "DGA504Z",
+          "price_street": "€149-189",
+          "price_amazon": "€169",
+          "price_leroy_merlin": "€179",
+          "weight_kg": 2.5,
+          "disc_diameter_mm": 125,
+          "rpm_max": 8500,
+          "battery_platform": "LXT 18V",
+          "brushless": true,
+          "known_strengths": [
+            "Prezzo eccellente",
+            "Affidabile",
+            "Freno elettronico",
+            "Soft start"
+          ],
+          "known_weaknesses": [
+            "Meno potente del Milwaukee",
+            "Interruttore scomodo",
+            "Protezione disco difficile da regolare"
+          ],
+          "target_users": ["Artigiani polivalenti", "Installatori"],
+          "not_for": ["Taglio metallo pesante continuo"],
+          "last_verified": "2026-01-15",
+          "sources": ["protoolreviews.com", "reddit.com/r/Makita"]
+        },
+        {
+          "brand": "DeWalt",
+          "model": "DCG405N-XJ",
+          "sku": "DCG405N",
+          "price_street": "€179-219",
+          "price_amazon": "€199",
+          "price_leroy_merlin": "€209",
+          "weight_kg": 2.2,
+          "disc_diameter_mm": 125,
+          "rpm_max": 9000,
+          "battery_platform": "XR 18V",
+          "brushless": true,
+          "known_strengths": [
+            "RPM più alti della categoria",
+            "Leggera per la potenza",
+            "Mesh cover anti-polvere",
+            "E-Clutch"
+          ],
+          "known_weaknesses": [
+            "Interruttore a paddle scomodo",
+            "Freno disco lento",
+            "Protezione disco economica"
+          ],
+          "target_users": ["Carpentieri", "Lavori di finitura"],
+          "not_for": ["Taglio pesante continuo"],
+          "last_verified": "2026-01-15",
+          "sources": ["protoolreviews.com", "reddit.com/r/Dewalt"]
+        }
+      ],
+      "comparison_matrix": {
+        "best_power": "Milwaukee M18 FSAG125X",
+        "best_value": "Makita DGA504Z",
+        "best_rpm": "DeWalt DCG405N",
+        "best_for_metalwork": "Milwaukee M18 FSAG125X",
+        "best_for_general": "Makita DGA504Z"
+      }
+    },
+    "tassellatori": {
+      "categoryName": "Tassellatori SDS-Plus",
+      "categorySlug": "tassellatori",
+      "benchmarks": {
+        "entry_level_price": "€180-250",
+        "professional_price": "€350-550",
+        "weight_range_kg": "2.5-4.0",
+        "joule_range": "1.5-3.5",
+        "rpm_range": "0-1200",
+        "bpm_range": "0-5000"
+      },
+      "reference_products": [
+        {
+          "brand": "Milwaukee",
+          "model": "M18 CHX-0X",
+          "sku": "4933451430",
+          "price_street": "€389-449",
+          "price_amazon": "€419",
+          "price_leroy_merlin": "€449",
+          "weight_kg": 3.2,
+          "joule": 2.5,
+          "rpm_max": 1100,
+          "bpm_max": 4800,
+          "battery_platform": "M18",
+          "brushless": true,
+          "known_strengths": [
+            "Potenza di foratura eccezionale",
+            "FIXTEC per cambio rapido",
+            "Anti-vibrazione avanzato",
+            "Modalità solo scalpello"
+          ],
+          "known_weaknesses": [
+            "Pesante",
+            "Costoso",
+            "Batteria si scarica in fretta",
+            "Rumoroso"
+          ],
+          "target_users": ["Muratori", "Impiantisti", "Demolitori leggeri"],
+          "not_for": ["Foratura legno/metallo", "Lavori leggeri"],
+          "last_verified": "2026-01-15",
+          "sources": ["protoolreviews.com", "reddit.com/r/MilwaukeeTool"]
+        },
+        {
+          "brand": "Makita",
+          "model": "DHR243Z",
+          "sku": "DHR243Z",
+          "price_street": "€249-299",
+          "price_amazon": "€269",
+          "price_leroy_merlin": "€289",
+          "weight_kg": 3.0,
+          "joule": 2.0,
+          "rpm_max": 950,
+          "bpm_max": 4700,
+          "battery_platform": "LXT 18V",
+          "brushless": true,
+          "known_strengths": [
+            "Rapporto qualità/prezzo",
+            "Leggero per la categoria",
+            "AVT anti-vibrazione",
+            "Mandrino intercambiabile"
+          ],
+          "known_weaknesses": [
+            "Meno potente del Milwaukee",
+            "Scalpellatura debole",
+            "LED poco luminoso"
+          ],
+          "target_users": ["Elettricisti", "Idraulici", "Installatori"],
+          "not_for": ["Demolizione pesante", "Cemento armato"],
+          "last_verified": "2026-01-15",
+          "sources": ["protoolreviews.com", "reddit.com/r/Makita"]
+        },
+        {
+          "brand": "Bosch",
+          "model": "GBH 18V-26",
+          "sku": "0611909000",
+          "price_street": "€329-379",
+          "price_amazon": "€349",
+          "price_leroy_merlin": "€369",
+          "weight_kg": 3.0,
+          "joule": 2.6,
+          "rpm_max": 890,
+          "bpm_max": 4350,
+          "battery_platform": "ProCORE 18V",
+          "brushless": true,
+          "known_strengths": [
+            "Energia di impatto elevata",
+            "Vibration Control",
+            "KickBack Control",
+            "Qualità costruttiva"
+          ],
+          "known_weaknesses": [
+            "Ecosistema batterie limitato",
+            "Prezzo elevato",
+            "RPM bassi"
+          ],
+          "target_users": ["Muratori", "Impiantisti pesanti"],
+          "not_for": ["Chi ha già altro ecosistema batterie"],
+          "last_verified": "2026-01-15",
+          "sources": ["protoolreviews.com", "toolguyd.com"]
+        }
+      ],
+      "comparison_matrix": {
+        "best_power": "Milwaukee M18 CHX",
+        "best_value": "Makita DHR243Z",
+        "best_vibration_control": "Bosch GBH 18V-26",
+        "best_for_masons": "Milwaukee M18 CHX",
+        "best_for_electricians": "Makita DHR243Z"
+      }
+    }
+  },
+  "brand_profiles": {
+    "Milwaukee": {
+      "country": "USA",
+      "parent_company": "Techtronic Industries (TTI)",
+      "positioning": "Premium professionale",
+      "tagline": "Nothing but HEAVY DUTY",
+      "price_tier": "Alto (+15-25% vs media)",
+      "strengths": ["Potenza", "Durabilità", "Ecosistema M18/M12", "Innovazione"],
+      "weaknesses": ["Prezzo", "Peso", "Aggressività commerciale"],
+      "target_market": "Professionisti che non badano a spese",
+      "battery_platforms": ["M12", "M18", "MX FUEL"],
+      "warranty_years": 5,
+      "service_network_italy": "Buona",
+      "forum_sentiment": "Molto positivo, quasi cultuale",
+      "taya_notes": "I clienti Milwaukee sono fedeli. Enfatizzare potenza e durabilità. Non sminuire mai il prezzo - giustificarlo."
+    },
+    "Makita": {
+      "country": "Giappone",
+      "parent_company": "Makita Corporation",
+      "positioning": "Professionale affidabile",
+      "tagline": "Rule the Outdoors",
+      "price_tier": "Medio-alto",
+      "strengths": ["Affidabilità", "Rapporto Q/P", "Ecosistema LXT vastissimo", "Silenziosità"],
+      "weaknesses": ["Design conservativo", "Innovazione lenta", "Assistenza Italia"],
+      "target_market": "Professionisti pragmatici",
+      "battery_platforms": ["LXT 18V", "CXT 12V", "XGT 40V"],
+      "warranty_years": 3,
+      "service_network_italy": "Media",
+      "forum_sentiment": "Positivo, rispettato",
+      "taya_notes": "Makita = scelta razionale. Enfatizzare affidabilità e valore. Target: chi vuole lavorare senza pensieri."
+    },
+    "DeWalt": {
+      "country": "USA",
+      "parent_company": "Stanley Black & Decker",
+      "positioning": "Professionale mainstream",
+      "tagline": "Guaranteed Tough",
+      "price_tier": "Medio-alto",
+      "strengths": ["Ergonomia", "Disponibilità", "Rete assistenza", "Marketing"],
+      "weaknesses": ["Prestazioni non al top", "Batterie problematiche", "Qualità variabile"],
+      "target_market": "Professionisti generalisti",
+      "battery_platforms": ["XR 18V", "FlexVolt 54V"],
+      "warranty_years": 3,
+      "service_network_italy": "Eccellente",
+      "forum_sentiment": "Misto - molti fan ma anche critiche",
+      "taya_notes": "DeWalt divide le opinioni. Essere onesti sui limiti. Target: chi cerca disponibilità e assistenza."
+    },
+    "Bosch": {
+      "country": "Germania",
+      "parent_company": "Robert Bosch GmbH",
+      "positioning": "Professionale tecnologico",
+      "tagline": "Invented for Life",
+      "price_tier": "Alto",
+      "strengths": ["Qualità costruttiva", "Tecnologia", "Sicurezza", "Precisione"],
+      "weaknesses": ["Ecosistema frammentato", "Prezzo", "Meno potenza dei competitor"],
+      "target_market": "Professionisti tech-oriented",
+      "battery_platforms": ["ProCORE 18V", "12V"],
+      "warranty_years": 3,
+      "service_network_italy": "Buona",
+      "forum_sentiment": "Rispettato ma meno entusiasmo",
+      "taya_notes": "Bosch = qualità tedesca. Target: chi apprezza tecnologia e precisione. Non competere su potenza bruta."
+    },
+    "Parkside": {
+      "country": "Germania (Lidl)",
+      "parent_company": "Lidl (Grizzly Tools)",
+      "positioning": "Entry-level hobbistico",
+      "tagline": "Qualità a prezzo Lidl",
+      "price_tier": "Basso",
+      "strengths": ["Prezzo imbattibile", "Garanzia 3 anni", "Disponibilità Lidl"],
+      "weaknesses": ["Non professionale", "Durabilità limitata", "Ricambi difficili", "Batterie non intercambiabili"],
+      "target_market": "Hobbisti, DIY occasionale",
+      "battery_platforms": ["X20V Team"],
+      "warranty_years": 3,
+      "service_network_italy": "Solo Lidl",
+      "forum_sentiment": "Sorprendentemente positivo per il prezzo",
+      "taya_notes": "MAI confrontare Parkside con professionali. È un'altra categoria. Usare solo come riferimento 'entry-level' per contestualizzare i prezzi pro."
+    }
+  },
+  "price_comparison_sources": {
+    "amazon_it": {
+      "name": "Amazon Italia",
+      "url_pattern": "https://www.amazon.it/s?k={query}",
+      "reliability": "Alta",
+      "update_frequency": "Real-time"
+    },
+    "leroy_merlin": {
+      "name": "Leroy Merlin",
+      "url_pattern": "https://www.leroymerlin.it/search?query={query}",
+      "reliability": "Alta",
+      "update_frequency": "Settimanale"
+    },
+    "bricoman": {
+      "name": "Bricoman",
+      "url_pattern": "https://www.bricoman.it/search/?q={query}",
+      "reliability": "Media",
+      "update_frequency": "Settimanale"
+    },
+    "ferramenta_online": {
+      "name": "Ferramenta Online",
+      "url_pattern": "https://www.ferramentaonline.com/search?q={query}",
+      "reliability": "Media",
+      "update_frequency": "Variabile"
+    }
+  }
+}
