@@ -10,10 +10,16 @@
  *   - Only the *dynamic* state (RAG-discovered products, relations, provenance log)
  *     is stored here, so cold starts can restore it in a single hydration call.
  *
- * Redis schema (all keys are permanent — no TTL):
+ * Redis schema (30-day sliding TTL — reset on every flushKG call):
  *   kg:v1:nodes       → Hash   { nodeId: JSON<KGNode> }
- *   kg:v1:edges       → List   [ JSON<KGEdge>, ... ]
+ *   kg:v1:edges       → Hash   { "from→type→to": JSON<KGEdge> }
  *   kg:v1:provenance  → ZSet   { score: timestamp_ms, member: JSON<ProvenanceEntry> }
+ *   kg:v1:base        → Hash   { "type:id": JSON<{name, properties}> }
+ *
+ * TTL is a sliding window: every enrichment run that calls flushKG() resets the
+ * 30-day clock for all four keys via EXPIRE.  A KG that sees no traffic for 30
+ * days is considered stale and allowed to expire; it is rebuilt on the next cold
+ * start from the static kg-base.json plus the first enrichment run.
  *
  * Falls back to a silent no-op when Redis env vars are absent (dev / test).
  *
@@ -121,6 +127,9 @@ const KEY_PROVENANCE = 'kg:v1:provenance';
 
 /** Maximum number of provenance entries kept in the ZSet (FIFO trim). */
 const MAX_PROVENANCE_ENTRIES = 2000;
+
+/** 30-day sliding TTL (seconds).  Reset on every flushKG() via EXPIRE. */
+const KG_TTL_SECONDS = 30 * 24 * 60 * 60; // 2 592 000 s
 
 // =============================================================================
 // KG REDIS STORE
@@ -246,12 +255,6 @@ class KGRedisStore {
 
     try {
       const { nodes, edges, provenanceLog } = kg.getDynamicState();
-
-      if (nodes.length === 0 && edges.length === 0) {
-        log.info('[KGStore] flushKG: no dynamic state to persist');
-        return;
-      }
-
       const commands: (string | number)[][] = [];
 
       // --- Nodes: HSET kg:v1:nodes field1 val1 field2 val2 ... ---
@@ -288,11 +291,23 @@ class KGRedisStore {
         commands.push(['ZREMRANGEBYRANK', KEY_PROVENANCE, 0, -(MAX_PROVENANCE_ENTRIES + 1)]);
       }
 
+      // --- Sliding 30-day TTL — always refresh on every flush ---
+      // EXPIRE on a non-existent key is a safe no-op, so these run even when there
+      // is no new dynamic state to write (no-traffic KGs will eventually expire).
+      commands.push(['EXPIRE', KEY_NODES,      KG_TTL_SECONDS]);
+      commands.push(['EXPIRE', KEY_EDGES,      KG_TTL_SECONDS]);
+      commands.push(['EXPIRE', KEY_PROVENANCE, KG_TTL_SECONDS]);
+      commands.push(['EXPIRE', KEY_BASE,       KG_TTL_SECONDS]);
+
       await redisPipeline(this.baseUrl, this.token, commands);
 
-      log.info(
-        `[KGStore] Flushed — nodes: ${nodes.length}, edges: ${edges.length}, prov: ${provenanceLog.length}`
-      );
+      if (nodes.length > 0 || edges.length > 0) {
+        log.info(
+          `[KGStore] Flushed — nodes: ${nodes.length}, edges: ${edges.length}, prov: ${provenanceLog.length} (TTL refreshed: 30 days)`
+        );
+      } else {
+        log.info('[KGStore] flushKG: no new dynamic state; TTL refreshed for all KG keys');
+      }
     } catch (err) {
       log.error('[KGStore] flushKG failed:', err);
       // Non-fatal — enrichment result is already written to Shopify
@@ -372,6 +387,12 @@ class KGRedisStore {
         }
         commands.push(zaddArgs);
       }
+
+      // Refresh sliding TTL — rollback is a write operation so the 30-day clock resets.
+      commands.push(['EXPIRE', KEY_NODES,      KG_TTL_SECONDS]);
+      commands.push(['EXPIRE', KEY_EDGES,      KG_TTL_SECONDS]);
+      commands.push(['EXPIRE', KEY_PROVENANCE, KG_TTL_SECONDS]);
+      commands.push(['EXPIRE', KEY_BASE,       KG_TTL_SECONDS]);
 
       await redisPipeline(this.baseUrl, this.token, commands);
 
@@ -473,8 +494,11 @@ class KGRedisStore {
     }
     const field = `${type}:${id}`;
     const value = JSON.stringify({ name, properties });
-    await redisCmd(this.baseUrl, this.token, ['HSET', KEY_BASE, field, value]);
-    log.info(`[KGStore] Base override saved: ${field}`);
+    await redisPipeline(this.baseUrl, this.token, [
+      ['HSET', KEY_BASE, field, value],
+      ['EXPIRE', KEY_BASE, KG_TTL_SECONDS],
+    ]);
+    log.info(`[KGStore] Base override saved: ${field} (TTL refreshed: 30 days)`);
   }
 
   /**
@@ -484,8 +508,11 @@ class KGRedisStore {
   async deleteBaseEntry(type: string, id: string): Promise<void> {
     if (!this.enabled) return;
     const field = `${type}:${id}`;
-    await redisCmd(this.baseUrl, this.token, ['HDEL', KEY_BASE, field]);
-    log.info(`[KGStore] Base override deleted: ${field}`);
+    await redisPipeline(this.baseUrl, this.token, [
+      ['HDEL', KEY_BASE, field],
+      ['EXPIRE', KEY_BASE, KG_TTL_SECONDS],
+    ]);
+    log.info(`[KGStore] Base override deleted: ${field} (TTL refreshed: 30 days)`);
   }
 
   /**
