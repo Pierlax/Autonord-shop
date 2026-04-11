@@ -8,6 +8,11 @@ import { AddToCartButton, StickyMobileCTA } from '@/components/product/add-to-ca
 import { ProductFAQ } from '@/components/product/product-faq';
 import { ProductSpecsTable } from '@/components/product/product-specs-table';
 import { ProductProsCons } from '@/components/product/product-pros-cons';
+import { ProductExpertOpinion } from '@/components/product/product-expert-opinion';
+import { ProductSuitability } from '@/components/product/product-suitability';
+import { ProductTrustBadge } from '@/components/product/product-trust-badge';
+import { ProductAccessories } from '@/components/product/product-accessories';
+import { ProductSources } from '@/components/product/product-sources';
 import { VideoGallery } from '@/components/product/video-gallery';
 import { CustomerQuestion } from '@/components/product/customer-question';
 import { RelatedArticles } from '@/components/product/related-articles';
@@ -76,7 +81,29 @@ export default async function ProductPage({ params }: Props) {
   const firstVariant = product.variants.edges[0]?.node;
   const barcode = firstVariant?.barcode ?? undefined;
 
-  // Product Schema Markup
+  // Parse specs and FAQs for Schema.org enrichment
+  let specsForSchema: [string, string][] = [];
+  try {
+    if (product.metafields?.specs?.value) {
+      const parsed = JSON.parse(product.metafields.specs.value) as Record<string, string>;
+      specsForSchema = Object.entries(parsed).filter(([, v]) => v && String(v).trim() !== '');
+    }
+  } catch { /* ignore */ }
+
+  let faqsForSchema: { question: string; answer: string }[] = [];
+  try {
+    if (product.metafields?.faqs?.value) {
+      const parsed = JSON.parse(product.metafields.faqs.value);
+      if (Array.isArray(parsed)) {
+        faqsForSchema = parsed.filter(
+          (f: unknown): f is { question: string; answer: string } =>
+            !!f && typeof (f as Record<string, unknown>).question === 'string' && typeof (f as Record<string, unknown>).answer === 'string'
+        );
+      }
+    }
+  } catch { /* ignore */ }
+
+  // Product Schema Markup — enriched with specs and FAQs
   const productSchema: Record<string, unknown> = {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -92,6 +119,14 @@ export default async function ProductPage({ params }: Props) {
     ...(barcode && barcode.length === 8  ? { gtin8:  barcode } : {}),
     ...(firstVariant?.sku               ? { mpn:    firstVariant.sku } : {}),
     ...(product.productType             ? { category: product.productType } : {}),
+    // Specs as structured properties (SEO: rich snippets)
+    ...(specsForSchema.length > 0 ? {
+      additionalProperty: specsForSchema.map(([name, value]) => ({
+        '@type': 'PropertyValue',
+        name,
+        value,
+      })),
+    } : {}),
     offers: {
       '@type': 'Offer',
       url: `${BASE_URL}/products/${params.handle}`,
@@ -106,6 +141,20 @@ export default async function ProductPage({ params }: Props) {
       },
     },
   };
+
+  // FAQ Schema (separate from ProductSpecsTable's inline FAQ schema)
+  const faqSchema = faqsForSchema.length > 0 ? {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faqsForSchema.map(f => ({
+      '@type': 'Question',
+      name: f.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: f.answer,
+      },
+    })),
+  } : null;
 
   // BreadcrumbList Schema
   const breadcrumbSchema = {
@@ -156,6 +205,9 @@ export default async function ProductPage({ params }: Props) {
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(productSchema).replace(/</g, '\\u003c') }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema).replace(/</g, '\\u003c') }} />
+      {faqSchema && (
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema).replace(/</g, '\\u003c') }} />
+      )}
 
       <div className="container px-4 md:px-8 py-6 md:py-10 pb-24 md:pb-10">
         {/* Breadcrumbs */}
@@ -241,6 +293,15 @@ export default async function ProductPage({ params }: Props) {
               </h1>
               
               <StockStatus />
+
+              {/* Trust Badge — provenance & confidence */}
+              <div className="mt-3">
+                <ProductTrustBadge
+                  confidence={product.metafields?.confidence?.value}
+                  sourcesUsedJson={product.metafields?.sourcesUsed?.value}
+                  generatedAt={product.metafields?.generatedAt?.value}
+                />
+              </div>
             </div>
 
             {/* Price Card - Compact */}
@@ -323,16 +384,32 @@ export default async function ProductPage({ params }: Props) {
               </div>
             )}
 
-            {/* Specifiche Tecniche (da metafield custom.specs) */}
+            {/* Expert Opinion — parere del tecnico */}
+            <ProductExpertOpinion
+              expertOpinion={product.metafields?.expertOpinion?.value}
+            />
+
+            {/* Suitability — per chi è / non è adatto */}
+            <ProductSuitability
+              suitableForJson={product.metafields?.suitableFor?.value}
+              notSuitableForJson={product.metafields?.notSuitableFor?.value}
+            />
+
+            {/* Specifiche Tecniche (da metafield taya.specs) */}
             <ProductSpecsTable
               specsJson={product.metafields?.specs?.value}
               productTitle={productTitleFormatted}
             />
 
-            {/* Pro e Contro (da metafield custom.pros / custom.cons) */}
+            {/* Pro e Contro (da metafield taya.pros / taya.cons) */}
             <ProductProsCons
               prosJson={product.metafields?.pros?.value}
               consJson={product.metafields?.cons?.value}
+            />
+
+            {/* Accessori consigliati */}
+            <ProductAccessories
+              accessoriesJson={product.metafields?.accessories?.value}
             />
 
             {/* Value Props */}
@@ -380,8 +457,14 @@ export default async function ProductPage({ params }: Props) {
               faqsJson={product.metafields?.faqs?.value}
             />
             
+            {/* Sources & Transparency — collapsible footer */}
+            <ProductSources
+              sourcesUsedJson={product.metafields?.sourcesUsed?.value}
+              trustBadge={product.metafields?.trustBadge?.value}
+            />
+
             {/* Customer Question */}
-            <CustomerQuestion 
+            <CustomerQuestion
               productTitle={productTitleFormatted}
               productHandle={params.handle}
             />

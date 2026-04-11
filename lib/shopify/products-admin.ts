@@ -143,11 +143,25 @@ function buildMetafields(
   const toMetafield = (key: string) => map[key] ?? null;
 
   return {
+    // Core content (existing)
     pros: toMetafield('pros'),
     cons: toMetafield('cons'),
     faqs: toMetafield('faqs'),
     aiDescription: toMetafield('ai_description'),
     specs: toMetafield('specs'),
+    // Expert analysis
+    expertOpinion: toMetafield('expert_opinion'),
+    suitableFor: toMetafield('suitable_for'),
+    notSuitableFor: toMetafield('not_suitable_for'),
+    // Trust & provenance
+    confidence: toMetafield('confidence'),
+    generatedAt: toMetafield('generated_at'),
+    sourcesUsed: toMetafield('sources_used'),
+    trustBadge: toMetafield('trust_badge'),
+    // Cross-sell & media
+    accessories: toMetafield('accessories'),
+    imageSource: toMetafield('image_source'),
+    imageConfidence: toMetafield('image_confidence'),
   };
 }
 
@@ -264,7 +278,7 @@ export async function getProductByHandleAdmin(handle: string): Promise<Product |
                 }
               }
             }
-            metafields(first: 10, namespace: "custom") {
+            metafields(first: 20, namespace: "taya") {
               edges {
                 node {
                   key

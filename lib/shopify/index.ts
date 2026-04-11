@@ -127,26 +127,26 @@ const productFragment = `
     }
     tags
     updatedAt
-    # AI-Enriched Metafields (custom namespace)
-    pros: metafield(namespace: "custom", key: "pros") {
+    # AI-Enriched Metafields (taya namespace — written by V5.1 pipeline)
+    pros: metafield(namespace: "taya", key: "pros") {
       key
       namespace
       value
       type
     }
-    cons: metafield(namespace: "custom", key: "cons") {
+    cons: metafield(namespace: "taya", key: "cons") {
       key
       namespace
       value
       type
     }
-    faqs: metafield(namespace: "custom", key: "faqs") {
+    faqs: metafield(namespace: "taya", key: "faqs") {
       key
       namespace
       value
       type
     }
-    aiDescription: metafield(namespace: "custom", key: "ai_description") {
+    aiDescription: metafield(namespace: "taya", key: "ai_description") {
       key
       namespace
       value

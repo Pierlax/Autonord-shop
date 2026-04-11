@@ -92,13 +92,23 @@ export type Product = {
   };
   tags: string[];
   updatedAt: string;
-  // AI-Enriched metafields (optional, may not exist for all products)
+  // AI-Enriched metafields from TAYA pipeline (namespace: "taya")
   metafields?: {
     pros: Metafield;
     cons: Metafield;
     faqs: Metafield;
     aiDescription: Metafield;
     specs: Metafield;
+    expertOpinion: Metafield;
+    confidence: Metafield;
+    generatedAt: Metafield;
+    accessories: Metafield;
+    suitableFor: Metafield;
+    notSuitableFor: Metafield;
+    sourcesUsed: Metafield;
+    imageSource: Metafield;
+    imageConfidence: Metafield;
+    trustBadge: Metafield;
   };
 };
 
