@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { loggers } from '@/lib/logger';
 import { env, optionalEnv } from '@/lib/env';
 import { runFullMaintenance, getMemoryHealthReport } from '@/lib/agent-memory';
+import { recordPipelineRun } from '@/lib/metrics-store';
 
 const log = loggers.memory;
 
@@ -45,6 +46,23 @@ export async function GET(request: NextRequest) {
     const healthAfter = await getMemoryHealthReport();
     log.info(`[MemoryMaintenance] Health after: ${healthAfter.stats.totalEntries} entries, status ${healthAfter.status}`);
     log.info(`[MemoryMaintenance] Done in ${Date.now() - startTime}ms`);
+
+    // D4: Record maintenance run in metrics ring buffer for visibility
+    try {
+      const actionsCount = Array.isArray(report?.actions) ? report.actions.length : 0;
+      recordPipelineRun({
+        traceId: `maintenance-${new Date().toISOString().slice(0, 10)}`,
+        productId: 'memory-maintenance',
+        timestamp: new Date().toISOString(),
+        totalMs: Date.now() - startTime,
+        stepMs: { maintenance: Date.now() - startTime },
+        qualityScore: null,
+        aiCalls: 0,
+        cacheHits: 0,
+        errors: [],
+        tayaVerdict: `${actionsCount} actions`,
+      });
+    } catch { /* non-fatal */ }
 
     return NextResponse.json({
       success: true,

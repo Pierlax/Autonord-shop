@@ -8,6 +8,7 @@
 
 import { loggers } from '@/lib/logger';
 import { RSS_SOURCES, RssSource } from './sources';
+import { getRedditAccessToken, isRedditOAuthConfigured } from './reddit-auth';
 
 const log = loggers.blog;
 
@@ -141,27 +142,44 @@ const BRAND_KEYWORDS = [
 // =============================================================================
 
 /**
- * D25 fix: Retry with exponential backoff for Reddit API.
+ * C4 fix: Reddit fetcher with OAuth2 support.
  *
- * Reddit rate-limits unauthenticated requests to 60/min per IP.
- * On Vercel serverless with shared IPs, this is hit easily.
- * Retries 429/5xx responses with 2s/4s/8s backoff (3 attempts total).
+ * When REDDIT_CLIENT_ID + REDDIT_CLIENT_SECRET are set, uses OAuth2
+ * application-only auth via `oauth.reddit.com`:
+ *   - 100 req/min per **token** (not per IP)
+ *   - Dedicated quota — unaffected by Vercel shared-IP contention
+ *
+ * Falls back to the anonymous `reddit.com` endpoint (60 req/min per IP)
+ * when OAuth credentials are absent.
+ *
+ * D25 retry with exponential backoff is preserved for both paths.
  */
 async function fetchRedditPosts(subreddit: string, limit = 50): Promise<RedditPost[]> {
   const MAX_RETRIES = 3;
   const BASE_DELAY_MS = 2000;
 
+  // Resolve auth once per call — token is cached internally by reddit-auth.ts
+  const token = await getRedditAccessToken();
+  const useOAuth = token !== null;
+  const baseUrl = useOAuth ? 'https://oauth.reddit.com' : 'https://www.reddit.com';
+  const headers: Record<string, string> = {
+    'User-Agent': 'AutonordBlogResearcher/1.0 (by /u/autonord_bot)',
+  };
+  if (useOAuth) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       const response = await fetch(
-        `https://www.reddit.com/r/${subreddit}/hot.json?limit=${limit}`,
-        { headers: { 'User-Agent': 'AutonordBlogResearcher/1.0 (professional tool research)' }, signal: AbortSignal.timeout(10_000) }
+        `${baseUrl}/r/${subreddit}/hot.json?limit=${limit}&raw_json=1`,
+        { headers, signal: AbortSignal.timeout(10_000) }
       );
 
       // D25: Retry on rate limit (429) or server errors (5xx)
       if (response.status === 429 || response.status >= 500) {
         const delay = BASE_DELAY_MS * Math.pow(2, attempt);
-        log.warn(`[Search] Reddit r/${subreddit} returned ${response.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+        log.warn(`[Search] Reddit r/${subreddit} returned ${response.status} (${useOAuth ? 'OAuth' : 'anon'}), retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
@@ -327,6 +345,12 @@ export async function searchForTopics(): Promise<SearchResult[]> {
   const allResults: SearchResult[] = [];
 
   // ── 1. Reddit subreddits ──────────────────────────────────────────────────
+  // C4: OAuth gets 100 req/min per token (vs 60/min per IP for anon).
+  // With 13 subreddits we can afford shorter pacing on the OAuth path.
+  const useOAuth = isRedditOAuthConfigured();
+  const redditPacingMs = useOAuth ? 400 : 1000;
+  log.info(`[Search] Reddit mode: ${useOAuth ? 'OAuth (100 req/min per token)' : 'anonymous (60 req/min per IP)'}`);
+
   for (const subreddit of TARGET_SUBREDDITS) {
     log.info(`[Search] Scanning r/${subreddit}...`);
     const posts = await fetchRedditPosts(subreddit, 50);
@@ -347,7 +371,7 @@ export async function searchForTopics(): Promise<SearchResult[]> {
     }
 
     // Polite rate limiting between Reddit requests
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, redditPacingMs));
   }
 
   // ── 2. RSS feeds ──────────────────────────────────────────────────────────

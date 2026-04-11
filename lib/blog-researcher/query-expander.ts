@@ -127,19 +127,10 @@ const EXPANSION_TEMPLATES: Record<QueryType, string[]> = {
 };
 
 // ============================================================================
-// Competitor Mapping
+// Competitor Mapping — C10: derived from KG base data
 // ============================================================================
 
-const BRAND_COMPETITORS: Record<string, string[]> = {
-  'Milwaukee': ['Makita', 'DeWalt', 'Bosch', 'Hilti'],
-  'Makita': ['Milwaukee', 'DeWalt', 'HiKOKI', 'Bosch'],
-  'DeWalt': ['Milwaukee', 'Makita', 'Bosch', 'Stanley'],
-  'Bosch': ['Milwaukee', 'Makita', 'DeWalt', 'Metabo'],
-  'Hilti': ['Milwaukee', 'Makita', 'Bosch', 'Festool'],
-  'Metabo': ['Bosch', 'Milwaukee', 'Makita', 'Festool'],
-  'Festool': ['Makita', 'Bosch', 'Metabo', 'Milwaukee'],
-  'HiKOKI': ['Makita', 'Milwaukee', 'DeWalt', 'Bosch'],
-};
+import { getCompetitors } from '@/lib/shopify/kg-data';
 
 // ============================================================================
 // AI-Powered Query Expansion
@@ -241,7 +232,7 @@ export function expandQueryWithTemplates(
   const product = context.product || baseQuery;
   const brand = context.brand || '';
   const category = context.category || 'utensile';
-  const competitors = brand ? (BRAND_COMPETITORS[brand] || ['concorrente']) : ['concorrente'];
+  const competitors = brand ? (getCompetitors(brand).length > 0 ? getCompetitors(brand) : ['concorrente']) : ['concorrente'];
 
   // Generate variants for each type
   for (const [type, templates] of Object.entries(EXPANSION_TEMPLATES)) {
@@ -425,7 +416,7 @@ function generateShadowQueries(context: {
 }): QueryVariant[] {
   const product = context.product || 'product';
   const brand = context.brand || '';
-  const competitors = brand ? (BRAND_COMPETITORS[brand] || ['competitor']) : ['competitor'];
+  const competitors = brand ? (getCompetitors(brand).length > 0 ? getCompetitors(brand) : ['competitor']) : ['competitor'];
   
   const shadowVariants: QueryVariant[] = [];
   

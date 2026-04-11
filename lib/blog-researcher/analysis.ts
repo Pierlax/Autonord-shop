@@ -10,6 +10,7 @@
 
 import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
+import { parseJsonFromLLM } from '@/lib/shared/parse-llm-json';
 
 const log = loggers.blog;
 import { SearchResult } from './search';
@@ -51,16 +52,16 @@ Analizza questi post da Reddit e forum di professionisti. Devi:
 
 1. **PRICING** - "Quanto costa...?", "Vale la pena...?", "Meglio spendere di più per...?"
    → Altissimo valore SEO, la gente cerca prezzi
-   
+
 2. **PROBLEMS** - "Problemi con...", "Si è rotto dopo...", "Difetti comuni di..."
    → Costruisce fiducia, mostra onestà
-   
+
 3. **COMPARISONS** - "X vs Y", "Meglio X o Y?", "Differenze tra..."
    → Ottimo per chi deve decidere
-   
+
 4. **REVIEWS** - "Opinioni su...", "Dopo 2 anni con...", "Recensione onesta di..."
    → Richiede esperienza diretta
-   
+
 5. **BEST** - "Miglior X per...", "Top 5...", "Quale X per Y?"
    → Alto volume di ricerca
 
@@ -79,6 +80,22 @@ Analizza questi post da Reddit e forum di professionisti. Devi:
 - Problemi tecnici specifici (batterie, surriscaldamento, durata)
 - Dubbi sull'acquisto ("vale la pena?", "è troppo per le mie esigenze?")
 
+## REGOLE DI GROUNDING (C8 — OBBLIGATORIE)
+
+I campi articleAngle, emotionalHook e targetAudience DEVONO essere ancorati ai dati reali.
+NON inventare angoli o emozioni — estrai dai post effettivi.
+
+1. **articleAngle** → DEVE citare un pattern concreto osservato nei post.
+   Formato: "Pattern: [cosa hai osservato] → Angolo: [come lo sfruttiamo]"
+   Esempio: "Pattern: 5 post su 12 lamentano batteria che muore dopo 8 mesi → Angolo: test di durata reale a 6/12/18 mesi con dati concreti"
+
+2. **emotionalHook** → DEVE essere una citazione diretta o parafrasi stretta di un post reale.
+   Indica il numero del post tra parentesi quadre.
+   Esempio: "Ho speso 800€ e dopo 6 mesi è già in assistenza [post #3]"
+
+3. **targetAudience** → DEVE derivare dalle community di provenienza dei post.
+   Cita le community: "Elettricisti (r/electricians: 5 post) e carpentieri (r/Carpentry: 3 post)"
+
 ## OUTPUT
 
 Analizza i post e restituisci JSON con:
@@ -87,6 +104,8 @@ Analizza i post e restituisci JSON con:
 - Il reasoning dettagliato della scelta
 
 ---
+
+{communityDistribution}
 
 POST DA ANALIZZARE:
 
@@ -101,15 +120,15 @@ Rispondi SOLO con JSON valido:
     "painPoint": "Il dolore specifico in una frase",
     "frequency": 8,
     "avgEngagement": 45,
-    "samplePosts": ["Citazione 1 dal forum", "Citazione 2"],
-    "articleAngle": "L'angolo specifico che prenderemo",
-    "targetAudience": "Chi leggerà questo articolo",
+    "samplePosts": ["Citazione ESATTA dal post #N", "Citazione ESATTA dal post #M"],
+    "articleAngle": "Pattern: [osservazione dai post] → Angolo: [come lo sfruttiamo]",
+    "targetAudience": "Profilo derivato dalle community (citare le community e conteggi)",
     "tayaCategory": "problems",
-    "emotionalHook": "L'emozione da toccare nell'intro",
+    "emotionalHook": "Citazione diretta o parafrasi stretta da un post reale [post #N]",
     "searchIntent": "Cosa cerca su Google chi ha questo problema"
   },
   "allTopics": [],
-  "reasoning": "Spiegazione dettagliata del perché questo topic"
+  "reasoning": "Spiegazione dettagliata del perché questo topic — includi i numeri dei post chiave"
 }`;
 
 /**
@@ -118,8 +137,22 @@ Rispondi SOLO con JSON valido:
 export async function analyzeTopics(results: SearchResult[]): Promise<AnalysisResult> {
   log.info(`[Analysis] Analyzing ${results.length} search results with Gemini...`);
 
-  // Prepare posts summary for Gemini - include more context
-  const postsSummary = results.slice(0, 60).map((r, i) => {
+  const top = results.slice(0, 60);
+
+  // C8: Build community distribution summary so targetAudience can be grounded
+  const communityMap = new Map<string, number>();
+  for (const r of top) {
+    const key = r.subreddit ? `r/${r.subreddit}` : (r.feedDomain || r.source);
+    communityMap.set(key, (communityMap.get(key) || 0) + 1);
+  }
+  const communityLines = Array.from(communityMap.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => `${name}: ${count} post`)
+    .join(' | ');
+  const communityDistribution = `## DISTRIBUZIONE COMMUNITY (${top.length} post)\n${communityLines}`;
+
+  // Prepare posts summary for Gemini — include source and index for grounding
+  const postsSummary = top.map((r, i) => {
     const engagement = r.score + (r.comments * 2); // Comments are more valuable
     return `[${i + 1}] r/${r.subreddit || 'web'} | Engagement: ${engagement} (${r.score}↑ ${r.comments}💬)
 "${r.title}"
@@ -127,7 +160,9 @@ ${r.content ? `> ${r.content.slice(0, 400)}${r.content.length > 400 ? '...' : ''
 ---`;
   }).join('\n\n');
 
-  const prompt = ANALYSIS_PROMPT.replace('{posts}', postsSummary);
+  const prompt = ANALYSIS_PROMPT
+    .replace('{communityDistribution}', communityDistribution)
+    .replace('{posts}', postsSummary);
 
   try {
     const result = await generateTextSafe({
@@ -136,19 +171,11 @@ ${r.content ? `> ${r.content.slice(0, 400)}${r.content.length > 400 ? '...' : ''
       maxTokens: 2500,
       temperature: 0.3,
     });
-    const content = result.text;
-    
-    if (!content) {
+    if (!result.text) {
       throw new Error('Empty response from AI');
     }
 
-    // Clean and parse JSON
-    const cleanedContent = content
-      .replace(/```json\n?/g, '')
-      .replace(/```\n?/g, '')
-      .trim();
-
-    const analysis = JSON.parse(cleanedContent) as AnalysisResult;
+    const analysis = parseJsonFromLLM<AnalysisResult>(result.text);
     
     log.info(`[Analysis] Selected topic: ${analysis.selectedTopic.topic}`);
     log.info(`[Analysis] TAYA category: ${analysis.selectedTopic.tayaCategory}`);

@@ -39,6 +39,22 @@ export interface PipelineRunRecord {
   errors: string[];
   /** TAYA Police verdict: APPROVA | REVISIONE_MINORE | REVISIONE_MAGGIORE | RIFIUTA */
   tayaVerdict?: string;
+
+  // C11: Retrieval quality sampling fields
+  /** Evaluator-optimizer quality score (0–1), null if v2 disabled */
+  ragQualityScore?: number | null;
+  /** Corpus coverage score (0–1) */
+  ragCoverageScore?: number | null;
+  /** Evaluator-optimizer passes used (0 = first pass sufficient) */
+  ragOptimizerPasses?: number;
+  /** Verified facts from TwoPhaseQA */
+  qaVerifiedFactCount?: number;
+  /** Product SKU (for drill-down analysis) */
+  sku?: string;
+
+  // D3: Granularity decision visibility
+  /** RAG granularity level chosen (fact/sentence/paragraph/section/document) */
+  ragGranularityLevel?: string;
 }
 
 export interface MetricsSummary {
@@ -60,6 +76,16 @@ export interface MetricsSummary {
   aiCallsPerRun: number;
   /** RAG cache hit rate (hits / total cacheable lookups) */
   cacheHitRate: number;
+
+  // C11: Retrieval quality sampling aggregates
+  /** Average RAG evaluator quality score (null when no v2 runs) */
+  avgRagQualityScore: number | null;
+  /** Average RAG corpus coverage score */
+  avgRagCoverageScore: number | null;
+  /** Average optimizer passes used (lower = better first-pass quality) */
+  avgOptimizerPasses: number | null;
+  /** Average verified fact count from TwoPhaseQA */
+  avgVerifiedFacts: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +162,10 @@ export function getMetricsSummary(windowMinutes = 60): MetricsSummary {
       stepAvgMs: {},
       aiCallsPerRun: 0,
       cacheHitRate: 0,
+      avgRagQualityScore: null,
+      avgRagCoverageScore: null,
+      avgOptimizerPasses: null,
+      avgVerifiedFacts: null,
     };
   }
 
@@ -183,6 +213,27 @@ export function getMetricsSummary(windowMinutes = 60): MetricsSummary {
   const totalLookups = _records.reduce((s, r) => s + r.cacheHits + r.aiCalls, 0);
   const cacheHitRate = totalLookups > 0 ? totalHits / totalLookups : 0;
 
+  // C11: Retrieval quality aggregation
+  const withRagScore = _records.filter(r => r.ragQualityScore != null);
+  const avgRagQualityScore = withRagScore.length > 0
+    ? Math.round(withRagScore.reduce((s, r) => s + (r.ragQualityScore ?? 0), 0) / withRagScore.length * 100) / 100
+    : null;
+
+  const withCoverage = _records.filter(r => r.ragCoverageScore != null);
+  const avgRagCoverageScore = withCoverage.length > 0
+    ? Math.round(withCoverage.reduce((s, r) => s + (r.ragCoverageScore ?? 0), 0) / withCoverage.length * 100) / 100
+    : null;
+
+  const withPasses = _records.filter(r => r.ragOptimizerPasses != null);
+  const avgOptimizerPasses = withPasses.length > 0
+    ? Math.round(withPasses.reduce((s, r) => s + (r.ragOptimizerPasses ?? 0), 0) / withPasses.length * 10) / 10
+    : null;
+
+  const withFacts = _records.filter(r => r.qaVerifiedFactCount != null);
+  const avgVerifiedFacts = withFacts.length > 0
+    ? Math.round(withFacts.reduce((s, r) => s + (r.qaVerifiedFactCount ?? 0), 0) / withFacts.length * 10) / 10
+    : null;
+
   return {
     totalRuns: total,
     recentRuns: recent.length,
@@ -194,6 +245,10 @@ export function getMetricsSummary(windowMinutes = 60): MetricsSummary {
     stepAvgMs,
     aiCallsPerRun: Math.round(aiCallsPerRun * 10) / 10,
     cacheHitRate: Math.round(cacheHitRate * 100) / 100,
+    avgRagQualityScore,
+    avgRagCoverageScore,
+    avgOptimizerPasses,
+    avgVerifiedFacts,
   };
 }
 
@@ -241,6 +296,26 @@ export function exportPrometheusText(): string {
     '# HELP autonord_pipeline_cache_hit_rate RAG cache hit rate',
     '# TYPE autonord_pipeline_cache_hit_rate gauge',
     `autonord_pipeline_cache_hit_rate ${s.cacheHitRate}`,
+
+    '',
+    '# HELP autonord_rag_quality_avg Average RAG evaluator quality score (0-1)',
+    '# TYPE autonord_rag_quality_avg gauge',
+    `autonord_rag_quality_avg ${s.avgRagQualityScore ?? 'NaN'}`,
+
+    '',
+    '# HELP autonord_rag_coverage_avg Average RAG corpus coverage score (0-1)',
+    '# TYPE autonord_rag_coverage_avg gauge',
+    `autonord_rag_coverage_avg ${s.avgRagCoverageScore ?? 'NaN'}`,
+
+    '',
+    '# HELP autonord_rag_optimizer_passes_avg Average evaluator-optimizer passes per run',
+    '# TYPE autonord_rag_optimizer_passes_avg gauge',
+    `autonord_rag_optimizer_passes_avg ${s.avgOptimizerPasses ?? 'NaN'}`,
+
+    '',
+    '# HELP autonord_qa_verified_facts_avg Average verified facts per product',
+    '# TYPE autonord_qa_verified_facts_avg gauge',
+    `autonord_qa_verified_facts_avg ${s.avgVerifiedFacts ?? 'NaN'}`,
   ];
 
   // Per-step latency labels

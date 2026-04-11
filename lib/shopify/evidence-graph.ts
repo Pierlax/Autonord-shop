@@ -400,22 +400,92 @@ function factsConflict(v1: string, v2: string): boolean {
   return v1.toLowerCase().trim() !== v2.toLowerCase().trim();
 }
 
-/** Extract spec: value pairs from text content. */
-function extractFacts(content: string): EvidenceFact[] {
-  const facts: EvidenceFact[] = [];
-  // Pattern: "SpecName: 18 V" or "SpecName : 3000 rpm"
-  const specPattern =
-    /([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s]{1,24})\s*:\s*([\d.,]+\s*(?:V|W|A|kg|g|mm|cm|m|rpm|kW|kVA|bar|l\/min|dB|Nm|Ah)?)/g;
+/**
+ * C6 fix: Multi-pattern fact extraction from text content.
+ *
+ * The previous regex only matched `Key: numericValue unit` with 11 hardcoded
+ * units.  This missed specs with hyphens in claim names, tab/pipe-separated
+ * tables, range values, Italian unit aliases, and many units already present
+ * in the UNIT_FAMILY_MAP.
+ *
+ * Now uses three complementary patterns:
+ *   A — colon-separated specs (expanded claim chars + units)
+ *   B — tab/pipe-separated spec tables
+ *   C — known-unit anchored (specs without explicit separator)
+ *
+ * All patterns share the same comprehensive unit list derived from
+ * UNIT_FAMILY_MAP + Italian aliases.  Results are deduplicated by
+ * normalised claim key.
+ */
 
-  let match: RegExpExecArray | null;
-  while ((match = specPattern.exec(content)) !== null) {
-    const claim = match[1].trim();
-    const value = match[2].trim();
-    // Skip very short or generic claims
-    if (claim.length < 3 || claim.toLowerCase().includes('http')) continue;
-    facts.push({ claim, value, confidence: 0.75, source: content.slice(0, 60) });
-    if (facts.length >= 10) break;
+// Comprehensive unit regex fragment — covers every unit in UNIT_FAMILY_MAP,
+// common aliases (Italian & English), and symbols.
+// Ordered longest-first so `kVA` matches before `kV` before `V`, etc.
+const UNITS = [
+  // multi-char units first (longest match wins)
+  'giri/min', 'colpi/min', 'newton-metro', 'l/min', 'l/h',
+  'min-1', 'mAh',
+  'kVA', 'kW', 'kV',
+  'dBA', 'dB',
+  'Nm', 'Ah', 'Wh',
+  'rpm', 'bpm', 'ipm', 'psi', 'bar',
+  'kg', 'mm', 'cm', 'Hz',
+  '°C',
+  // single-char last
+  'V', 'W', 'A', 'g', 'm', 'l',
+  '%',
+].join('|');
+
+// Claim name: letters (with accents), digits, regular spaces, hyphens, periods,
+// parentheses, slashes, apostrophes.  2–40 chars.
+// Uses literal space (not \s) to avoid matching tabs and newlines.
+const CLAIM = `[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9 ()./'°-]{1,39}`;
+
+// Value: one or two numeric groups (for ranges like 0-3000) + optional unit.
+const VALUE = `[\\d.,]+(?:\\s*[-–/]\\s*[\\d.,]+)?\\s*(?:${UNITS})?`;
+
+function extractFacts(content: string): EvidenceFact[] {
+  const seen = new Map<string, EvidenceFact>();  // normalised claim → fact
+  const sourceSnippet = content.slice(0, 60);
+  const MAX_FACTS = 15;
+
+  function add(claim: string, value: string): void {
+    if (seen.size >= MAX_FACTS) return;
+    claim = claim.trim();
+    value = value.trim();
+    if (claim.length < 3 || claim.toLowerCase().includes('http')) return;
+    // Skip if value is just a bare number with no unit and < 2 digits
+    // (too ambiguous — could be a list index or page number)
+    if (/^\d$/.test(value)) return;
+    const key = claim.toLowerCase().replace(/\s+/g, ' ');
+    if (!seen.has(key)) {
+      seen.set(key, { claim, value, confidence: 0.75, source: sourceSnippet });
+    }
   }
 
-  return facts;
+  // ── Pattern A: colon-separated ──────────────────────────────────────────
+  // "Coppia massima: 135 Nm", "Tensione : 18 V", "RPM max.: 0-3000 rpm"
+  const colonPattern = new RegExp(`(${CLAIM})\\s*:\\s*(${VALUE})`, 'g');
+  let m: RegExpExecArray | null;
+  while ((m = colonPattern.exec(content)) !== null) add(m[1], m[2]);
+
+  // ── Pattern B: tab or pipe separated ────────────────────────────────────
+  // "Tensione\t18 V" or "Tensione | 18 V" — common in HTML-stripped spec tables
+  const tabPipePattern = new RegExp(`(${CLAIM})\\s*[\\t|]\\s*(${VALUE})`, 'g');
+  while ((m = tabPipePattern.exec(content)) !== null) add(m[1], m[2]);
+
+  // ── Pattern C: unit-anchored (no separator) ─────────────────────────────
+  // "Peso 2.1 kg", "Tensione 18V" — requires a recognised unit to avoid
+  // false positives on arbitrary "word number" sequences.
+  const UNITS_REQUIRED = UNITS;  // unit must be present (not optional)
+  const VALUE_WITH_UNIT = `[\\d.,]+(?:\\s*[-–/]\\s*[\\d.,]+)?\\s*(?:${UNITS_REQUIRED})`;
+  const anchoredPattern = new RegExp(
+    `(${CLAIM})\\s+(${VALUE_WITH_UNIT})(?=[\\s,;.)\\n]|$)`, 'g'
+  );
+  while ((m = anchoredPattern.exec(content)) !== null) {
+    // Only add if the match includes a real unit (not just digits)
+    if (/[A-Za-z°%]/.test(m[2])) add(m[1], m[2]);
+  }
+
+  return Array.from(seen.values());
 }

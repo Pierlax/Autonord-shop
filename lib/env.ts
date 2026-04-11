@@ -85,6 +85,10 @@ interface OptionalEnv {
   ADMIN_SECRET?: string;
   /** Secret for Danea sync and publish-all endpoints */
   SYNC_SECRET?: string;
+  /** Reddit OAuth2 client ID (from reddit.com/prefs/apps) */
+  REDDIT_CLIENT_ID?: string;
+  /** Reddit OAuth2 client secret */
+  REDDIT_CLIENT_SECRET?: string;
 }
 
 // =============================================================================

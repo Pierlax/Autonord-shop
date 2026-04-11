@@ -17,8 +17,19 @@
 
 import { optionalEnv } from '@/lib/env';
 import { loggers } from '@/lib/logger';
+import { CircuitBreaker } from '@/lib/circuit-breaker';
 
 const log = loggers.shopify;
+
+// D1 fix: Circuit breakers for search providers.
+// Bing scraping is fragile (HTML layout changes, geo-blocks, rate limits).
+// Without a breaker, a down Bing provider wastes 10s per search call across
+// every product in a batch before falling to mock.  With the breaker, after
+// 3 consecutive failures the circuit opens and we skip straight to mock for
+// 60 seconds, then probe once to see if it's back.
+const bingBreaker = new CircuitBreaker('bing-search', { threshold: 3, resetMs: 60_000 });
+const googleBreaker = new CircuitBreaker('google-search', { threshold: 3, resetMs: 120_000 });
+const ddgBreaker = new CircuitBreaker('ddg-search', { threshold: 3, resetMs: 60_000 });
 
 // =============================================================================
 // TYPES
@@ -34,7 +45,7 @@ export interface SearchResult {
   /** Domain of the result (e.g., 'milwaukeetool.eu') */
   domain: string;
   /** Which search provider returned this result */
-  provider: 'google' | 'bing' | 'mock';
+  provider: 'google' | 'bing' | 'ddg' | 'mock';
 }
 
 export interface SearchOptions {
@@ -46,7 +57,7 @@ export interface SearchOptions {
   region?: string;
 }
 
-type SearchProvider = 'google' | 'bing' | 'mock';
+type SearchProvider = 'google' | 'bing' | 'ddg' | 'mock';
 
 // =============================================================================
 // PROVIDER DETECTION
@@ -129,10 +140,13 @@ export async function performWebSearch(
 
   log.info(`[SearchClient] Provider: ${provider}, Query: "${query.substring(0, 80)}...", Domains: ${domainFilter?.length || 'all'}`);
 
-  // Try Google Custom Search first (if configured)
+  // Try Google Custom Search first (if configured) — D1: circuit-breaker protected
   if (optionalEnv.GOOGLE_SEARCH_API_KEY && optionalEnv.GOOGLE_SEARCH_CX) {
     try {
-      const results = await searchWithGoogle(query, domainFilter, maxResults, language);
+      const results = await googleBreaker.execute(
+        () => searchWithGoogle(query, domainFilter, maxResults, language),
+        async () => [],  // fallback: empty → drops to Bing below
+      );
       if (results.length > 0) {
         log.info(`[SearchClient] Returned ${results.length} results via google`);
         return results;
@@ -142,17 +156,44 @@ export async function performWebSearch(
     }
   }
 
-  // Bing HTML scraping — free, no API key required
+  // Bing HTML scraping — free, no API key required — D1: circuit-breaker protected
   try {
-    const results = await searchWithBing(query, domainFilter, maxResults);
+    const results = await bingBreaker.execute(
+      async () => {
+        const r = await searchWithBing(query, domainFilter, maxResults);
+        if (r.length === 0) {
+          // Treat 0 results as a failure signal for the circuit breaker —
+          // Bing returning nothing usually means HTML layout changed or geo-block
+          throw new Error('Bing returned 0 results');
+        }
+        return r;
+      },
+      async () => [],  // fallback: empty → drops to mock below
+    );
     if (results.length > 0) {
       log.info(`[SearchClient] Returned ${results.length} results via bing`);
       return results;
     }
-    // Bing returned 0 results despite a valid query — HTML layout may have changed
-    log.error(`[SearchClient] Bing returned 0 results for query "${query.substring(0, 80)}" — HTML parser may be broken`);
   } catch (error) {
     log.error('[SearchClient] Bing search failed:', error);
+  }
+
+  // C1 fix: DuckDuckGo Lite as third fallback — simpler HTML, more stable than Bing
+  try {
+    const results = await ddgBreaker.execute(
+      async () => {
+        const r = await searchWithDuckDuckGo(query, domainFilter, maxResults);
+        if (r.length === 0) throw new Error('DDG returned 0 results');
+        return r;
+      },
+      async () => [],
+    );
+    if (results.length > 0) {
+      log.info(`[SearchClient] Returned ${results.length} results via ddg`);
+      return results;
+    }
+  } catch (error) {
+    log.error('[SearchClient] DuckDuckGo search failed:', error);
   }
 
   // Last resort: mock results so the pipeline never crashes
@@ -296,16 +337,19 @@ async function searchWithBing(
   for (const block of resultBlocks) {
     if (results.length >= maxResults) break;
 
-    // Extract URL — try multiple patterns for resilience against DOM changes
-    const linkMatch = block.match(/<h2><a[^>]+href="([^"]+)"/)
-      ?? block.match(/<a[^>]+href="(https?:\/\/[^"]+)"[^>]*class="[^"]*tilk[^"]*"/);
+    // Extract URL — C1: multi-pattern for resilience against Bing DOM changes.
+    // Accepts <h2> or <h3> (Bing has used both), plus a generic class-based fallback.
+    const linkMatch = block.match(/<h[23]><a[^>]+href="(https?:\/\/[^"]+)"/)
+      ?? block.match(/<a[^>]+href="(https?:\/\/[^"]+)"[^>]*class="[^"]*tilk[^"]*"/)
+      ?? block.match(/<a[^>]+href="(https?:\/\/(?!www\.bing\.com)[^"]+)"[^>]*>/);
     if (!linkMatch) continue;
     const link = linkMatch[1];
     if (!link.startsWith('http')) continue;
 
-    // Extract title
-    const titleMatch = block.match(/<h2><a[^>]+>([^<]+)<\/a>/)
-      ?? block.match(/<a[^>]+>([^<]{5,})<\/a><\/h2>/);
+    // Extract title — C1: accept <h2> or <h3>, plus generic first-link text fallback
+    const titleMatch = block.match(/<h[23]><a[^>]+>([^<]+)<\/a>/)
+      ?? block.match(/<a[^>]+>([^<]{5,})<\/a><\/h[23]>/)
+      ?? block.match(/<a[^>]+href="[^"]*"[^>]*>([^<]{5,})<\/a>/);
     const title = titleMatch ? titleMatch[1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>') : '';
 
     // Extract snippet — try multiple class patterns
@@ -331,6 +375,98 @@ async function searchWithBing(
       `[SearchClient] BING PARSE DEGRADED: ${resultBlocks.length} blocks found but 0 valid results extracted. ` +
       `Link/title parsing may need updating.`
     );
+  }
+
+  return results;
+}
+
+// =============================================================================
+// DUCKDUCKGO LITE PROVIDER (C1 — third fallback, simpler HTML than Bing)
+// =============================================================================
+
+/**
+ * C1 fix: DuckDuckGo Lite as resilient third-tier fallback.
+ *
+ * lite.duckduckgo.com renders a simple table-based layout that's far more
+ * stable than Bing's complex DOM.  DDG Lite has barely changed its markup
+ * since 2015, making it an excellent long-term scraping target.
+ *
+ * Fallback chain: Google CSE → Bing → DuckDuckGo Lite → Mock
+ */
+async function searchWithDuckDuckGo(
+  query: string,
+  domainFilter: string[] | undefined,
+  maxResults: number
+): Promise<SearchResult[]> {
+  const searchQuery = domainFilter && domainFilter.length > 0
+    ? `${query} (${domainFilter.map(d => `site:${d}`).join(' OR ')})`
+    : query;
+
+  const body = new URLSearchParams({ q: searchQuery, kl: 'it-it' });
+
+  const response = await fetch('https://lite.duckduckgo.com/lite/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    },
+    body: body.toString(),
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`DDG Lite HTTP ${response.status}`);
+  }
+
+  const html = await response.text();
+  const results: SearchResult[] = [];
+
+  // DDG Lite uses a simple table layout:
+  //   <a class="result-link" href="URL">TITLE</a>
+  //   <td class="result-snippet">SNIPPET</td>
+  //
+  // Three patterns tried for resilience (same approach as sentiment.ts):
+  const PATTERNS = [
+    // Primary: DDG Lite standard layout
+    /<a[^>]+class="result-link"[^>]+href="([^"]+)"[^>]*>([^<]+)<\/a>/g,
+    // Alternative: looser class matching
+    /<a[^>]+href="(https?:\/\/[^"]+)"[^>]*class="[^"]*result[^"]*"[^>]*>([^<]+)<\/a>/g,
+  ];
+
+  // Try patterns in order — use the first one that yields results
+  let matches: Array<{ url: string; title: string }> = [];
+  for (const pattern of PATTERNS) {
+    const found: Array<{ url: string; title: string }> = [];
+    let m: RegExpExecArray | null;
+    while ((m = pattern.exec(html)) !== null) {
+      const url = m[1];
+      if (url.startsWith('http') && !url.includes('duckduckgo.com')) {
+        found.push({ url, title: m[2] });
+      }
+    }
+    if (found.length > 0) {
+      matches = found;
+      break;
+    }
+  }
+
+  // Extract snippets separately (they follow the links in table cells)
+  const snippetPattern = /<td[^>]*class="[^"]*result-snippet[^"]*"[^>]*>([\s\S]*?)<\/td>/g;
+  const snippets: string[] = [];
+  let sm: RegExpExecArray | null;
+  while ((sm = snippetPattern.exec(html)) !== null) {
+    snippets.push(sm[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').trim());
+  }
+
+  for (let i = 0; i < Math.min(matches.length, maxResults); i++) {
+    const { url, title } = matches[i];
+    results.push({
+      title: title.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'),
+      link: url,
+      snippet: snippets[i] || '',
+      domain: extractDomain(url),
+      provider: 'ddg',
+    });
   }
 
   return results;
@@ -444,10 +580,13 @@ export async function searchProductImages(
   domainFilter?: string[],
   maxResults: number = 5
 ): Promise<ImageSearchResult[]> {
-  // Try Google Custom Search with image mode (if configured)
+  // Try Google Custom Search with image mode (if configured) — D1: circuit-breaker
   if (optionalEnv.GOOGLE_SEARCH_API_KEY && optionalEnv.GOOGLE_SEARCH_CX) {
     try {
-      const results = await searchImagesWithGoogle(query, domainFilter, maxResults);
+      const results = await googleBreaker.execute(
+        () => searchImagesWithGoogle(query, domainFilter, maxResults),
+        async () => [],
+      );
       if (results.length > 0) {
         log.info(`[SearchClient] Image search: ${results.length} results via google`);
         return results;
@@ -457,9 +596,12 @@ export async function searchProductImages(
     }
   }
 
-  // Free fallback: Bing image search HTML scraping (no API key required)
+  // Free fallback: Bing image search HTML scraping — D1: circuit-breaker
   try {
-    const results = await searchImagesWithBing(query, domainFilter, maxResults);
+    const results = await bingBreaker.execute(
+      () => searchImagesWithBing(query, domainFilter, maxResults),
+      async () => [],
+    );
     if (results.length > 0) {
       log.info(`[SearchClient] Image search: ${results.length} results via bing-scrape`);
       return results;

@@ -42,6 +42,8 @@ import {
   endTraceStep,
   addStepError,
   setStepQuality,
+  getCurrentTraceId,
+  getStepTimings,
 } from '@/lib/pipeline-trace';
 
 // Phase 1 imports (security)
@@ -77,6 +79,7 @@ import { formatProvenanceDisplay } from '@/lib/shopify/provenance-tracking';
 import { getKGStore } from '@/lib/shopify/kg-store';
 import { getKnowledgeGraph } from '@/lib/shopify/knowledge-graph';
 import { selfConsistencyCheck } from '@/lib/shopify/self-consistency';
+import { recordPipelineRun } from '@/lib/metrics-store';
 
 // =============================================================================
 // CONFIG (from centralized env)
@@ -1025,6 +1028,33 @@ async function runEnrichmentPipeline(payload: WorkerPayload, startTime: number):
     // D20 FLUSH — Persist violation accumulator
     // ===========================================
     await saveViolations(getViolationStats());
+
+    // ===========================================
+    // C11: Record retrieval quality sample to metrics ring buffer
+    // ===========================================
+    try {
+      recordPipelineRun({
+        traceId: getCurrentTraceId() ?? 'no-trace',
+        productId: payload.productId,
+        timestamp: new Date().toISOString(),
+        totalMs: totalTime,
+        stepMs: getStepTimings(),
+        qualityScore: enrichedData.qualityScore?.overall ?? null,
+        aiCalls: ragResult.metadata.tokensUsed > 0 ? Math.ceil(ragResult.metadata.tokensUsed / 1000) : 0,
+        cacheHits: ragResult.metrics?.cache?.hits ?? 0,
+        errors: [],
+        tayaVerdict: triadAction,
+        ragQualityScore: ragResult.v2?.evaluationResult?.qualityScore ?? null,
+        ragCoverageScore: ragResult.v2?.corpusCoverage ?? null,
+        ragOptimizerPasses: ragResult.v2?.optimizerResult?.passesUsed ?? 0,
+        qaVerifiedFactCount: qaResult?.simpleQA.rawFacts.filter(f => f.verified).length ?? 0,
+        sku: payload.sku ?? undefined,
+        // D3: Granularity decision visibility
+        ragGranularityLevel: ragResult.metadata?.granularityDecision?.level,
+      });
+    } catch {
+      // Non-fatal — metrics recording should never block the pipeline
+    }
 
     // ===========================================
     // SUCCESS RESPONSE

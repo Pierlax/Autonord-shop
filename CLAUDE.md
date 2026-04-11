@@ -36,6 +36,8 @@ pnpm lint
 | `UPSTASH_REDIS_REST_URL` | No | Upstash Redis for RAG cache (production) |
 | `UPSTASH_REDIS_REST_TOKEN` | No | Upstash Redis auth token |
 | `QSTASH_TOKEN` | No | Upstash QStash for async job queuing |
+| `REDDIT_CLIENT_ID` | No | Reddit OAuth2 app client ID (100 req/min vs 60 anon) |
+| `REDDIT_CLIENT_SECRET` | No | Reddit OAuth2 app client secret |
 
 ---
 
@@ -158,10 +160,10 @@ QStash / Cron Job
 The search client automatically selects the best available provider:
 
 ```
-Google Custom Search (GOOGLE_SEARCH_API_KEY) → Bing HTML scraping (free) → Mock
+Google Custom Search (GOOGLE_SEARCH_API_KEY) → Bing HTML scraping (free) → DuckDuckGo Lite (free) → Mock
 ```
 
-If the primary provider fails, it falls back to the next available one. If all fail, mock results are returned so the pipeline never crashes.
+If the primary provider fails, it falls back to the next available one. Each provider is protected by a circuit breaker (3 failures → skip for 60s). If all fail, mock results are returned so the pipeline never crashes.
 
 ### Cache TTL by Intent
 

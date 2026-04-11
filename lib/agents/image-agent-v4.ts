@@ -108,11 +108,11 @@ const _altCodeCache = new Map<string, string[]>();
 // =============================================================================
 
 /**
- * R24: Circuit breaker for findImageViaGeminiKnowledge() (Step 6).
+ * R24: Circuit breaker for findImageViaBroadSearch() (Step 6).
  * After MAX_STEP6_FAILURES consecutive failures, Step 6 is skipped for the rest of the batch.
  * Resets automatically when a Step 6 call succeeds.
  */
-let _geminiStep6ConsecutiveFailures = 0;
+let _broadSearchStep6ConsecutiveFailures = 0;
 const MAX_STEP6_FAILURES = 5;
 
 // =============================================================================
@@ -142,7 +142,7 @@ export type ImageMatchReason =
 
 export interface ImageProvenance {
   /** Discovery step that found this image */
-  step: 'rag_page' | 'bing_source_page' | 'gcs_domain' | 'gcs_broad' | 'direct_url' | 'official_site' | 'gemini_knowledge';
+  step: 'rag_page' | 'bing_source_page' | 'gcs_domain' | 'gcs_broad' | 'direct_url' | 'official_site' | 'broad_search';
   /** Bing/GCS query that led to this image (if applicable) */
   searchQuery: string | null;
   /** Retailer/source page URL where og:image was extracted from (if applicable) */
@@ -518,22 +518,22 @@ async function findProductImageUncached(
   }
 
   // ===========================================
-  // STEP 6: Gemini knowledge-based URL (last resort)
+  // STEP 6: Broad image search (last resort — no domain restriction)
   // ===========================================
   // R24: Circuit breaker — skip if too many consecutive failures
-  if (_geminiStep6ConsecutiveFailures >= MAX_STEP6_FAILURES) {
-    console.warn(`[ImageAgent V4] R24 Step 6 circuit breaker open (${_geminiStep6ConsecutiveFailures} consecutive failures) — skipping Gemini Knowledge`);
+  if (_broadSearchStep6ConsecutiveFailures >= MAX_STEP6_FAILURES) {
+    console.warn(`[ImageAgent V4] R24 Step 6 circuit breaker open (${_broadSearchStep6ConsecutiveFailures} consecutive failures) — skipping broad search`);
   } else {
     searchAttempts++;
-    const geminiResult = await findImageViaGeminiKnowledge(title, brand, identifiers.allCodes);
-    if (geminiResult.found && geminiResult.imageUrl && await isImageAccessible(geminiResult.imageUrl)) {
-      console.log(`[ImageAgent V4] ✅ Gemini knowledge image found: ${geminiResult.domain}`);
-      _geminiStep6ConsecutiveFailures = 0; // R24: reset on success
+    const broadResult = await findImageViaBroadSearch(title, brand, identifiers.allCodes);
+    if (broadResult.found && broadResult.imageUrl && await isImageAccessible(broadResult.imageUrl)) {
+      console.log(`[ImageAgent V4] ✅ Broad search image found: ${broadResult.domain}`);
+      _broadSearchStep6ConsecutiveFailures = 0; // R24: reset on success
       return {
         success: true,
-        imageUrl: geminiResult.imageUrl,
+        imageUrl: broadResult.imageUrl,
         imageAlt: `${title} - ${brand}`,
-        source: geminiResult.domain,
+        source: broadResult.domain,
         method: 'web_search',
         confidence: 'medium',
         alternativeCodes: identifiers.allCodes.slice(1),
@@ -541,7 +541,7 @@ async function findProductImageUncached(
         searchAttempts,
         totalTimeMs: Date.now() - startTime,
         provenance: {
-          step: 'gemini_knowledge',
+          step: 'broad_search',
           searchQuery: null,
           sourcePageUrl: null,
           sourcePageTitle: null,
@@ -550,8 +550,8 @@ async function findProductImageUncached(
         },
       };
     }
-    _geminiStep6ConsecutiveFailures++; // R24: increment on failure
-    console.log(`[ImageAgent V4] Step 6 failed (${_geminiStep6ConsecutiveFailures}/${MAX_STEP6_FAILURES} consecutive failures)`);
+    _broadSearchStep6ConsecutiveFailures++; // R24: increment on failure
+    console.log(`[ImageAgent V4] Step 6 failed (${_broadSearchStep6ConsecutiveFailures}/${MAX_STEP6_FAILURES} consecutive failures)`);
   }
 
   // ===========================================
@@ -1243,12 +1243,11 @@ async function searchGoldStandard(
       }
     }
 
-    // STEP C: Gemini knowledge-based URL generation — always runs as no-API fallback.
-    // Gemini knows product image CDN patterns from training data and can suggest
-    // real URLs for well-known brands. Each candidate is validated by HTTP fetch.
-    const geminiResult = await findImageViaGeminiKnowledge(title, brand, codes);
-    if (geminiResult.found && geminiResult.imageUrl) {
-      return { found: true, imageUrl: geminiResult.imageUrl, domain: geminiResult.domain || 'unknown', confidence: 'medium' };
+    // STEP C: Broad image search without domain restriction (last resort).
+    // Steps A and B searched brand-specific domains; this casts a wider net.
+    const broadResult = await findImageViaBroadSearch(title, brand, codes);
+    if (broadResult.found && broadResult.imageUrl) {
+      return { found: true, imageUrl: broadResult.imageUrl, domain: broadResult.domain || 'unknown', confidence: 'medium' };
     }
 
   } catch (e) {
@@ -1259,75 +1258,72 @@ async function searchGoldStandard(
 }
 
 /**
- * Uses Gemini's training knowledge to suggest direct product image URLs,
- * then validates each by HTTP HEAD request.
- * Works without any search API credits.
+ * C3 fix: Broad image search as last resort — replaces LLM URL hallucination.
+ *
+ * The previous `findImageViaGeminiKnowledge()` asked Gemini to invent URLs from
+ * its training data.  This was fundamentally unreliable: LLMs hallucinate URLs,
+ * and HEAD-check validation only catches non-existent ones, not wrong-product
+ * images that happen to resolve to a valid JPEG on a reshuffled CDN.
+ *
+ * New approach: runs `searchProductImages()` (real Google/Bing image search) with
+ * broader queries and NO domain restriction.  Steps 3-5 already searched brand-
+ * specific domains; this step casts a wider net across the open web, filtered by
+ * the same `isBlockedDomain` + `isWrongProductImage` guards.
+ *
+ * Benefits over the old design:
+ * - Every returned URL exists in a real search index (no hallucination possible)
+ * - No AI call → faster and cheaper
+ * - Same validation filters (blocked domains, cross-code check)
  */
-async function findImageViaGeminiKnowledge(
+async function findImageViaBroadSearch(
   title: string,
   brand: string,
   codes: string[]
 ): Promise<{ found: boolean; imageUrl: string | null; domain: string | null }> {
-  try {
-    const aiResult = await generateTextSafe({
-      system: 'You are a product image expert for professional power tools. Use your training knowledge of real CDN and retailer URLs. Return ONLY valid JSON.',
-      prompt: `Find the direct product image URL for this professional power tool using your training knowledge.
+  // Build 2-3 broader queries — ordered from most to least specific.
+  // Steps 3-5 used domain-restricted queries; here we drop the domain filter
+  // so results can come from any non-blocked domain.
+  const queries: string[] = [];
 
-Brand: ${brand}
-Product: ${title}
-Product codes: ${codes.join(', ')}
+  const primaryCode = codes[0];
+  if (primaryCode) {
+    queries.push(`${brand} ${primaryCode} product image`);
+  }
 
-Based on your knowledge, provide up to 4 candidate direct image URLs (.jpg, .png, or .webp) from:
-- Official brand CDNs (e.g. cdn.milwaukeetool.eu, cdn.makita.it, images.dewalt.com)
-- UK retailers: toolstop.co.uk, ffx.co.uk, screwfix.com, powertoolworld.co.uk
-- US retailers: acmetools.com, ohiopowertool.com, toolnut.com
+  // Brand + title keywords — for products where the code doesn't appear in
+  // retailer listings (common for accessories and consumables).
+  const titleWithoutBrand = title.replace(new RegExp(brand, 'i'), '').trim();
+  if (titleWithoutBrand.length > 3) {
+    queries.push(`${brand} ${titleWithoutBrand}`);
+  }
 
-IMPORTANT: Provide REAL URLs you are confident exist based on your training data.
-Do NOT invent URLs — only include URLs you have strong confidence about.
+  // Second code variant (e.g. US code derived from EU) — catches different
+  // regional retailers that stock the same product under a different code.
+  if (codes[1]) {
+    queries.push(`${brand} ${codes[1]}`);
+  }
 
-Return JSON:
-{
-  "candidates": [
-    { "url": "https://example.com/path/image.jpg", "domain": "example.com", "confidence": "high/medium" }
-  ]
-}`,
-      maxTokens: 600,
-      temperature: 0.1,
-      useLiteModel: false,
-    });
+  for (const query of queries) {
+    try {
+      // No domainFilter → search the whole web (blocked domains still filtered below)
+      const imageResults = await searchProductImages(query, undefined, 5);
 
-    const jsonMatch = aiResult.text.match(/\{[\s\S]*?"candidates"[\s\S]*?\}/);
-    if (!jsonMatch) return { found: false, imageUrl: null, domain: null };
+      for (const imgResult of imageResults) {
+        if (!imgResult.imageUrl) continue;
+        if (!isValidImageUrl(imgResult.imageUrl)) continue;
+        if (isBlockedDomain(imgResult.imageUrl)) continue;
+        if (isWrongProductImage(imgResult.imageUrl, codes, primaryCode || '')) continue;
 
-    const parsed = JSON.parse(jsonMatch[0]);
-    const candidates: Array<{ url: string; domain: string }> = parsed.candidates || [];
-
-    for (const candidate of candidates) {
-      if (!candidate.url || !isValidImageUrl(candidate.url)) continue;
-      if (isBlockedDomain(candidate.url)) continue;
-      if (isWrongProductImage(candidate.url, codes, codes[0])) continue;
-
-      try {
-        const check = await fetch(candidate.url, {
-          method: 'HEAD',
-          signal: AbortSignal.timeout(5000),
-          headers: { 'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8' },
-        });
-        const contentType = check.headers.get('content-type') || '';
-        if (check.ok && contentType.startsWith('image/')) {
-          console.log(`[ImageAgent V4] ✅ Gemini knowledge image validated: ${candidate.url}`);
-          return {
-            found: true,
-            imageUrl: candidate.url,
-            domain: candidate.domain || extractDomain(candidate.url),
-          };
-        }
-      } catch (err) {
-        console.warn(`[ImageAgent V4] Gemini candidate URL check failed, trying next:`, err);
+        console.log(`[ImageAgent V4] ✅ Broad search hit: ${imgResult.imageUrl} (query: "${query}")`);
+        return {
+          found: true,
+          imageUrl: imgResult.imageUrl,
+          domain: imgResult.domain || extractDomain(imgResult.imageUrl),
+        };
       }
+    } catch (e) {
+      console.log(`[ImageAgent V4] Broad search query failed: "${query}"`, e);
     }
-  } catch (e) {
-    console.log(`[ImageAgent V4] Gemini knowledge search failed: ${e}`);
   }
 
   return { found: false, imageUrl: null, domain: null };

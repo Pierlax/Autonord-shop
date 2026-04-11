@@ -11,6 +11,7 @@
 
 import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
+import { parseJsonFromLLM } from '@/lib/shared/parse-llm-json';
 import { TopicAnalysis } from './analysis';
 import { BlogDiscoveryResult, BlogDiscoveredSource } from './rag-bridge';
 
@@ -240,12 +241,7 @@ export async function generateArticleBrief(
       temperature: 0.3,
     });
 
-    const raw = result.text
-      .replace(/```json\n?/g, '')
-      .replace(/```\n?/g, '')
-      .trim();
-
-    const brief = JSON.parse(raw) as ArticleBrief;
+    const brief = parseJsonFromLLM<ArticleBrief>(result.text);
 
     log.info(`[BlogBrief] Brief generated | confidence: ${brief.confidence} | outline sections: ${brief.outline?.length ?? 0} | quotes: ${brief.forumQuotes?.length ?? 0}`);
 

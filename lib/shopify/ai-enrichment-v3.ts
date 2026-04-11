@@ -21,6 +21,7 @@
 
 import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
+import { parseJsonFromLLM } from '@/lib/shared/parse-llm-json';
 
 const log = loggers.shopify;
 import { EnrichedProductData, ShopifyProductWebhookPayload } from './webhook-types';
@@ -464,61 +465,11 @@ function generateSafetyLogFromRAGandQA(
 
 // =============================================================================
 // =============================================================================
-// W-V3-3: JSON repair utility (exported for testability)
+// W-V3-3: JSON repair utility — moved to @/lib/shared/parse-llm-json.ts (C5)
+// Re-exported here for backward compatibility with existing imports.
 // =============================================================================
 
-/**
- * Repairs JSON strings that contain unescaped double-quote characters inside
- * string values. Gemini sometimes emits bare " for inch specs or Italian
- * quotation marks (e.g. 'attacco 1/2"') which breaks JSON.parse().
- *
- * Strategy: scan character by character. Inside a string value, any " NOT
- * followed by a JSON structural token (:, ,, ], }, whitespace+structural) is
- * treated as an inline/measurement quote and replaced with ″ (U+2033).
- *
- * Exported at module level so the logic can be tested independently.
- */
-export function repairUnescapedQuotes(s: string): string {
-  let result = '';
-  let inString = false;
-  let escape = false;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (escape) {
-      result += c;
-      escape = false;
-      continue;
-    }
-    if (c === '\\' && inString) {
-      result += c;
-      escape = true;
-      continue;
-    }
-    if (c === '"') {
-      if (!inString) {
-        inString = true;
-        result += c;
-      } else {
-        // Inside a string: look ahead to decide if this is the closing quote.
-        // Skip whitespace, then check next structural char.
-        let j = i + 1;
-        while (j < s.length && /\s/.test(s[j])) j++;
-        const nextCh = j < s.length ? s[j] : '';
-        if (nextCh === ':' || nextCh === ',' || nextCh === ']' || nextCh === '}' || nextCh === '"' || nextCh === '') {
-          // Structural token follows — this is the closing quote
-          inString = false;
-          result += c;
-        } else {
-          // Non-structural character follows — inline quote, replace with ″
-          result += '″';
-        }
-      }
-    } else {
-      result += c;
-    }
-  }
-  return result;
-}
+export { repairUnescapedQuotes } from '@/lib/shared/parse-llm-json';
 
 // =============================================================================
 // MAIN GENERATION FUNCTION V3 (REFACTORED)
@@ -1021,40 +972,107 @@ ${quotes || '- Nessuna citazione disponibile'}`;
 
   log.info(`[AI-V3] D14: Adaptive token budget — content=${totalContentTokens}tok → cap=${MAX_USER_PROMPT_TOKENS}tok (~${MAX_PROMPT_CHARS} chars)`);
 
-  // Build sections in priority order (highest priority first)
-  const prioritySections: Array<{ name: string; content: string; mutable: boolean }> = [
-    { name: 'specs',       content: specsSection,       mutable: false },
-    { name: 'qa',          content: qaReasoningSection, mutable: false },
-    { name: 'conflicts',   content: conflictsWarning,   mutable: false },
-    { name: 'rag',         content: ragSection,         mutable: true  },
-    { name: 'kg',          content: kgSection,          mutable: true  },
-    { name: 'unverified',  content: unverifiedSection,  mutable: true  },
-    { name: 'benchmark',   content: benchmarkSection,   mutable: true  },
-    { name: 'sentiment',   content: sentimentSection,   mutable: true  },
-    // D20 fix: Inject violation feedback from TAYA Police corrections
-    { name: 'feedback',    content: getViolationFeedback(5), mutable: true  },
+  // Build sections — immutable (always full) and mutable (budget-allocated).
+  const immutableSections: Array<{ name: string; content: string }> = [
+    { name: 'specs',     content: specsSection },
+    { name: 'qa',        content: qaReasoningSection },
+    { name: 'conflicts', content: conflictsWarning },
   ];
 
-  let totalTokens = 0;
+  // C7 fix: Priority-weighted proportional allocation for mutable sections.
+  //
+  // The old W15 approach was sequential ("first come, first served"): if `rag`
+  // was very large it consumed all remaining budget, completely dropping smaller
+  // but valuable sections like benchmark, sentiment, and feedback.
+  //
+  // New approach: each mutable section gets a proportional share of the budget
+  // based on its priority weight.  Small sections that fit entirely within their
+  // share release surplus to larger sections.  No section is silently dropped
+  // unless it's genuinely empty.
+  const SECTION_WEIGHTS: Record<string, number> = {
+    rag:        5,   // Primary evidence — largest share
+    kg:         3,   // JTBD semantic context
+    unverified: 2,   // Partially verified specs
+    benchmark:  2,   // Truth-anchoring data
+    sentiment:  2,   // Real user voices
+    feedback:   1,   // TAYA violation patterns (short but actionable)
+  };
+
+  const mutableSections: Array<{ name: string; content: string; tokens: number; weight: number }> = [
+    { name: 'rag',        content: ragSection,              tokens: 0, weight: SECTION_WEIGHTS['rag'] },
+    { name: 'kg',         content: kgSection,               tokens: 0, weight: SECTION_WEIGHTS['kg'] },
+    { name: 'unverified', content: unverifiedSection,       tokens: 0, weight: SECTION_WEIGHTS['unverified'] },
+    { name: 'benchmark',  content: benchmarkSection,        tokens: 0, weight: SECTION_WEIGHTS['benchmark'] },
+    { name: 'sentiment',  content: sentimentSection,        tokens: 0, weight: SECTION_WEIGHTS['sentiment'] },
+    // D20 fix: Inject violation feedback from TAYA Police corrections
+    { name: 'feedback',   content: getViolationFeedback(5), tokens: 0, weight: SECTION_WEIGHTS['feedback'] },
+  ].map(s => ({ ...s, tokens: estimateTokens(s.content) }));
+
+  // 1. Immutable sections always included in full
+  const immutableTokens = immutableSections.reduce(
+    (sum, s) => sum + estimateTokens(s.content), 0
+  );
+  let mutableBudget = Math.max(0, MAX_USER_PROMPT_TOKENS - immutableTokens);
+
+  // 2. Filter to non-empty mutable sections
+  const activeMutables = mutableSections.filter(s => s.content.length > 0);
+
+  // 3. Two-pass proportional allocation:
+  //    Pass 1 — sections that fit entirely within their proportional share.
+  //             Their surplus is released for others.
+  //    Pass 2 — remaining sections get proportional share of the leftover budget.
+  const allocations = new Map<string, number>();
+  let remainingBudget = mutableBudget;
+  let remainingWeight = activeMutables.reduce((sum, s) => sum + s.weight, 0);
+
+  // Pass 1: identify sections that fit fully
+  for (const section of activeMutables) {
+    if (remainingWeight <= 0) break;
+    const share = Math.floor(remainingBudget * section.weight / remainingWeight);
+    if (section.tokens <= share) {
+      allocations.set(section.name, section.tokens);
+      remainingBudget -= section.tokens;
+      remainingWeight -= section.weight;
+    }
+  }
+
+  // Pass 2: distribute remaining budget proportionally to sections that need truncation
+  const unfitted = activeMutables.filter(s => !allocations.has(s.name));
+  const unfittedWeight = unfitted.reduce((sum, s) => sum + s.weight, 0);
+  for (const section of unfitted) {
+    const share = unfittedWeight > 0
+      ? Math.floor(remainingBudget * section.weight / unfittedWeight)
+      : 0;
+    const allocation = Math.min(section.tokens, share);
+    allocations.set(section.name, allocation);
+    remainingBudget -= allocation;
+    // Reduce weight so subsequent sections get proportional share of leftover
+    // (unfittedWeight is recalculated implicitly via remaining budget)
+  }
+
+  // 4. Apply allocations: include full, truncate, or drop each section
+  let totalTokens = immutableTokens;
   const truncated: Record<string, string> = {};
 
-  for (const section of prioritySections) {
-    const sectionTokens = estimateTokens(section.content);
-    if (totalTokens + sectionTokens <= MAX_USER_PROMPT_TOKENS) {
-      truncated[section.name] = section.content;
-      totalTokens += sectionTokens;
-    } else if (section.mutable && totalTokens < MAX_USER_PROMPT_TOKENS) {
-      // W15: Partial include — take what fits within token budget
-      const remainingTokens = MAX_USER_PROMPT_TOKENS - totalTokens;
-      const remainingChars = Math.floor(remainingTokens * 3.2);
-      truncated[section.name] = section.content.slice(0, remainingChars) + '\n[... troncato per budget token ...]';
-      totalTokens = MAX_USER_PROMPT_TOKENS;
-      log.warn(`[AI-V3] W15: section "${section.name}" truncated to ~${remainingTokens} tokens`);
-    } else {
+  for (const section of immutableSections) {
+    truncated[section.name] = section.content;
+  }
+
+  for (const section of mutableSections) {
+    const allocation = allocations.get(section.name) ?? 0;
+    if (section.content.length === 0 || allocation <= 0) {
       truncated[section.name] = '';
       if (section.content.length > 0) {
-        log.warn(`[AI-V3] W15: section "${section.name}" dropped (~${sectionTokens} tokens, budget full)`);
+        log.warn(`[AI-V3] C7: section "${section.name}" dropped (~${section.tokens}tok, allocation=0)`);
       }
+    } else if (section.tokens <= allocation) {
+      truncated[section.name] = section.content;
+      totalTokens += section.tokens;
+    } else {
+      const chars = Math.floor(allocation * 3.2);
+      truncated[section.name] = section.content.slice(0, chars) + '\n[... troncato per budget token ...]';
+      totalTokens += allocation;
+      log.warn(`[AI-V3] C7: section "${section.name}" truncated ${section.tokens}→${allocation}tok (weight=${section.weight})`);
     }
   }
 
@@ -1182,9 +1200,7 @@ Rispondi SOLO con JSON valido:
       temperature: 0.1,
       useLiteModel: true,
     });
-    const jsonMatch = result.text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('No JSON in FAQ recovery response');
-    const parsed = JSON.parse(jsonMatch[0]) as { faqs?: { question: string; answer: string }[] };
+    const parsed = parseJsonFromLLM<{ faqs?: { question: string; answer: string }[] }>(result.text);
     const newFaqs = (parsed.faqs ?? []).slice(0, needed);
     log.info(`[AI-V3] W-V3-1: FAQ recovery added ${newFaqs.length} FAQ(s)`);
     return [...existingFaqs, ...newFaqs].slice(0, 3);
@@ -1286,46 +1302,18 @@ async function generateWithLLMV3(
     });
 
     const content = result.text;
-    
+
     if (!content) {
       throw new Error('Empty response from LLM');
     }
 
-    // Strip markdown code fences, then find the outermost JSON object
-    const stripped = content
-      .replace(/```json\n?/g, '')
-      .replace(/```\n?/g, '')
-      .trim();
-
-    // Gemini sometimes wraps JSON in extra prose — extract the first complete {...} block.
-    // Use a greedy match to get the LAST closing brace (handles nested objects).
-    const jsonStart = stripped.indexOf('{');
-    const jsonEnd = stripped.lastIndexOf('}');
-    const jsonStr = jsonStart !== -1 && jsonEnd > jsonStart
-      ? stripped.slice(jsonStart, jsonEnd + 1)
-      : stripped;
-
+    // C5: centralised JSON parsing (strips fences, extracts {…}, auto-repairs unescaped quotes)
     let parsed: EnrichedProductData;
     try {
-      parsed = JSON.parse(jsonStr) as EnrichedProductData;
+      parsed = parseJsonFromLLM<EnrichedProductData>(content);
     } catch (parseError) {
-      // Attempt to repair unescaped double-quotes inside JSON string values.
-      // Gemini sometimes writes Italian quotation marks or inch specs as bare " characters.
-      // Strategy: scan character by character. Inside a string value, any " that is NOT
-      // followed by a JSON structural token (:, ,, ], }, whitespace+structural) is treated
-      // as an inline quote and replaced with the Unicode double-prime ″ (U+2033).
-      log.error('[AI-V3] JSON parse failed. LLM output preview:', content.substring(0, 300));
-      log.info('[AI-V3] Attempting smart JSON repair...');
-
-      const repaired = repairUnescapedQuotes(jsonStr);
-      try {
-        parsed = JSON.parse(repaired) as EnrichedProductData;
-        log.info('[AI-V3] JSON repair succeeded');
-      } catch (repairError) {
-        const repairErrMsg = repairError instanceof Error ? repairError.message : String(repairError);
-        log.error(`[AI-V3] JSON repair also failed: ${repairErrMsg}`);
-        throw parseError;
-      }
+      log.error('[AI-V3] JSON parse failed (including repair attempt). LLM output preview:', content.substring(0, 300));
+      throw parseError;
     }
 
     // Validate structure

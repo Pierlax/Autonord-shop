@@ -12,22 +12,10 @@
  * 8. Handles real-world Gemini output patterns (Italian specs with " marks)
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
-vi.mock('@/lib/shopify/ai-client', () => ({
-  generateTextSafe: vi.fn().mockResolvedValue({ text: '{}' }),
-}));
-vi.mock('@/lib/env', () => ({
-  env: {
-    SHOPIFY_ADMIN_ACCESS_TOKEN: 'test-token',
-    CRON_SECRET: 'test-secret',
-    GOOGLE_GENERATIVE_AI_API_KEY: 'test-key',
-  },
-  optionalEnv: {},
-  toShopifyGid: (id: string) => `gid://shopify/Product/${id}`,
-}));
-
-import { repairUnescapedQuotes } from '@/lib/shopify/ai-enrichment-v3';
+// C5: repairUnescapedQuotes now lives in parse-llm-json (pure utility, no mocks needed)
+import { repairUnescapedQuotes } from '@/lib/shared/parse-llm-json';
 
 // ---------------------------------------------------------------------------
 // No-op cases — valid JSON must be returned unchanged

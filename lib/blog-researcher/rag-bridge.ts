@@ -176,7 +176,7 @@ const INTENT_QUERIES: Record<BlogDiscoveryIntent, (s: BlogTopicSignal) => string
   trend: (s) => {
     const brand = s.brands?.[0] ?? '';
     return [
-      `${brand} ${s.topic} novità 2025 2026`.trim(),
+      `${brand} ${s.topic} novità ${new Date().getFullYear()} ${new Date().getFullYear() + 1}`.trim(),
       `${s.topic} news latest release`,
       `${brand} nuovi prodotti ${s.category ?? ''}`.trim(),
     ];
@@ -240,12 +240,32 @@ function detectLanguage(text: string): 'it' | 'en' | 'unknown' {
   return it >= en ? 'it' : 'en';
 }
 
+/**
+ * C12 fix: Dynamic freshness scoring based on current year.
+ *
+ * The old implementation hardcoded `/202[56]/` etc., which would silently
+ * break in 2027+ (all new content scores 0.5, ranking below 2024 content).
+ *
+ * New approach: extract all 4-digit years (2000–2099) from the text, take the
+ * most recent one, and score by age relative to `new Date().getFullYear()`.
+ * Gradual linear decay: 0 years old = 1.0, each year costs 0.2, floor at 0.1.
+ */
 function scoreFreshness(text: string): number {
-  if (/202[56]/.test(text)) return 1.0;
-  if (/2024/.test(text)) return 0.7;
-  if (/2023/.test(text)) return 0.4;
-  if (/202[012]/.test(text)) return 0.2;
-  return 0.5;
+  const currentYear = new Date().getFullYear();
+
+  // Extract all plausible years from the text
+  const yearMatches = text.match(/\b(20\d{2})\b/g);
+  if (!yearMatches) return 0.5; // No year found — neutral score
+
+  // Use the most recent year (most likely the publication/update date)
+  const mostRecent = Math.max(...yearMatches.map(Number));
+
+  // Reject implausible future years (> currentYear + 1)
+  if (mostRecent > currentYear + 1) return 0.5;
+
+  const age = currentYear - mostRecent;
+  // Linear decay: 1.0 → 0.8 → 0.6 → 0.4 → 0.2 → 0.1 (floor)
+  return Math.max(0.1, 1.0 - age * 0.2);
 }
 
 function scoreTrust(domain: string): number {

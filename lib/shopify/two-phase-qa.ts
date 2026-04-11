@@ -15,6 +15,8 @@
 
 import { generateTextSafe } from '@/lib/shopify/ai-client';
 import { loggers } from '@/lib/logger';
+import { parseJsonFromLLM } from '@/lib/shared/parse-llm-json';
+import { KG_CATEGORY_SYNONYMS } from '@/lib/shopify/kg-data';
 import { type StructuredSource } from './rag-adapter';
 
 const log = loggers.shopify;
@@ -181,7 +183,13 @@ export interface TwoPhaseQAResult {
  *
  * Format: synonym → canonical keyword that triggers the right if-branch.
  */
+// C10: Static synonyms first (hand-tuned), then KG-derived entries fill gaps.
+// KG_CATEGORY_SYNONYMS is spread first so static entries override any conflicts.
 const CATEGORY_SYNONYMS: Record<string, string> = {
+  // KG-derived synonyms from kg-base.json (Italian names, English IDs, descriptions)
+  ...KG_CATEGORY_SYNONYMS,
+
+  // Hand-tuned static synonyms (override KG entries where both exist)
   // Generatori
   'power generator': 'generato', 'gruppo di continuità': 'generato', 'gen set': 'generato',
   'emergency power': 'generato',
@@ -692,14 +700,12 @@ Rispondi SOLO con JSON valido, senza testo prima o dopo:
     return { specs: {}, rawFacts: [], extractionTime: Date.now() - startTime };
   }
 
-  // Parse JSON response
+  // Parse JSON response (C5: centralised via parseJsonFromLLM)
   let parsed: { facts: Array<{ question: string; answer: string; source: string; confidence: string }> };
   try {
-    const jsonMatch = resultText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('No JSON found');
-    parsed = JSON.parse(jsonMatch[0]);
+    parsed = parseJsonFromLLM<typeof parsed>(resultText);
   } catch {
-    log.error('Failed to parse Simple QA response:', resultText);
+    log.error('[TwoPhaseQA] Failed to parse Simple QA response:', resultText.substring(0, 300));
     parsed = { facts: [] };
   }
 
@@ -835,19 +841,21 @@ Rispondi in formato JSON:
     };
   }
 
-  // Parse JSON response
+  // Parse JSON response (C5: centralised via parseJsonFromLLM)
   let parsed: any;
   try {
-    const jsonMatch = resultText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('No JSON found');
-    const raw = JSON.parse(jsonMatch[0]);
+    const raw = parseJsonFromLLM<{
+      suitability?: Record<string, unknown>;
+      comparison?: Record<string, unknown>;
+      recommendation?: Record<string, unknown>;
+    }>(resultText);
     parsed = {
       ...raw.suitability,
       ...raw.comparison,
       ...raw.recommendation,
     };
   } catch {
-    log.error('Failed to parse Complex QA response:', resultText);
+    log.error('[TwoPhaseQA] Failed to parse Complex QA response:', resultText.substring(0, 300));
     // Return defaults
     return {
       suitability: {
@@ -959,19 +967,31 @@ function calibrateConfidenceBySourceTrust(
 }
 
 // ============================================================================
-// Main Two-Phase QA Function — single merged Gemini call
+// Main Two-Phase QA Function — sequential two-phase design
 // ============================================================================
 
 // W13 fix: token-aware limit. 26k tokens × 3.2 chars/token ≈ 83k chars.
 // But we cap at 60k chars to leave room for the instruction overhead (~2k tokens).
 const SOURCE_DATA_MAX_CHARS = 60_000;
 
+// W-QA-4 fix: renderStructuredSources already emits [★★★ / ★★ / ★] headers for
+// each block. We prepend a brief instruction so extractAtomicFacts (which
+// receives the flat string) knows to map those headers to confidence levels:
+// - [★★★] block → "high"   confidence for facts from that source
+// - [★★]  block → "medium" confidence
+// - [★]   block → "low"    confidence
+const TRUST_PREAMBLE =
+  'NOTA SULLE FONTI: Il testo seguente contiene sezioni marcate con ★★★ (scheda tecnica ufficiale → confidence high), ★★ (retailer/recensione → confidence medium), ★ (forum/community → confidence low). Usa queste marcature per assegnare il livello di confidence corretto a ogni fatto estratto.\n\n';
+
 /**
- * Run both Phase 1 (atomic fact extraction) and Phase 2 (complex reasoning)
- * in a **single** Gemini call instead of two sequential calls.
- * This reduces AI cost by ~17% (1 call saved per product).
+ * Run Phase 1 (atomic fact extraction) and Phase 2 (complex reasoning) as two
+ * **sequential, independent** Gemini calls.
  *
- * The external API and return type are identical to the previous implementation.
+ * The two-call design is intentional — it is the anti-hallucination guarantee:
+ * Phase 2 receives only the verified, grounded facts produced by Phase 1 as its
+ * input, not the full raw evidence text.  A single merged call breaks this
+ * contract because the model can attend to the raw evidence while writing Phase 2
+ * reasoning, inventing numbers that never made it through Phase 1 grounding.
  */
 export async function runTwoPhaseQA(
   productData: {
@@ -987,121 +1007,26 @@ export async function runTwoPhaseQA(
 ): Promise<TwoPhaseQAResult> {
   const totalStartTime = Date.now();
 
-  const truncatedSourceData = productData.sourceData
-    ? productData.sourceData.slice(0, SOURCE_DATA_MAX_CHARS)
-    : undefined;
-
   const hasStructured = (productData.structuredSources?.length ?? 0) > 0;
   log.info(
-    `[TwoPhaseQA] Starting merged call for ${productData.sku} ` +
+    `[TwoPhaseQA] Starting two-phase sequential for ${productData.sku} ` +
     `(${hasStructured ? `${productData.structuredSources!.length} structured sources` : `sourceData: ${productData.sourceData?.length ?? 0} chars`})`
   );
 
-  const GENERIC_CATEGORIES = ['elettroutensile', 'attrezzatura professionale', ''];
-  const categoryHint = (productData.category || '').toLowerCase().trim();
-  const effectiveCategory = GENERIC_CATEGORIES.includes(categoryHint)
-    ? `${productData.title} ${productData.category || ''}`
-    : productData.category || '';
-  const questions = getQuestionsForCategory(effectiveCategory);
-  const numberedQuestions = questions.map((q, i) => `${i + 1}. ${q}`).join('\n');
+  // Render structured sources to a flat string for extractAtomicFacts().
+  // extractAtomicFacts() expects sourceData: string, so structured sources must
+  // be serialised first.  The trust preamble ensures the model maps ★★★/★★/★
+  // headers to the correct confidence levels.
+  const renderedSources = hasStructured
+    ? renderStructuredSources(productData.structuredSources!, SOURCE_DATA_MAX_CHARS)
+    : productData.sourceData?.slice(0, SOURCE_DATA_MAX_CHARS);
+  const flatSourceData = renderedSources
+    ? TRUST_PREAMBLE + renderedSources
+    : undefined;
 
-  // Build the evidence section: prefer structured sources (with provenance stars) over
-  // the legacy flat string. This is the core of the data-contract improvement.
-  const evidenceSection = hasStructured
-    ? `FONTI DISPONIBILI — ordinate per affidabilità (★★★ = scheda tecnica, ★ = forum).
-Dai precedenza ai fatti provenienti da fonti ★★★ e ★★.
-In caso di conflitto tra fonti, segnalalo nell'answer della domanda specifica.
-
-${renderStructuredSources(productData.structuredSources!)}`
-    : `DATI DISPONIBILI:\n${productData.description}\n${truncatedSourceData || ''}`;
-
-  // W-QA-1 fix: For large evidence, add a mandatory "factsRecap" bridge section
-  // between Phase 1 and Phase 2 to prevent the model from "forgetting" the
-  // extracted numbers before writing the reasoning.  The recap is a short
-  // self-summary (max 8 items) that sits close to the Phase 2 instructions in
-  // the token sequence, counteracting the attention decay that plagues long
-  // single-prompt contexts.
-  const needsRecap = evidenceSection.length > 15_000;
-  const recapInstruction = needsRecap
-    ? `
----
-
-BLOCCO 1b — RIEPILOGO OBBLIGATORIO (max 8 righe)
-Prima di scrivere il BLOCCO 2, elenca i valori tecnici chiave che hai trovato nel BLOCCO 1
-(solo answer ≠ "NON TROVATO", con l'unità di misura).
-Includili nel JSON come "factsRecap": ["135 Nm coppia", "2.1 kg", ...].
-Il BLOCCO 2 DEVE citare SOLO valori presenti in questo riepilogo — nessun numero inventato.
-
-`
-    : '';
-
-  const recapJsonField = needsRecap
-    ? `  "factsRecap": ["valore1 con unità", "valore2 con unità"],\n`
-    : '';
-
-  const prompt = `Sei il Team Tecnico di Autonord Service. Analizza il prodotto e rispondi con UN UNICO JSON valido che include entrambi i blocchi richiesti.
-
-PRODOTTO: ${productData.title}
-BRAND: ${productData.brand}
-SKU: ${productData.sku}
-CATEGORIA: ${productData.category || 'Attrezzatura professionale'}
-
-${evidenceSection}
-
----
-
-BLOCCO 1 — FATTI ATOMICI
-Per ogni domanda rispondi con il valore esatto (numero + unità), la fonte e la confidence.
-- confidence "high": dato da fonte ★★★ (scheda tecnica ufficiale, manuale)
-- confidence "medium": dato da fonte ★★ (retailer, recensione, sito brand)
-- confidence "low": dato da fonte ★ (forum, community) o stimato
-Se il dato NON è presente in nessuna fonte, rispondi "NON TROVATO".
-
-DOMANDE:
-${numberedQuestions}
-${recapInstruction}
----
-
-BLOCCO 2 — ANALISI TECNICA
-IMPORTANTE: Usa SOLO i valori${needsRecap ? ' del "factsRecap"' : ' del BLOCCO 1'} per motivare le risposte.
-NON inventare dati non presenti nel BLOCCO 1.
-
-1. SUITABILITY: per chi è ideale e per chi NON è adatto (motivato dai numeri del Blocco 1)
-2. COMPARISON: confronto con la media della categoria (cita i valori specifici dal Blocco 1)
-3. RECOMMENDATION: verdetto onesto in una frase + caveats
-
----
-
-Rispondi SOLO con questo JSON (nessun testo fuori dal JSON):
-{
-${recapJsonField}  "phase1": {
-    "facts": [
-      {
-        "question": "testo della domanda",
-        "answer": "valore esatto o NON TROVATO",
-        "source": "fonte del dato",
-        "confidence": "high|medium|low"
-      }
-    ]
-  },
-  "phase2": {
-    "suitability": {
-      "idealFor": ["tipo utente 1"],
-      "notIdealFor": ["tipo utente 1"],
-      "reasoning": "spiegazione basata sui numeri"
-    },
-    "comparison": {
-      "vsCategory": "sopra media | nella media | sotto media",
-      "strengths": ["punto di forza con dato"],
-      "weaknesses": ["debolezza con dato"]
-    },
-    "recommendation": {
-      "verdict": "verdetto chiaro in una frase",
-      "confidence": "high|medium|low",
-      "caveats": ["avvertenza 1"]
-    }
-  }
-}`;
+  const evidenceForGrounding = hasStructured
+    ? productData.structuredSources!.map(s => s.text).join(' ')
+    : (productData.sourceData || '');
 
   let simpleQA: SimpleQAResult = { specs: {}, rawFacts: [], extractionTime: 0 };
   let complexQA: ComplexQAResult = {
@@ -1112,75 +1037,26 @@ ${recapJsonField}  "phase1": {
   };
 
   try {
-    // W11 fix: use primary model when evidence is heavy.
-    // The combined extraction+reasoning prompt with >10k chars of evidence is
-    // too complex for the lite model — it degrades fact extraction accuracy.
-    // Below 10k the lite model handles it well and saves ~40% latency.
-    const evidenceLength = evidenceSection.length;
-    const useLite = evidenceLength < 10_000;
-    if (!useLite) {
-      log.info(`[TwoPhaseQA] W11: Heavy evidence (${evidenceLength} chars) — using primary model`);
-    }
-
-    // D9 fix: For very large contexts, increase maxTokens to give the model
-    // enough output room for both Phase 1 and Phase 2 quality reasoning.
-    // With 26k input tokens, 4096 output was tight — Phase 2 often got truncated.
-    const outputTokens = evidenceLength > 40_000 ? 6144 : 4096;
-
-    const result = await generateTextSafe({
-      system: 'Sei un tecnico esperto di attrezzature e macchinari professionali. Rispondi SOLO con JSON valido, nessun testo aggiuntivo.',
-      prompt,
-      maxTokens: outputTokens,
-      temperature: 0.2,
-      useLiteModel: useLite,
-    });
-
-    const jsonMatch = result.text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('No JSON in merged response');
-
-    const parsed = JSON.parse(jsonMatch[0]) as {
-      phase1?: { facts?: Array<{ question: string; answer: string; source: string; confidence: string }> };
-      phase2?: {
-        suitability?: { idealFor?: string[]; notIdealFor?: string[]; reasoning?: string };
-        comparison?: { vsCategory?: string; strengths?: string[]; weaknesses?: string[] };
-        recommendation?: { verdict?: string; confidence?: string; caveats?: string[] };
-      };
-    };
-
-    // --- Parse Phase 1 ---
-    const p1Start = Date.now();
-    const rawFactsPrelim: AtomicFact[] = (parsed.phase1?.facts ?? []).map(f => ({
-      question: f.question,
-      answer: f.answer,
-      source: f.source,
-      confidence: f.confidence as 'high' | 'medium' | 'low',
-      verified: f.answer !== 'NON TROVATO' && f.confidence === 'high',
-    }));
-
-    // W10: grounding check — verify numeric values against source text
-    const evidenceForGrounding = hasStructured
-      ? productData.structuredSources!.map(s => s.text).join(' ')
-      : (productData.sourceData || '');
-    const groundedFacts = groundingCheck(rawFactsPrelim, evidenceForGrounding);
+    // ── Phase 1: atomic fact extraction ────────────────────────────────────
+    const phase1Data = { ...productData, sourceData: flatSourceData };
+    const phase1Raw = await extractAtomicFacts(phase1Data);
 
     // D11 fix: Post-check for hallucinated "NON TROVATO" bypass.
-    // The model sometimes invents plausible-looking values instead of admitting
-    // ignorance. This check catches suspiciously generic answers and forces
-    // them to "NON TROVATO" when evidence is too short to contain real data.
-    const postCheckedFacts = hallucinationPostCheck(groundedFacts, evidenceForGrounding);
+    const postCheckedFacts = hallucinationPostCheck(phase1Raw.rawFacts, evidenceForGrounding);
 
-    // W-QA-6: Apply source-trust calibration to prevent over-stated confidence.
-    const rawFacts = calibrateConfidenceBySourceTrust(
+    // W-QA-6: Source-trust calibration.
+    // extractAtomicFacts() uses useLiteModel: true — pass that same flag here.
+    const calibratedFacts = calibrateConfidenceBySourceTrust(
       postCheckedFacts,
       productData.structuredSources,
-      useLite,
+      /* usedLiteModel */ true,
     );
 
-    // W9 fix: category-aware spec mapping (no more collisions)
+    // Rebuild specs map from calibrated facts so downstream consumers get the
+    // corrected confidence levels.
     const specs: SimpleQAResult['specs'] = {};
     const specMapping = getSpecMapping(productData.category || productData.title);
-
-    for (const fact of rawFacts) {
+    for (const fact of calibratedFacts) {
       for (const [keyword, specKey] of Object.entries(specMapping)) {
         if (fact.question.toLowerCase().includes(keyword) && fact.answer !== 'NON TROVATO') {
           specs[specKey] = fact;
@@ -1189,68 +1065,28 @@ ${recapJsonField}  "phase1": {
       }
     }
 
-    simpleQA = { specs, rawFacts, extractionTime: Date.now() - p1Start };
-    log.info(`[TwoPhaseQA] Merged: ${rawFacts.filter(f => f.verified).length} verified facts`);
+    simpleQA = { specs, rawFacts: calibratedFacts, extractionTime: phase1Raw.extractionTime };
+    log.info(`[TwoPhaseQA] Phase 1 done: ${calibratedFacts.filter(f => f.verified).length} verified facts`);
 
-    // --- Parse Phase 2 ---
-    const p2 = parsed.phase2 ?? {};
-    complexQA = {
-      suitability: {
-        idealFor: p2.suitability?.idealFor ?? [],
-        notIdealFor: p2.suitability?.notIdealFor ?? [],
-        reasoning: p2.suitability?.reasoning ?? '',
+    // ── Phase 2: complex reasoning driven by Phase 1 facts only ────────────
+    // Pass flatSourceData so Phase 2 can still reason when Phase 1 found no
+    // structured facts (hasNoFacts path inside performComplexReasoning).
+    const phase2Raw = await performComplexReasoning(
+      {
+        title: productData.title,
+        brand: productData.brand,
+        category: productData.category,
+        sourceData: flatSourceData,
       },
-      comparison: {
-        vsCategory: p2.comparison?.vsCategory ?? 'nella media',
-        strengths: p2.comparison?.strengths ?? [],
-        weaknesses: p2.comparison?.weaknesses ?? [],
-      },
-      recommendation: {
-        verdict: p2.recommendation?.verdict ?? '',
-        confidence: (p2.recommendation?.confidence as 'high' | 'medium' | 'low') ?? 'medium',
-        caveats: p2.recommendation?.caveats ?? [],
-      },
-      reasoningTime: 0,
-    };
-    // W-QA-3: cross-check Phase 2 numbers against Phase 1 verified facts
-    complexQA = crossCheckPhase2Consistency(rawFacts, complexQA);
+      simpleQA,
+    );
 
-    log.info(`[TwoPhaseQA] Merged: confidence=${complexQA.recommendation.confidence}`);
+    // W-QA-3: cross-check Phase 2 numbers against Phase 1 verified facts.
+    complexQA = crossCheckPhase2Consistency(calibratedFacts, phase2Raw);
+    log.info(`[TwoPhaseQA] Phase 2 done: confidence=${complexQA.recommendation.confidence}`);
 
   } catch (err) {
-    log.error(`[TwoPhaseQA] Merged call failed for ${productData.sku}, falling back to sequential:`, err);
-
-    // Graceful fallback: run the two phases sequentially (original behaviour).
-    // For the sequential path, render structured sources back to a flat string so
-    // extractAtomicFacts (which expects sourceData: string) still gets context.
-    //
-    // W-QA-4 fix: renderStructuredSources already emits [★★★ / ★★ / ★] headers for
-    // each block. We prepend a brief instruction so extractAtomicFacts (which
-    // receives the flat string) knows to map those headers to confidence levels:
-    // - [★★★] block → "high"   confidence for facts from that source
-    // - [★★]  block → "medium" confidence
-    // - [★]   block → "low"    confidence
-    // Without this note, the model ignores the stars and assigns confidence
-    // based on generic heuristics alone.
-    const FALLBACK_TRUST_PREAMBLE =
-      'NOTA SULLE FONTI: Il testo seguente contiene sezioni marcate con ★★★ (scheda tecnica ufficiale → confidence high), ★★ (retailer/recensione → confidence medium), ★ (forum/community → confidence low). Usa queste marcature per assegnare il livello di confidence corretto a ogni fatto estratto.\n\n';
-
-    try {
-      const renderedSources = hasStructured
-        ? renderStructuredSources(productData.structuredSources!, SOURCE_DATA_MAX_CHARS)
-        : truncatedSourceData;
-      const fallbackSourceData = renderedSources
-        ? FALLBACK_TRUST_PREAMBLE + renderedSources
-        : renderedSources;
-      const truncatedData = { ...productData, sourceData: fallbackSourceData ?? undefined };
-      simpleQA = await extractAtomicFacts(truncatedData);
-      complexQA = await performComplexReasoning(
-        { title: productData.title, brand: productData.brand, category: productData.category, sourceData: fallbackSourceData ?? undefined },
-        simpleQA,
-      );
-    } catch (fallbackErr) {
-      log.error(`[TwoPhaseQA] Sequential fallback also failed for ${productData.sku}:`, fallbackErr);
-    }
+    log.error(`[TwoPhaseQA] Sequential execution failed for ${productData.sku}:`, err);
   }
 
   return {
