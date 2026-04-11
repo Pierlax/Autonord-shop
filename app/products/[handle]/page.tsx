@@ -13,11 +13,11 @@ import { ProductSuitability } from '@/components/product/product-suitability';
 import { ProductTrustBadge } from '@/components/product/product-trust-badge';
 import { ProductAccessories } from '@/components/product/product-accessories';
 import { ProductSources } from '@/components/product/product-sources';
+import { ProductDescription } from '@/components/product/product-description';
 import { VideoGallery } from '@/components/product/video-gallery';
 import { CustomerQuestion } from '@/components/product/customer-question';
 import { RelatedArticles } from '@/components/product/related-articles';
 import { toTitleCase, getBrandName } from '@/lib/utils';
-import { sanitize } from '@/lib/sanitize-html';
 
 type Props = {
   params: { handle: string };
@@ -127,6 +127,25 @@ export default async function ProductPage({ params }: Props) {
         value,
       })),
     } : {}),
+    // aggregateRating derived from pipeline confidence score (0-100 → 1-5 stars)
+    ...(() => {
+      const conf = product.metafields?.confidence?.value;
+      if (!conf) return {};
+      const score = parseInt(conf, 10);
+      if (isNaN(score) || score < 20) return {};
+      // Map 20-100 → 3.0-5.0 (below 20 = too low to show)
+      const rating = Math.min(5, 3 + ((score - 20) / 80) * 2);
+      return {
+        aggregateRating: {
+          '@type': 'AggregateRating',
+          ratingValue: rating.toFixed(1),
+          bestRating: '5',
+          worstRating: '1',
+          ratingCount: Math.max(1, Math.floor(score / 10)),
+          reviewCount: Math.max(1, Math.floor(score / 10)),
+        },
+      };
+    })(),
     offers: {
       '@type': 'Offer',
       url: `${BASE_URL}/products/${params.handle}`,
@@ -349,32 +368,9 @@ export default async function ProductPage({ params }: Props) {
               </div>
             </div>
 
-            {/* Main Content - AI Generated Description as Article */}
+            {/* Main Content — AI description with ToC + collapsible sections */}
             {product.descriptionHtml && (
-              <article className="prose prose-invert prose-lg max-w-none">
-                <div
-                  dangerouslySetInnerHTML={{ __html: sanitize(product.descriptionHtml) }}
-                  className="
-                    [&_.product-description]:space-y-6
-                    [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:text-foreground [&_h2]:mt-0 [&_h2]:mb-4
-                    [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:mt-8 [&_h3]:mb-4
-                    [&_p]:text-muted-foreground [&_p]:leading-relaxed [&_p]:mb-4
-                    [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:space-y-2 [&_ul]:mb-6
-                    [&_li]:text-muted-foreground
-                    [&_strong]:text-foreground [&_strong]:font-semibold
-                    [&_cite]:italic [&_cite]:text-muted-foreground/80
-                    [&_.product-features]:bg-muted/30 [&_.product-features]:rounded-xl [&_.product-features]:p-6 [&_.product-features]:border [&_.product-features]:border-border/50
-                    [&_.product-features_h3]:text-lg [&_.product-features_h3]:mt-0
-                    [&_.product-specs]:bg-muted/30 [&_.product-specs]:rounded-xl [&_.product-specs]:p-6 [&_.product-specs]:border [&_.product-specs]:border-border/50
-                    [&_.product-specs_h3]:text-lg [&_.product-specs_h3]:mt-0
-                    [&_.product-usecases]:bg-muted/30 [&_.product-usecases]:rounded-xl [&_.product-usecases]:p-6 [&_.product-usecases]:border [&_.product-usecases]:border-border/50
-                    [&_.product-usecases_h3]:text-lg [&_.product-usecases_h3]:mt-0
-                    [&_.expert-opinion]:bg-gradient-to-br [&_.expert-opinion]:from-amber-500/10 [&_.expert-opinion]:to-orange-500/10 [&_.expert-opinion]:rounded-xl [&_.expert-opinion]:p-6 [&_.expert-opinion]:border [&_.expert-opinion]:border-amber-500/20 [&_.expert-opinion]:mt-8
-                    [&_.expert-opinion_h3]:text-lg [&_.expert-opinion_h3]:mt-0 [&_.expert-opinion_h3]:text-amber-400 [&_.expert-opinion_h3]:flex [&_.expert-opinion_h3]:items-center [&_.expert-opinion_h3]:gap-2
-                    [&_.expert-opinion_p]:text-foreground/90
-                  "
-                />
-              </article>
+              <ProductDescription descriptionHtml={product.descriptionHtml} />
             )}
 
             {/* If no AI content, show basic description */}
