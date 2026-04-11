@@ -14,7 +14,6 @@ import { ProductTrustBadge } from '@/components/product/product-trust-badge';
 import { ProductAccessories } from '@/components/product/product-accessories';
 import { ProductSources } from '@/components/product/product-sources';
 import { ProductDescription } from '@/components/product/product-description';
-import { VideoGallery } from '@/components/product/video-gallery';
 import { CustomerQuestion } from '@/components/product/customer-question';
 import { RelatedArticles } from '@/components/product/related-articles';
 import { toTitleCase, getBrandName } from '@/lib/utils';
@@ -291,9 +290,6 @@ export default async function ProductPage({ params }: Props) {
                 ))}
               </div>
             )}
-            
-            {/* Video Gallery */}
-            <VideoGallery productTitle={product.title} brand={brandName} />
           </div>
 
           {/* Center Column - Product Content (Article Style) */}
